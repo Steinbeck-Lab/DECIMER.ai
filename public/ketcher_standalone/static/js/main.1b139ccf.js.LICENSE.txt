@@ -17,8 +17,6 @@ object-assign
  * @license  MIT
  */
 
-/*! https://mths.be/punycode v1.4.1 by @mathias */
-
 /**
  *
  *
@@ -34,6 +32,12 @@ object-assign
  * Released under MIT license <https://lodash.com/license>
  * Based on Underscore.js 1.8.3 <http://underscorejs.org/LICENSE>
  * Copyright Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
+ */
+
+/** @license MUI v5.4.4
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  */
 
 /** @license React v0.20.2
@@ -90,4 +94,4 @@ object-assign
  * LICENSE file in the root directory of this source tree.
  */
 
-//!\ DECLARE ALIAS AFTER assign prototype !
+/** @license URI.js v4.4.1 (c) 2011 Gary Court. License: http://github.com/garycourt/uri-js */
