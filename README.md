@@ -1,62 +1,136 @@
-# DECIMER.ai (Deep Learning for Chemical Image Recognition - WebApp)
+<h1 align="center">
+  <a href="https://decimer.ai" target="_blank">
+    <img src="https://github.com/Kohulan/DECIMER-Image-to-SMILES/raw/master/assets/DECIMER.gif" width="600" alt="DECIMER Logo">
+  </a>
+</h1>
 
-[![License](https://img.shields.io/badge/License-MIT%202.0-blue.svg)](https://opensource.org/licenses/MIT)
-[![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-blue.svg)](https://GitHub.com/OBrink/DECIMER_Web/graphs/commit-activity)
-[![GitHub issues](https://img.shields.io/github/issues/OBrink/DECIMER_Web.svg)](https://GitHub.com/OBrink/DECIMER_Web/issues/)
-[![GitHub contributors](https://img.shields.io/github/contributors/OBrink/DECIMER_Web.svg)](https://GitHub.com/OBrink/DECIMER_Web/graphs/contributors/)
-[![GitHub release](https://img.shields.io/github/release/OBrink/DECIMER_Web.svg)](https://GitHub.com/OBrink/DECIMER_Web/releases/)
-[![DOI](https://zenodo.org/badge/486488537.svg)](https://zenodo.org/badge/latestdoi/486488537)
+<h4 align="center">Deep Learning for Chemical Image Recognition - WebApp</h4>
+
+<p align="center">
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License"></a>
+  <a href="https://GitHub.com/OBrink/DECIMER_Web/graphs/commit-activity"><img src="https://img.shields.io/badge/Maintained%3F-yes-blue.svg" alt="Maintenance"></a>
+  <a href="https://GitHub.com/OBrink/DECIMER_Web/issues/"><img src="https://img.shields.io/github/issues/OBrink/DECIMER_Web.svg" alt="GitHub issues"></a>
+  <a href="https://GitHub.com/OBrink/DECIMER_Web/graphs/contributors/"><img src="https://img.shields.io/github/contributors/OBrink/DECIMER_Web.svg" alt="GitHub contributors"></a>
+  <br>
+  <a href="https://GitHub.com/OBrink/DECIMER_Web/releases/"><img src="https://img.shields.io/github/release/OBrink/DECIMER_Web.svg" alt="GitHub release"></a>
+  <a href="https://zenodo.org/badge/latestdoi/486488537"><img src="https://zenodo.org/badge/486488537.svg" alt="DOI"></a>
+  <a href="https://www.tensorflow.org"><img src="https://img.shields.io/badge/TensorFlow-2.15.0-FF6F00.svg?style=flat&logo=tensorflow" alt="tensorflow"></a>
+
+<p align="center">
+  <a href="#about">About</a> •
+  <a href="#installation">Installation</a> •
+  <a href="#powered-by">Powered By</a> •
+  <a href="#license">License</a> •
+  <a href="#citation">Citation</a> •
+  <a href="#further-reading">Further Reading</a> •
+  <a href="#research-group">Research Group</a>
+</p>
+
+<hr>
+
+## About
+
+<p align="center">
+  <b>DECIMER (Deep Learning for Chemical Image Recognition)</b>
+</p>
 
 This repository contains the code running on [decimer.ai](https://decimer.ai)
-[![GitHub Logo](https://github.com/Kohulan/DECIMER-Image-to-SMILES/raw/master/assets/DECIMER.gif)](https://decimer.ai)
 
-Deep Learning for Chemical Image Recognition (DECIMER) is a step towards automated chemical image segmentation and recognition. DECIMER is actively developed and maintained by the [Steinbeck group](https://cheminf.uni-jena.de/) at the [Friedrich Schiller University Jena](https://www.uni-jena.de/).
+🧪 DECIMER is a powerful tool that can:
+- Perform automated chemical image segmentation
+- Recognize chemical structures in scientific publications
+- Convert chemical structure depictions to machine-readable formats
 
-## How to run DECIMER Web locally
-```shell
+DECIMER is actively developed and maintained by the [Steinbeck group](https://cheminf.uni-jena.de/) at the [Friedrich Schiller University Jena](https://www.uni-jena.de/).
+
+<hr>
+
+## Installation
+
+### How to run DECIMER Web locally
+
+```bash
 git clone https://github.com/OBrink/DECIMER.ai.git
 sudo chmod -R 777 DECIMER.ai
 cd DECIMER.ai/
 mv .env.example .env
-sed -i '$ d' routes/web.php (Which deletes the last line "URL::forceScheme('https');")
+sed -i '$ d' routes/web.php # Deletes the last line "URL::forceScheme('https');"
 sudo chmod -R 777 storage/
 sudo chmod -R 777 bootstrap/cache/
 docker-compose up --build -d
 ```
-- Open your browser (DECIMER works best on Chrome and Chromium-based web browsers) and enter http://localhost:80
-- On the first run, you will be asked to generate an app key for the Laravel app
-- Click on "Generate app key"
-- Refresh the webpage. Now, DECIMER.ai is running locally on your machine. Have fun!
-- It may take 5-10 minutes until all models are loaded and the app can be run without errors.
 
-### Check out the DECIMER.ai wiki!
-- Instructions on how to set up a smaller version of DECIMER.ai - Currently, the default version in this repository consumes approximately 20 GB of memory. This can be scaled down drastically (at the cost of parallel processing speed).
-- Instructions on how to remove the limitation to 10 pages and 20 structures in your locally running version of DECIMER Web
-- https://github.com/OBrink/DECIMER.ai/wiki
+1. Open your browser (Chrome or Chromium-based recommended)
+2. Navigate to `http://localhost:80`
+3. On first run, generate an app key when prompted
+4. Refresh the page
+5. Wait 5-10 minutes for all models to load
 
+> 📘 **Note:** Check out the [DECIMER.ai wiki](https://github.com/OBrink/DECIMER.ai/wiki) for advanced setup options and customizations!
 
-# DECIMER.AI is powered by
-[<img src="https://raw.githubusercontent.com/OBrink/DECIMER_Web/main/logos/DECIMER_Segmentation_logo.png" alt="drawing" width="250"/>](https://github.com/Kohulan/DECIMER-Image-Segmentation)
-[<img src="https://raw.githubusercontent.com/OBrink/DECIMER_Web/main/logos//STOUT_logo.png" alt="drawing" width="250"/>](https://github.com/Kohulan/Smiles-TO-iUpac-Translator)
-[<img src="https://raw.githubusercontent.com/OBrink/DECIMER_Web/main/logos//DECIMER_Transformer_logo.png" alt="drawing" width="250"/>](https://github.com/Kohulan/DECIMER-Image_Transformer)
+<hr>
 
-## License:
-- This project is licensed under the MIT License - see the [LICENSE](https://raw.githubusercontent.com/Kohulan/DECIMER-Image_Transformer/master/LICENSE?token=AHKLIF3EULMCUKCFUHIPBMDARSMDO) file for details
+## Powered By
 
-## Citation
-Please cite work if you use it:
+<p align="center">
+  <a href="https://github.com/Kohulan/DECIMER-Image-Segmentation">
+    <img src="https://raw.githubusercontent.com/OBrink/DECIMER_Web/main/logos/DECIMER_Segmentation_logo.png" alt="DECIMER Segmentation" width="200"/>
+  </a>
+  <a href="https://github.com/Kohulan/Smiles-TO-iUpac-Translator">
+    <img src="https://github.com/Kohulan/STOUT_WebApp/raw/main/frontend/public/STOUT.png" alt="STOUT" width="200"/>
+  </a>
+  <a href="https://github.com/Kohulan/DECIMER-Image_Transformer">
+    <img src="https://raw.githubusercontent.com/OBrink/DECIMER_Web/main/logos//DECIMER_Transformer_logo.png" alt="DECIMER Transformer" width="200"/>
+  </a>
+</p>
+
+<hr>
+
+## License :scroll:
+
+This project is licensed under the MIT License - see the [LICENSE](https://raw.githubusercontent.com/Kohulan/DECIMER-Image_Transformer/master/LICENSE?token=AHKLIF3EULMCUKCFUHIPBMDARSMDO) file for details.
+
+<hr>
+
+## Citation :newspaper:
+
+If you use this work, please cite:
+
+```bibtex
+@article{rajan2023decimer,
+  title={DECIMER.ai - An open platform for automated optical chemical structure identification, segmentation and recognition in scientific publications},
+  author={Rajan, Kohulan and Brinkhaus, Henning Otto and Agea, Maria Inmaculada and Zielesny, Achim and Steinbeck, Christoph},
+  journal={ChemRxiv},
+  year={2023},
+  doi={10.26434/chemrxiv-2023-xhcx9}
+}
 ```
-Rajan K, Brinkhaus HO, Agea MI, Zielesny A, Steinbeck C (2023) DECIMER.ai - An open platform for automated optical chemical structure identification, segmentation and recognition in scientific publications. 
-ChemRxiv. doi: 10.26434/chemrxiv-2023-xhcx9 This content is a preprint and has not been peer-reviewed.
-```
 
-## Further reading
+<hr>
 
-- DECIMER: towards deep learning for chemical image recognition: Rajan, K., Zielesny, A., Steinbeck, C. J Cheminform, 12, 65 (2020).
-- DECIMER-Segmentation: Automated extraction of chemical structure depictions from scientific literature: Rajan, K., Brinkhaus, H.O., Sorokina, M. et al. J Cheminform, 13, 20 (2021).
-- DECIMER 1.0: deep learning for chemical image recognition using transformers: Rajan, K., Zielesny, A., Steinbeck, C. J Cheminform, 13, 61 (2021).
-- STOUT: SMILES to IUPAC names using neural machine translation: Rajan, K., Zielesny, A., Steinbeck, C. J Cheminform, 13, 34 (2021).
+## Further Reading :books:
 
+- [DECIMER: towards deep learning for chemical image recognition](https://jcheminf.biomedcentral.com/articles/10.1186/s13321-020-00469-w)
+- [DECIMER-Segmentation: Automated extraction of chemical structure depictions from scientific literature](https://jcheminf.biomedcentral.com/articles/10.1186/s13321-021-00496-1)
+- [DECIMER 1.0: deep learning for chemical image recognition using transformers](https://jcheminf.biomedcentral.com/articles/10.1186/s13321-021-00538-8)
+- [STOUT: SMILES to IUPAC names using neural machine translation](https://jcheminf.biomedcentral.com/articles/10.1186/s13321-021-00510-6)
+
+<hr>
 
 ## Research Group
-[![GitHub Logo](https://github.com/Kohulan/DECIMER-Image-to-SMILES/blob/master/assets/CheminfGit.png)](https://cheminf.uni-jena.de)
+
+<p align="center">
+  <a href="https://cheminf.uni-jena.de">
+    <img src="https://github.com/Kohulan/DECIMER-Image-to-SMILES/blob/master/assets/CheminfGit.png" alt="Cheminformatics and Computational Metabolomics Group" width="300"/>
+  </a>
+</p>
+
+<p align="center">
+  🔬 DECIMER is developed and maintained by the <a href="https://cheminf.uni-jena.de">Steinbeck group</a> at the <a href="https://www.uni-jena.de/en/">Friedrich Schiller University Jena</a>, Germany.
+</p>
+
+<hr>
+
+<p align="center">
+  Made with ❤️ by the <a href="https://cheminf.uni-jena.de">Steinbeck Group</a> 
+</p>
