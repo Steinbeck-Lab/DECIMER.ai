@@ -19,9 +19,9 @@
  <p><span style="color: #ff0000;">Cheminformatics and Computational Metabolomics group at Friedrich-Schiller-University Jena</span><br>
     <span style="color: #ff0000;">Lessingstraße 8</span><br><span style="color: #ff0000;">07743 Jena</span><br><span style="color: #ff0000;">Germany</span>
  </p>
- <p><span style="color: #ff0000;">Telephone: +49 3641 948181</span><br><br><span style="color: #ff0000;">Email: otto.brinkhaus@uni-jena.de</span></p>
+ <p><span style="color: #ff0000;">Telephone: +49 3641 948181</span><br><br><span style="color: #ff0000;">Email: christoph.steinbeck@uni-jena.de</span></p>
  <p>The controller's data protection officer is:</p>
- <p><span style="color: #ff0000;">Otto Brinkhaus&nbsp;</span></p>
+ <p><span style="color: #ff0000;">Prof. Dr. Christoph Steinbeck&nbsp;</span></p>
  <h3>II. The rights of users and data subjects</h3>
  <p>With regard to the data processing to be described in more detail below, users and data subjects have the right</p>
  <ul type="disc">

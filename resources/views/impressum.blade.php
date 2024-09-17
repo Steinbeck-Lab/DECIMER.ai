@@ -6,11 +6,11 @@
 <p>Friedrich-Schiller-Universität Jena </br> 
    Institut für Anorganische und Analytische Chemie </br>
    Arbeitsgruppe: Cheminformatics and Computational Metabolomics </br>
-   Ansprechpartner: Otto Brinkhaus
+   Ansprechpartner: Prof. Dr. Christoph Steinbeck
 </p>
 <p><strong>Kontaktdaten</strong></p>
 <p>Telefon: +49 3641 948181</p>
-<p>E-Mail: otto.brinkhaus@uni-jena.de (mailto: otto.brinkhaus@uni-jena.de)</p>
+<p>E-Mail: christoph.steinbeck@uni-jena.de (mailto: christoph.steinbeck@uni-jena.de)</p>
 <p>Webseite: https://cheminf.uni-jena.de/</p>
 
 <p><strong>Haftungsausschluss</strong></p>
