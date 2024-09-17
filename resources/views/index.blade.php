@@ -4,12 +4,16 @@
     <!-- Set env variables to make sure DECIMER Segmentation runs on single uploaded image -->
     @if ($img_paths = Session::get('img_paths'))
         @if ($structure_depiction_img_paths = Session::get('structure_depiction_img_paths'))
-            <?php $structure_img_paths_array = json_decode($structure_depiction_img_paths); ?>
-            <?php $has_segmentation_already_run = Session::get('has_segmentation_already_run'); ?>
-            <?php $single_image_upload = Session::get('single_image_upload'); ?>
+            <?php $structure_img_paths_array = json_decode(
+                $structure_depiction_img_paths
+            ); ?>
+            <?php $has_segmentation_already_run = Session::get(
+                "has_segmentation_already_run"
+            ); ?>
+            <?php $single_image_upload = Session::get("single_image_upload"); ?>
             @if ($has_segmentation_already_run != 'true')
                 @if (count($structure_img_paths_array) == 1)
-                    <?php $single_image_upload = 'true'; ?>
+                    <?php $single_image_upload = "true"; ?>
                 @endif
             @endif
         @endif
@@ -155,11 +159,15 @@
                                     <input type="hidden" id="download_form_has_segmentation_already_run"
                                         name="has_segmentation_already_run" />
                                     <input type="hidden" id=download_form_single_image_upload name="single_image_upload" />
-                                    <?php 
-                                        $num_ketcher_frames = count(json_decode(Session::get('smiles_array')));
-                                        if ($num_ketcher_frames > 20) {
-                                            $num_ketcher_frames = 20;
-                                        }
+                                    <?php
+                                    $num_ketcher_frames = count(
+                                        json_decode(
+                                            Session::get("smiles_array")
+                                        )
+                                    );
+                                    if ($num_ketcher_frames > 20) {
+                                        $num_ketcher_frames = 20;
+                                    }
                                     ?>
                                     <button class="file-input"
                                         onclick="submit_with_updated_molfiles('{{ $num_ketcher_frames }}', 'download_form_molfile_array')">
@@ -188,7 +196,7 @@
             </br></br></br>
         </div>
 
-        <?php $single_image_upload = Session::get('single_image_upload'); ?>
+        <?php $single_image_upload = Session::get("single_image_upload"); ?>
         <!-- If a file was loaded, display page images -->
         @if ($img_paths = Session::get('img_paths'))
             @if ($img_paths != '[]')
@@ -216,14 +224,20 @@
 
             <!-- Handle data about uploaded/segmented structures and their SMILES/IUPAC representations -->
             @if ($structure_depiction_img_paths = Session::get('structure_depiction_img_paths'))
-                <?php $structure_img_paths_array = json_decode($structure_depiction_img_paths); ?>
-                <?php $has_segmentation_already_run = Session::get('has_segmentation_already_run'); ?>
-                <?php $single_image_upload = Session::get('single_image_upload'); ?>
+                <?php $structure_img_paths_array = json_decode(
+                    $structure_depiction_img_paths
+                ); ?>
+                <?php $has_segmentation_already_run = Session::get(
+                    "has_segmentation_already_run"
+                ); ?>
+                <?php $single_image_upload = Session::get(
+                    "single_image_upload"
+                ); ?>
                 @if ($has_segmentation_already_run != 'true')
                     @if (count($structure_img_paths_array) == 1)
                         <?php $img_paths = $structure_depiction_img_paths; ?>
                         <?php $structure_depiction_img_paths = null; ?>
-                        <?php $single_image_upload = 'true'; ?>
+                        <?php $single_image_upload = "true"; ?>
                     @endif
                 @endif
 
@@ -249,7 +263,9 @@
                     <?php $inchikey_array = json_decode($inchikey_array); ?>
                 @endif
                 @if ($classifier_result_array = Session::get('classifier_result_array'))
-                    <?php $classifier_result_array = json_decode($classifier_result_array); ?>
+                    <?php $classifier_result_array = json_decode(
+                        $classifier_result_array
+                    ); ?>
                 @endif
 
                 <div class="grid grid-cols-3 gap-4">
@@ -270,12 +286,57 @@
                                     <strong>Resolved SMILES representation</strong></br>
                                     <a class="break-words"> {{ $smiles_array[$key] }} </a>
                                     @if ("$validity_array[$key]" != 'invalid')
-                                        <a> - <a>
-                                        <a href="https://pubchem.ncbi.nlm.nih.gov/#query={{ $inchikey_array[$key] }}"
-                                            target="_blank" class="text-blue-400 hover:text-blue-600 transition">
-                                            Search for this structure on PubChem
+                                    <?php // Check if the molecule has stereochemistry
+                                    $has_stereo = substr($inchikey_array[$key], 14, 1) !== "A"; ?>
+                                    <a> - </a>
+                                    <span class="text-blue-400">
+                                        Search on PubChem: 
+                                        @if ($has_stereo)
+                                            <span class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                                                <input type="checkbox" name="toggle" id="toggle-{{ $key }}" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
+                                                <label for="toggle-{{ $key }}" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+                                            </span>
+                                            <span id="search-type-{{ $key }}">with stereo</span>
+                                        @endif
+                                        <a id="pubchem-link-{{ $key }}" href="https://pubchem.ncbi.nlm.nih.gov/#query={{ $inchikey_array[$key] }}"
+                                            target="_blank" class="hover:text-blue-600 transition">
+                                            Search
                                         </a>
+                                    </span>
+                                    <br> <!-- Line break added here -->
+                                    <a href="https://coconut.naturalproducts.net/search?q={{ $inchikey_array[$key] }}"
+                                        target="_blank" class="text-green-500 hover:text-green-800 transition">
+                                        Search for this structure on COCONUT
+                                    </a>
+
+                                    @if ($has_stereo)
+                                        <script>
+                                            document.getElementById('toggle-{{ $key }}').addEventListener('change', function() {
+                                                var searchType = document.getElementById('search-type-{{ $key }}');
+                                                var pubchemLink = document.getElementById('pubchem-link-{{ $key }}');
+                                                if (this.checked) {
+                                                    searchType.textContent = 'without stereo';
+                                                    pubchemLink.href = 'https://pubchem.ncbi.nlm.nih.gov/#query={{ substr($inchikey_array[$key], 0, 14) }}';
+                                                } else {
+                                                    searchType.textContent = 'with stereo';
+                                                    pubchemLink.href = 'https://pubchem.ncbi.nlm.nih.gov/#query={{ $inchikey_array[$key] }}';
+                                                }
+                                            });
+                                        </script>
+
+                                        <style>
+                                            .toggle-checkbox:checked {
+                                                @apply: right-0 border-green-400;
+                                                right: 0;
+                                                border-color: #68D391;
+                                            }
+                                            .toggle-checkbox:checked + .toggle-label {
+                                                @apply: bg-green-400;
+                                                background-color: #68D391;
+                                            }
+                                        </style>
                                     @endif
+                                @endif
                                     </br>
                                 @endif
                                 <!-- Present IUPAC name -->

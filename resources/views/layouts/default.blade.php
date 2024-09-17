@@ -147,6 +147,14 @@
 									</a>
 								</li>
 								<li>
+									<a href="{{ url('https://doi.org/10.1186/s13321-024-00872-7') }}" class="text-lg text-black mb-3" target="_blank">
+										Advancements in hand-drawn chemical structure recognition through an enhanced DECIMER architecture. </br> 
+										Rajan, K., Brinkhaus, H.O., Zielesny, A., Steinbeck, C.
+										<span class="italic">J Cheminform</span>, 
+										<span class="font-bold">16</span>, 78 (2024).
+									</a>
+								</li>
+								<li>
 									<a href="{{ url('https://doi.org/10.1186/s13321-020-00469-w') }}" class="text-lg text-black mb-3" target="_blank">
 										DECIMER: towards deep learning for chemical image recognition </br> 
 										Rajan, K., Zielesny, A., Steinbeck, C.
@@ -208,8 +216,8 @@
 				The animated loading icon was generated using
 				<a href="{{ url('https://loading.io/icon/') }}" target="_blank" class="text-blue-400 hover:text-blue-600 transition">loading.io</a>.
 				If you run into problems, please file an issue on 
-				<a href="{{ url('https://github.com/OBrink/DECIMER_Web/issues') }}" target="_blank" class="text-blue-400 hover:text-blue-600 transition">Github</a> or 
-				<a href= "mailto:christoph.steinbeck@uni-jena.de;otto.brinkhaus@uni-jena.de;kohulan.rajan@uni-jena.de" class="text-blue-400 hover:text-blue-600 transition">contact us via email</a>.
+				<a href="{{ url('https://github.com/Steinbeck-Lab/DECIMER.ai/issues') }}" target="_blank" class="text-blue-400 hover:text-blue-600 transition">Github</a> or 
+				<a href= "mailto:kohulan.rajan@uni-jena.de;christoph.steinbeck@uni-jena.de" class="text-blue-400 hover:text-blue-600 transition">contact us via email</a>.
 			</p>
 			<!-- Logos with links -->
 			<div class="grid grid-cols-3 gap-8">
@@ -220,7 +228,7 @@
 				</div>
 				<div>
 					<a href={{ url("https://github.com/Kohulan/Smiles-TO-iUpac-Translator") }} target="_blank">
-						<img src="STOUT_logo.png" alt="STOUT Logo"/>
+						<img src="https://github.com/Kohulan/Smiles-TO-iUpac-Translator/blob/development/docs/_static/STOUT.png?raw=true" alt="STOUT Logo"/>
 					</a>
 				</div>
 				<div>
