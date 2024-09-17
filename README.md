@@ -88,7 +88,7 @@ docker-compose up --build -d
 
 ## License :scroll:
 
-This project is licensed under the MIT License - see the [LICENSE](https://raw.githubusercontent.com/Kohulan/DECIMER-Image_Transformer/master/LICENSE?token=AHKLIF3EULMCUKCFUHIPBMDARSMDO) file for details.
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/Steinbeck-Lab/DECIMER.ai/blob/main/LICENSE) file for details.
 
 <hr>
 
