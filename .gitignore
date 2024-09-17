@@ -19,3 +19,4 @@ yarn-error.log
 /storage/logs/*
 /storage/app/public/*
 .DStore
+.DS_Store
