@@ -77,7 +77,7 @@ docker-compose up --build -d
     <img src="https://raw.githubusercontent.com/OBrink/DECIMER_Web/main/logos/DECIMER_Segmentation_logo.png" alt="DECIMER Segmentation" width="200"/>
   </a>
   <a href="https://github.com/Kohulan/Smiles-TO-iUpac-Translator">
-    <img src="https://github.com/Kohulan/STOUT_WebApp/raw/main/frontend/public/STOUT.png" alt="STOUT" width="200"/>
+    <img src="https://github.com/Kohulan/STOUT_WebApp/blob/main/frontend/src/assets/STOUT.png" alt="STOUT" width="200"/>
   </a>
   <a href="https://github.com/Kohulan/DECIMER-Image_Transformer">
     <img src="https://raw.githubusercontent.com/OBrink/DECIMER_Web/main/logos//DECIMER_Transformer_logo.png" alt="DECIMER Transformer" width="200"/>
