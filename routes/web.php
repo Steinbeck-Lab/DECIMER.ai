@@ -1,14 +1,14 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\FileUploadController;
-use App\Http\Controllers\DecimerSegmentationController;
-use App\Http\Controllers\DecimerController;
-use App\Http\Controllers\ResultArchiveController;
-use App\Http\Controllers\StoutController;
-use App\Http\Controllers\SocketServerInitController;
-use App\Http\Controllers\ProblemReportController;
 use App\Http\Controllers\ClipboardController;
+use App\Http\Controllers\DecimerController;
+use App\Http\Controllers\DecimerSegmentationController;
+use App\Http\Controllers\FileUploadController;
+use App\Http\Controllers\ProblemReportController;
+use App\Http\Controllers\ResultArchiveController;
+use App\Http\Controllers\SocketServerInitController;
+use App\Http\Controllers\StoutController;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -19,7 +19,7 @@ use App\Http\Controllers\ClipboardController;
 | routes are loaded by the RouteServiceProvider within a group which
 | contains the "web" middleware group. Now create something great!
 |
-*/
+ */
 
 Route::get('/', function () {
     return view('index');
