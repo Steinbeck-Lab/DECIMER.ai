@@ -8,6 +8,7 @@ use App\Http\Controllers\ResultArchiveController;
 use App\Http\Controllers\StoutController;
 use App\Http\Controllers\SocketServerInitController;
 use App\Http\Controllers\ProblemReportController;
+use App\Http\Controllers\ClipboardController;
 
 /*
 |--------------------------------------------------------------------------
@@ -42,6 +43,9 @@ Route::post('socket-init', [SocketServerInitController::class, 'socketInitPost']
 /* File Upload Routes */
 Route::get('file-upload', [FileUploadController::class, 'fileUpload'])->name('file.upload');
 Route::post('file-upload', [FileUploadController::class, 'fileUploadPost'])->name('file.upload.post');
+
+/* File Clipboard Routes */
+Route::post('/clipboard-paste', [ClipboardController::class, 'store'])->name('clipboard.paste.post');
 
 /* DECIMER Segmentation Routes */
 Route::get('decimer-segmentation', [DecimerSegmentationController::class, 'DecimerSegmentation'])->name('decimer.segmentation');

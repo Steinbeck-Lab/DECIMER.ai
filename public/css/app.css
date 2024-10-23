@@ -647,3 +647,7 @@ Ensure the default browser behavior of the `hidden` attribute.
   --tw-text-opacity: 1;
   color: rgb(37 99 235 / var(--tw-text-opacity));
 }
+.upload-highlight {
+    border: 2px dashed #4A90E2;
+    background-color: rgba(74, 144, 226, 0.1);
+}
