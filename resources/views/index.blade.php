@@ -5,15 +5,15 @@
     @if ($img_paths = Session::get('img_paths'))
         @if ($structure_depiction_img_paths = Session::get('structure_depiction_img_paths'))
             <?php $structure_img_paths_array = json_decode(
-                $structure_depiction_img_paths
-            ); ?>
+    $structure_depiction_img_paths
+);?>
             <?php $has_segmentation_already_run = Session::get(
-                "has_segmentation_already_run"
-            ); ?>
-            <?php $single_image_upload = Session::get("single_image_upload"); ?>
+    "has_segmentation_already_run"
+);?>
+            <?php $single_image_upload = Session::get("single_image_upload");?>
             @if ($has_segmentation_already_run != 'true')
                 @if (count($structure_img_paths_array) == 1)
-                    <?php $single_image_upload = "true"; ?>
+                    <?php $single_image_upload = "true";?>
                 @endif
             @endif
         @endif
@@ -30,29 +30,127 @@
                     document.getElementById("decimer_logo_gif").style = "display: centered;"
                 </script>
                 <!-- UPLOAD BUTTON -->
-                <form id="upload_form" action="{{ route('file.upload.post') }}" method="POST"
-                    enctype="multipart/form-data">
-                    @csrf
-                    <div class="container d-flex justify-content-center">
-                        <div class="row">
-                            <div class="col-md-12">
-                                <div class="mx-auto bg-gray-300 text-center p-4 rounded hover:bg-blue-100 transition">
-                                    <span>
-                                        Drop PDF document or chemical structure images here, or click to select files
-                                    </span>
-                                    <input class="file-input" type="file" name="file[]" multiple>
+                <div class="container d-flex justify-content-center">
+                    <div class="row w-full">
+                        <div class="col-md-12">
+                            <!-- Combined drop zone and paste area -->
+                            <div id="upload-area" class="mx-auto bg-gray-300 text-center p-8 rounded hover:bg-blue-100 transition cursor-pointer relative min-h-[200px] flex flex-col items-center justify-center">
+                                <div class="space-y-4">
+                                    <div>
+                                        <span class="block text-lg">
+                                            Drop PDF document or chemical structure images here,<br>
+                                            click to select files, or paste from clipboard (Ctrl+V)
+                                        </span>
+                                    </div>
+
+                                    <!-- Hidden file input -->
+                                    <form id="upload_form" action="{{ route('file.upload.post') }}" method="POST" enctype="multipart/form-data">
+                                        @csrf
+                                        <input class="file-input hidden" type="file" name="file[]" multiple>
+                                    </form>
+
+                                    <!-- Hidden paste form -->
+                                    <form id="paste_form" action="{{ route('clipboard.paste.post') }}" method="POST" enctype="multipart/form-data">
+                                        @csrf
+                                        <input type="hidden" name="clipboard_image" id="clipboard_image_input">
+                                    </form>
+                                </div>
+
+                                <!-- Preview area -->
+                                <div id="preview-area" class="hidden mt-4 max-w-full">
+                                    <img id="preview-image" class="max-h-48 mx-auto" alt="Preview">
                                 </div>
                             </div>
                         </div>
                     </div>
-                </form>
+                </div>
 
-                <script async type="module">
-                    $(document).on('change', '.file-input', function() {
-                        document.getElementById("loading_icon").style = "display: centered;";
-                        document.getElementById("header_loading_icon").style = "display: block; visibility: visible;";
-                        document.getElementById("loading_text").innerHTML = "Uploading files..."
-                        document.getElementById('upload_form').submit();
+                <script>
+                    document.addEventListener('DOMContentLoaded', function() {
+                        const uploadArea = document.getElementById('upload-area');
+                        const fileInput = document.querySelector('.file-input');
+                        const previewArea = document.getElementById('preview-area');
+                        const previewImage = document.getElementById('preview-image');
+
+                        // Handle click on upload area
+                        uploadArea.addEventListener('click', function(e) {
+                            if (e.target === uploadArea || e.target.parentNode === uploadArea) {
+                                fileInput.click();
+                            }
+                        });
+
+                        // Handle file selection
+                        fileInput.addEventListener('change', function() {
+                            document.getElementById("loading_icon").style = "display: centered;";
+                            document.getElementById("header_loading_icon").style = "display: block; visibility: visible;";
+                            document.getElementById("loading_text").innerHTML = "Uploading files...";
+                            document.getElementById('upload_form').submit();
+                        });
+
+                        // Handle paste event
+                        document.addEventListener('paste', function(e) {
+                            e.preventDefault();
+                            const items = e.clipboardData.items;
+
+                            for (const item of items) {
+                                if (item.type.indexOf('image') !== -1) {
+                                    const blob = item.getAsFile();
+                                    const reader = new FileReader();
+
+                                    reader.onload = function(e) {
+                                        // Show preview
+                                        previewArea.classList.remove('hidden');
+                                        previewImage.src = e.target.result;
+
+                                        // Prepare for upload
+                                        document.getElementById('clipboard_image_input').value = e.target.result;
+
+                                        // Auto-submit after short delay
+                                        setTimeout(() => {
+                                            document.getElementById("loading_icon").style = "display: centered;";
+                                            document.getElementById("header_loading_icon").style = "display: block; visibility: visible;";
+                                            document.getElementById("loading_text").innerHTML = "Processing pasted image...";
+                                            document.getElementById('paste_form').submit();
+                                        }, 500);
+                                    };
+
+                                    reader.readAsDataURL(blob);
+                                    break;
+                                }
+                            }
+                        });
+
+                        // Handle drag and drop
+                        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                            uploadArea.addEventListener(eventName, preventDefaults, false);
+                        });
+
+                        function preventDefaults(e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }
+
+                        uploadArea.addEventListener('dragenter', highlight, false);
+                        uploadArea.addEventListener('dragover', highlight, false);
+                        uploadArea.addEventListener('dragleave', unhighlight, false);
+                        uploadArea.addEventListener('drop', unhighlight, false);
+
+                        function highlight(e) {
+                            uploadArea.classList.add('bg-blue-100');
+                        }
+
+                        function unhighlight(e) {
+                            uploadArea.classList.remove('bg-blue-100');
+                        }
+
+                        uploadArea.addEventListener('drop', handleDrop, false);
+
+                        function handleDrop(e) {
+                            const dt = e.dataTransfer;
+                            const files = dt.files;
+                            fileInput.files = files;
+                            document.getElementById('upload_form').submit();
+                        }
                     });
                 </script>
             @elseif (Session::get('img_paths') == '[]')
@@ -160,15 +258,15 @@
                                         name="has_segmentation_already_run" />
                                     <input type="hidden" id=download_form_single_image_upload name="single_image_upload" />
                                     <?php
-                                    $num_ketcher_frames = count(
-                                        json_decode(
-                                            Session::get("smiles_array")
-                                        )
-                                    );
-                                    if ($num_ketcher_frames > 20) {
-                                        $num_ketcher_frames = 20;
-                                    }
-                                    ?>
+$num_ketcher_frames = count(
+    json_decode(
+        Session::get("smiles_array")
+    )
+);
+if ($num_ketcher_frames > 20) {
+    $num_ketcher_frames = 20;
+}
+?>
                                     <button class="file-input"
                                         onclick="submit_with_updated_molfiles('{{ $num_ketcher_frames }}', 'download_form_molfile_array')">
                                 </div>
@@ -196,7 +294,7 @@
             </br></br></br>
         </div>
 
-        <?php $single_image_upload = Session::get("single_image_upload"); ?>
+        <?php $single_image_upload = Session::get("single_image_upload");?>
         <!-- If a file was loaded, display page images -->
         @if ($img_paths = Session::get('img_paths'))
             @if ($img_paths != '[]')
@@ -207,7 +305,7 @@
                             onclick="display_or_not('page_image_checkbox', 'page_images')">
                     </div>
                 @endif
-                <?php $img_paths_array = json_decode($img_paths); ?>
+                <?php $img_paths_array = json_decode($img_paths);?>
                 @if (count($img_paths_array) == 10)
                     <div class="text-xl mb-3 text-red-800">
                         <strong>Warning:</strong> If you upload a pdf document with more than 10 pages,
@@ -225,19 +323,19 @@
             <!-- Handle data about uploaded/segmented structures and their SMILES/IUPAC representations -->
             @if ($structure_depiction_img_paths = Session::get('structure_depiction_img_paths'))
                 <?php $structure_img_paths_array = json_decode(
-                    $structure_depiction_img_paths
-                ); ?>
+    $structure_depiction_img_paths
+);?>
                 <?php $has_segmentation_already_run = Session::get(
-                    "has_segmentation_already_run"
-                ); ?>
+    "has_segmentation_already_run"
+);?>
                 <?php $single_image_upload = Session::get(
-                    "single_image_upload"
-                ); ?>
+    "single_image_upload"
+);?>
                 @if ($has_segmentation_already_run != 'true')
                     @if (count($structure_img_paths_array) == 1)
-                        <?php $img_paths = $structure_depiction_img_paths; ?>
-                        <?php $structure_depiction_img_paths = null; ?>
-                        <?php $single_image_upload = "true"; ?>
+                        <?php $img_paths = $structure_depiction_img_paths;?>
+                        <?php $structure_depiction_img_paths = null;?>
+                        <?php $single_image_upload = "true";?>
                     @endif
                 @endif
 
@@ -251,21 +349,21 @@
                     </div>
                 @endif
                 @if ($smiles_array_str = Session::get('smiles_array'))
-                    <?php $smiles_array = json_decode($smiles_array_str); ?>
+                    <?php $smiles_array = json_decode($smiles_array_str);?>
                 @endif
                 @if ($iupac_array_str = Session::get('iupac_array'))
-                    <?php $iupac_array = json_decode($iupac_array_str); ?>
+                    <?php $iupac_array = json_decode($iupac_array_str);?>
                 @endif
                 @if ($validity_array = Session::get('validity_array'))
-                    <?php $validity_array = json_decode($validity_array); ?>
+                    <?php $validity_array = json_decode($validity_array);?>
                 @endif
                 @if ($inchikey_array = Session::get('inchikey_array'))
-                    <?php $inchikey_array = json_decode($inchikey_array); ?>
+                    <?php $inchikey_array = json_decode($inchikey_array);?>
                 @endif
                 @if ($classifier_result_array = Session::get('classifier_result_array'))
                     <?php $classifier_result_array = json_decode(
-                        $classifier_result_array
-                    ); ?>
+    $classifier_result_array
+);?>
                 @endif
 
                 <div class="grid grid-cols-3 gap-4">
@@ -287,10 +385,10 @@
                                     <a class="break-words"> {{ $smiles_array[$key] }} </a>
                                     @if ("$validity_array[$key]" != 'invalid')
                                     <?php // Check if the molecule has stereochemistry
-                                    $has_stereo = substr($inchikey_array[$key], 14, 1) !== "A"; ?>
+$has_stereo = substr($inchikey_array[$key], 14, 1) !== "A";?>
                                     <a> - </a>
                                     <span class="text-blue-400">
-                                        Search on PubChem: 
+                                        Search on PubChem:
                                         @if ($has_stereo)
                                             <span class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
                                                 <input type="checkbox" name="toggle" id="toggle-{{ $key }}" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
@@ -402,7 +500,7 @@
                 <!-- For single image upload: If no structure has been segmented, run OCSR on uploaded image -->
                 @if ($single_image_upload == 'true')
                     @if ($structure_depiction_img_paths == '[]')
-                        <?php $structure_depiction_img_paths = $img_paths; ?>
+                        <?php $structure_depiction_img_paths = $img_paths;?>
                     @endif
                 @endif
 
