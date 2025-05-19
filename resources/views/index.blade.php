@@ -5,38 +5,41 @@
     @if ($img_paths = Session::get('img_paths'))
         @if ($structure_depiction_img_paths = Session::get('structure_depiction_img_paths'))
             <?php $structure_img_paths_array = json_decode(
-    $structure_depiction_img_paths
-);?>
-            <?php $has_segmentation_already_run = Session::get(
-    "has_segmentation_already_run"
-);?>
-            <?php $single_image_upload = Session::get("single_image_upload");?>
+                    $structure_depiction_img_paths
+            ); ?>
+<?php $has_segmentation_already_run = Session::get(
+        "has_segmentation_already_run"
+); ?>
+<?php $single_image_upload = Session::get("single_image_upload"); ?>
             @if ($has_segmentation_already_run != 'true')
                 @if (count($structure_img_paths_array) == 1)
-                    <?php $single_image_upload = "true";?>
+                    <?php $single_image_upload = "true"; ?>
                 @endif
             @endif
         @endif
     @endif
 
-    <section class="max-w-screen-lg container mx-auto flex-grow">
-        <div class="pt-8">
-            <img src="DECIMER.gif" alt="DECIMER Logo" id="decimer_logo_gif" style="display: none;" />
-            <img src="DECIMER_Clean.png" alt="DECIMER Logo" id="decimer_logo" style="display: none;" />
+     <section class="max-w-screen-lg container mx-auto flex-grow">
+        <div class="py-8">
+            <!-- Logos with Google-inspired styling -->
+            <img src="DECIMER.gif" alt="DECIMER GIF Logo" id="decimer_logo_gif" style="display: none; margin: 0 auto; max-width: 450px;" />
+            <img src="DECIMER_Clean.png" alt="DECIMER Logo" id="decimer_logo" style="display: none; margin: 0 auto; max-width: 450px;" />
             <img src="loading_icon.gif" alt="Loading icon" class="mx-auto" id="loading_icon" style="display: none;" />
+
             <!-- DECIMER LOGO (Animated gif is only shown the first time we are sent to index view) -->
             @if (!Session::get('img_paths'))
                 <script>
-                    document.getElementById("decimer_logo_gif").style = "display: centered;"
+                    document.getElementById("decimer_logo_gif").style = "display: block; margin: 0 auto; max-width: 450px;"
                 </script>
-                <!-- UPLOAD BUTTON -->
+
+                <!-- UPLOAD BUTTON with Google-style -->
                 <div class="container flex justify-center mt-8 mb-16">
-                    <div class="w-full max-w-[600px]">
+                    <div class="w-full max-w-xl">
                         <!-- Combined drop zone and paste area -->
                         <div id="upload-area" class="mx-auto bg-white border border-gray-200 shadow-md hover:shadow-lg rounded-full py-4 px-6 cursor-pointer transition relative flex flex-col items-center justify-center">
                             <div class="space-y-2 pointer-events-none">
                                 <div class="text-center">
-                                    <span class="block text-gray-700 text-sm font-light">
+                                    <span class="block text-gray-500 text-sm font-light">
                                         Import chemical structures:<br>
                                         Drop files, click to browse, or paste (Ctrl+V)
                                     </span>
@@ -58,9 +61,6 @@
                             <!-- Preview area -->
                             <div id="preview-area" class="hidden mt-4 max-w-full">
                                 <img id="preview-image" class="max-h-48 mx-auto rounded" alt="Preview">
-                            </div>
-                        </div>
-
                             </div>
                         </div>
                     </div>
@@ -156,7 +156,7 @@
                 </script>
             @elseif (Session::get('img_paths') == '[]')
                 <script>
-                    document.getElementById("decimer_logo").style = "display: centered;";
+                    document.getElementById("decimer_logo").style = "display: block; margin: 0 auto; max-width: 450px;"
                 </script>
                 @if (!Session::get('smiles_array'))
                     @if ($single_image_upload != 'true')
@@ -185,7 +185,7 @@
                 @endif
             @else
                 <script>
-                    document.getElementById("decimer_logo").style = "display: centered;"
+                    document.getElementById("decimer_logo").style = "display: block; margin: 0 auto; max-width: 450px;"
                 </script>
                 @if (!Session::get('structure_depiction_img_paths'))
                     <script>
@@ -259,15 +259,15 @@
                                         name="has_segmentation_already_run" />
                                     <input type="hidden" id=download_form_single_image_upload name="single_image_upload" />
                                     <?php
-$num_ketcher_frames = count(
-    json_decode(
-        Session::get("smiles_array")
-    )
-);
-if ($num_ketcher_frames > 20) {
-    $num_ketcher_frames = 20;
-}
-?>
+                                        $num_ketcher_frames = count(
+                                            json_decode(
+                                                Session::get("smiles_array")
+                                            )
+                                        );
+                                        if ($num_ketcher_frames > 20) {
+                                            $num_ketcher_frames = 20;
+                                        }
+                                    ?>
                                     <button class="file-input"
                                         onclick="submit_with_updated_molfiles('{{ $num_ketcher_frames }}', 'download_form_molfile_array')">
                                 </div>
@@ -295,7 +295,7 @@ if ($num_ketcher_frames > 20) {
             </br></br></br>
         </div>
 
-        <?php $single_image_upload = Session::get("single_image_upload");?>
+        <?php $single_image_upload = Session::get("single_image_upload"); ?>
         <!-- If a file was loaded, display page images -->
         @if ($img_paths = Session::get('img_paths'))
             @if ($img_paths != '[]')
@@ -306,7 +306,7 @@ if ($num_ketcher_frames > 20) {
                             onclick="display_or_not('page_image_checkbox', 'page_images')">
                     </div>
                 @endif
-                <?php $img_paths_array = json_decode($img_paths);?>
+                <?php $img_paths_array = json_decode($img_paths); ?>
                 @if (count($img_paths_array) == 10)
                     <div class="text-xl mb-3 text-red-800">
                         <strong>Warning:</strong> If you upload a pdf document with more than 10 pages,
@@ -324,19 +324,19 @@ if ($num_ketcher_frames > 20) {
             <!-- Handle data about uploaded/segmented structures and their SMILES/IUPAC representations -->
             @if ($structure_depiction_img_paths = Session::get('structure_depiction_img_paths'))
                 <?php $structure_img_paths_array = json_decode(
-    $structure_depiction_img_paths
-);?>
-                <?php $has_segmentation_already_run = Session::get(
-    "has_segmentation_already_run"
-);?>
-                <?php $single_image_upload = Session::get(
-    "single_image_upload"
-);?>
+                        $structure_depiction_img_paths
+                ); ?>
+<?php $has_segmentation_already_run = Session::get(
+        "has_segmentation_already_run"
+); ?>
+<?php $single_image_upload = Session::get(
+        "single_image_upload"
+); ?>
                 @if ($has_segmentation_already_run != 'true')
                     @if (count($structure_img_paths_array) == 1)
-                        <?php $img_paths = $structure_depiction_img_paths;?>
-                        <?php $structure_depiction_img_paths = null;?>
-                        <?php $single_image_upload = "true";?>
+                        <?php $img_paths                     = $structure_depiction_img_paths; ?>
+<?php $structure_depiction_img_paths = null; ?>
+<?php $single_image_upload           = "true"; ?>
                     @endif
                 @endif
 
@@ -350,21 +350,21 @@ if ($num_ketcher_frames > 20) {
                     </div>
                 @endif
                 @if ($smiles_array_str = Session::get('smiles_array'))
-                    <?php $smiles_array = json_decode($smiles_array_str);?>
+                    <?php $smiles_array = json_decode($smiles_array_str); ?>
                 @endif
                 @if ($iupac_array_str = Session::get('iupac_array'))
-                    <?php $iupac_array = json_decode($iupac_array_str);?>
+                    <?php $iupac_array = json_decode($iupac_array_str); ?>
                 @endif
                 @if ($validity_array = Session::get('validity_array'))
-                    <?php $validity_array = json_decode($validity_array);?>
+                    <?php $validity_array = json_decode($validity_array); ?>
                 @endif
                 @if ($inchikey_array = Session::get('inchikey_array'))
-                    <?php $inchikey_array = json_decode($inchikey_array);?>
+                    <?php $inchikey_array = json_decode($inchikey_array); ?>
                 @endif
                 @if ($classifier_result_array = Session::get('classifier_result_array'))
                     <?php $classifier_result_array = json_decode(
-    $classifier_result_array
-);?>
+                            $classifier_result_array
+                    ); ?>
                 @endif
 
                 <div class="grid grid-cols-3 gap-4">
@@ -386,7 +386,7 @@ if ($num_ketcher_frames > 20) {
                                     <a class="break-words"> {{ $smiles_array[$key] }} </a>
                                     @if ("$validity_array[$key]" != 'invalid')
                                     <?php // Check if the molecule has stereochemistry
-$has_stereo = substr($inchikey_array[$key], 14, 1) !== "A";?>
+                                    $has_stereo = substr($inchikey_array[$key], 14, 1) !== "A"; ?>
                                     <a> - </a>
                                     <span class="text-blue-400">
                                         Search on PubChem:
@@ -501,7 +501,7 @@ $has_stereo = substr($inchikey_array[$key], 14, 1) !== "A";?>
                 <!-- For single image upload: If no structure has been segmented, run OCSR on uploaded image -->
                 @if ($single_image_upload == 'true')
                     @if ($structure_depiction_img_paths == '[]')
-                        <?php $structure_depiction_img_paths = $img_paths;?>
+                        <?php $structure_depiction_img_paths = $img_paths; ?>
                     @endif
                 @endif
 
