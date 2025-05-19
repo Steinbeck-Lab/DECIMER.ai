@@ -22,7 +22,7 @@
     <section class="max-w-screen-lg container mx-auto flex-grow">
         <div class="pt-8">
             <img src="DECIMER.gif" alt="DECIMER Logo" id="decimer_logo_gif" style="display: none;" />
-            <img src="DECIMER.png" alt="DECIMER Logo" id="decimer_logo" style="display: none;" />
+            <img src="DECIMER_Clean.png" alt="DECIMER Logo" id="decimer_logo" style="display: none;" />
             <img src="loading_icon.gif" alt="Loading icon" class="mx-auto" id="loading_icon" style="display: none;" />
             <!-- DECIMER LOGO (Animated gif is only shown the first time we are sent to index view) -->
             @if (!Session::get('img_paths'))
@@ -30,36 +30,37 @@
                     document.getElementById("decimer_logo_gif").style = "display: centered;"
                 </script>
                 <!-- UPLOAD BUTTON -->
-                <div class="container d-flex justify-content-center">
-                    <div class="row w-full">
-                        <div class="col-md-12">
-                            <!-- Combined drop zone and paste area -->
-                            <div id="upload-area" class="mx-auto bg-gray-300 text-center p-8 rounded hover:bg-blue-100 transition cursor-pointer relative min-h-[200px] flex flex-col items-center justify-center">
-                                <div class="space-y-4">
-                                    <div>
-                                        <span class="block text-lg">
-                                            Drop PDF document or chemical structure images here,<br>
-                                            click to select files, or paste from clipboard (Ctrl+V)
-                                        </span>
-                                    </div>
-
-                                    <!-- Hidden file input -->
-                                    <form id="upload_form" action="{{ route('file.upload.post') }}" method="POST" enctype="multipart/form-data">
-                                        @csrf
-                                        <input class="file-input hidden" type="file" name="file[]" multiple>
-                                    </form>
-
-                                    <!-- Hidden paste form -->
-                                    <form id="paste_form" action="{{ route('clipboard.paste.post') }}" method="POST" enctype="multipart/form-data">
-                                        @csrf
-                                        <input type="hidden" name="clipboard_image" id="clipboard_image_input">
-                                    </form>
+                <div class="container flex justify-center mt-8 mb-16">
+                    <div class="w-full max-w-[600px]">
+                        <!-- Combined drop zone and paste area -->
+                        <div id="upload-area" class="mx-auto bg-white border border-gray-200 shadow-md hover:shadow-lg rounded-full py-4 px-6 cursor-pointer transition relative flex flex-col items-center justify-center">
+                            <div class="space-y-2 pointer-events-none">
+                                <div class="text-center">
+                                    <span class="block text-gray-700 text-sm font-light">
+                                        Import chemical structures:<br>
+                                        Drop files, click to browse, or paste (Ctrl+V)
+                                    </span>
                                 </div>
 
-                                <!-- Preview area -->
-                                <div id="preview-area" class="hidden mt-4 max-w-full">
-                                    <img id="preview-image" class="max-h-48 mx-auto" alt="Preview">
-                                </div>
+                                <!-- Hidden file input -->
+                                <form id="upload_form" action="{{ route('file.upload.post') }}" method="POST" enctype="multipart/form-data">
+                                    @csrf
+                                    <input class="file-input hidden" type="file" name="file[]" multiple>
+                                </form>
+
+                                <!-- Hidden paste form -->
+                                <form id="paste_form" action="{{ route('clipboard.paste.post') }}" method="POST" enctype="multipart/form-data">
+                                    @csrf
+                                    <input type="hidden" name="clipboard_image" id="clipboard_image_input">
+                                </form>
+                            </div>
+
+                            <!-- Preview area -->
+                            <div id="preview-area" class="hidden mt-4 max-w-full">
+                                <img id="preview-image" class="max-h-48 mx-auto rounded" alt="Preview">
+                            </div>
+                        </div>
+
                             </div>
                         </div>
                     </div>

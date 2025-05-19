@@ -1,245 +1,244 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-	<meta charset="UTF-8">
-	<meta name="index" content="width=device-width, initial-scale=1.0">
-	<meta http-equiv="X-UA-Compatible" content="ie-edge">
-	<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
-	<meta http-equiv="Pragma" content="no-cache"/>
-	<meta http-equiv="Expires" content="0"/>
-	<link rel="stylesheet" href="{{ asset('css/app.css') }}">
-	<link rel="stylesheet" href="{{ asset('css/tailwind.min.css') }}">
-	<link rel="stylesheet" href="{{ asset('css/bootstrap.min.css') }}">
-	<script src="/js/app.js?1238"></script>
-	<script src="/js/jquery.min.js"></script>
-	<link rel="icon" href=" {{ asset('DECIMER_favicon.png') }}">
-	<title>DECIMER Web Application</title>
-	<!--Global site tag (gtag.js) - Google Analytics-->
-	<script async src="https://www.googletagmanager.com/gtag/js?id=G-VKSWMKC79R"></script>
-	<script>
-		window.dataLayer = window.dataLayer || [];
-		function gtag(){dataLayer.push(arguments);}
-		gtag('js', new Date());
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie-edge">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+    <meta http-equiv="Pragma" content="no-cache"/>
+    <meta http-equiv="Expires" content="0"/>
+    <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/tailwind.min.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/bootstrap.min.css') }}">
+    <script src="/js/app.js?1238"></script>
+    <script src="/js/jquery.min.js"></script>
+    <link rel="icon" href=" {{ asset('DECIMER_favicon.png') }}">
+    <title>DECIMER Web Application</title>
+    <!--Global site tag (gtag.js) - Google Analytics-->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-VKSWMKC79R"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
 
-		gtag('config', 'G-VKSWMKC79R');
-	</script>
-	<script>
-		var _paq = window._paq = window._paq || [];
-		/* tracker methods like "setCustomDimension" should be called before "trackPageView" */
-		_paq.push(['trackPageView']);
-		_paq.push(['enableLinkTracking']);
-		(function() {
-			var u="//matomo.nfdi4chem.de/";
-			_paq.push(['setTrackerUrl', u+'matomo.php']);
-			_paq.push(['setSiteId', '2']);
-			var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
-			g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
-		})();
-	</script>
+        gtag('config', 'G-VKSWMKC79R');
+    </script>
+    <script>
+        var _paq = window._paq = window._paq || [];
+        /* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+        _paq.push(['trackPageView']);
+        _paq.push(['enableLinkTracking']);
+        (function() {
+            var u="//matomo.nfdi4chem.de/";
+            _paq.push(['setTrackerUrl', u+'matomo.php']);
+            _paq.push(['setSiteId', '2']);
+            var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+            g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+        })();
+    </script>
+    
+    <!-- Add some additional styling -->
+    <style>
+        .btn-primary {
+            @apply bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition;
+        }
+        .btn-secondary {
+            @apply bg-gray-200 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-300 transition;
+        }
+        .btn-dark {
+            @apply bg-gray-800 text-white px-4 py-2 rounded-md hover:bg-gray-700 transition;
+        }
+        
+        /* Animation utility classes */
+        .animate-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .animate-float {
+            animation: float 6s ease-in-out infinite;
+        }
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
+        }
+        
+        .animate-spin-slow {
+            animation: spin 20s linear infinite;
+        }
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        .animate-gradient {
+            background-size: 200% 200%;
+            animation: gradient 15s ease infinite;
+        }
+        @keyframes gradient {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+    </style>
 </head>
 
-
-<body class="white m-0">
-	<header class="fixed top-0 left-0 right-0 z-50 bg-gray-100">
-		<div class="container mx-auto flex justify-between p-2">
-			<div>
-				<img src="loading_icon_mini.gif" alt="Loading icon" class="mx-auto align-sub" id="header_loading_icon" style="display: block; visibility: hidden;"/>
-				<div class="text-lg text-gray-800 mx-2 align-bottom" id="loading_text" style="display: inline;"></div>
-			</div>
-			<nav class="navbar navbar-default -mx-2">
-				@if (Session::get('smiles_array'))
-					<!-- HEADER IUPAC GENERATION BUTTON -->
-					<form id="iupac_generation_form" action="{{ route('stout.iupac.post') }}" method="POST" enctype="multipart/form-data">
-						@csrf
-						<input type="hidden" name="img_paths" value="{{ Session::get('img_paths') }}" />
-						<input type="hidden" name="structure_depiction_img_paths" value="{{ Session::get('structure_depiction_img_paths') }}" />
-						<input type="hidden" name="iupac_array" value="{{ Session::get("iupac_array") }}" />
-						<input type="hidden" id="smiles_array" name="smiles_array" value="{{ Session::get('smiles_array') }}" />
-						<input type="hidden" id="stout_form_molfile_array" name="mol_file_array" />
-						<input type="hidden" id="classifier_result_array" name="classifier_result_array" value="{{ Session::get('classifier_result_array') }}" />
-						<input type="hidden" id="stout_form_has_segmentation_already_run" name="has_segmentation_already_run" />
+<body class="bg-white flex flex-col min-h-screen">
+    <header class="bg-white shadow-sm">
+        <div class="container mx-auto flex justify-between items-center p-3">
+            <div class="flex items-center">
+                <a href="{{ route('home') }}" class="flex items-center">
+                    <img src="{{ asset('DECIMER_Clean.png') }}" alt="DECIMER" class="h-8 mr-2">
+                </a>
+            </div>
+            
+            <div class="flex items-center">
+                <img src="loading_icon_mini.gif" alt="Loading icon" class="mx-2" id="header_loading_icon" style="display: none; visibility: hidden;"/>
+                <div class="text-lg text-gray-800 mx-2" id="loading_text" style="display: inline;"></div>
+            </div>
+            
+            <nav class="flex items-center">
+                @if (Session::get('smiles_array'))
+                    <!-- HEADER IUPAC GENERATION BUTTON -->
+                    <form id="iupac_generation_form" action="{{ route('stout.iupac.post') }}" method="POST" enctype="multipart/form-data" class="mr-2">
+                        @csrf
+                        <input type="hidden" name="img_paths" value="{{ Session::get('img_paths') }}" />
+                        <input type="hidden" name="structure_depiction_img_paths" value="{{ Session::get('structure_depiction_img_paths') }}" />
+                        <input type="hidden" name="iupac_array" value="{{ Session::get("iupac_array") }}" />
+                        <input type="hidden" id="smiles_array" name="smiles_array" value="{{ Session::get('smiles_array') }}" />
+                        <input type="hidden" id="stout_form_molfile_array" name="mol_file_array" />
+                        <input type="hidden" id="classifier_result_array" name="classifier_result_array" value="{{ Session::get('classifier_result_array') }}" />
+                        <input type="hidden" id="stout_form_has_segmentation_already_run" name="has_segmentation_already_run" />
                         <input type="hidden" id="stout_form_single_image_upload" name="single_image_upload" />
-						<?php 
-							$num_ketcher_frames = count(json_decode(Session::get('smiles_array')));
-							if ($num_ketcher_frames > 20) {
-								$num_ketcher_frames = 20;
-							}
-						?>
-						<button class="px-4 text-lg mx-2 text-gray-800 hover:text-blue-900 transition" 
-								onclick="stout_submit('{{ $num_ketcher_frames }}', 'stout_form_molfile_array')">
-							Generate IUPAC names
-						</button>
-					</form>
-					<!-- HEADER DOWNLOAD BUTTON -->
-					<form id="archive_creation_form" action="{{ route('archive.creation.post') }}" method="POST" enctype="multipart/form-data">
-						@csrf
-						<input type="hidden" name="img_paths" value="{{ Session::get('img_paths') }}" />
-						<input type="hidden" name="structure_depiction_img_paths" value="{{ Session::get('structure_depiction_img_paths') }}" />
-						<input type="hidden" name="iupac_array" value="{{ Session::get("iupac_array") }}" />
-						<input type="hidden" id="smiles_array" name="smiles_array" value="{{ Session::get('smiles_array') }}" />
-						<input type="hidden" id="header_download_form_molfile_array" name="mol_file_array" />
-						<input type="hidden" id="classifier_result_array" name="classifier_result_array" value="{{ Session::get('classifier_result_array') }}" />
-						<input type="hidden" id="header_download_form_has_segmentation_already_run" name="has_segmentation_already_run" />
-                        <input type="hidden" id = header_download_form_single_image_upload name="single_image_upload" />
-						<?php 
-							$num_ketcher_frames = count(json_decode(Session::get('smiles_array')));
-							if ($num_ketcher_frames > 20) {
-								$num_ketcher_frames = 20;
-							}
-						?>
-						<button class="px-4 text-lg mx-2 text-gray-800 hover:text-blue-900 transition" 
-								onclick="submit_with_updated_molfiles('{{ $num_ketcher_frames }}', 'header_download_form_molfile_array')">
-							Download results 
-						</button>
-					</form>
-				@endif
-				<!-- HEADER RELOAD BUTTON -->
-				<button class="text-lg mx-2 text-gray-800 hover:text-blue-900 transition" onclick="window.location='{{ route('home') }}'">
-					Reload
-				</button>
-				<!--
-				<a href="{{ url('https://cheminf.uni-jena.de/') }}" class="text-lg mx-2 text-gray-800 hover:text-blue-900 transition">About</a>
-				-->
-			</nav>
-		</div>
-	</header>
-	
-	<main>
-		@yield('page-content')
-		<!-- HOW TO USE THE DECIMER WEB APP -->
-		<section class="py-20 text-justify">
-			<div class="max-w-screen-lg container mx-auto">
-				<h3 class="text-4xl font-bold mb-6"> How to use the DECIMER web app?</h3>
-				<p class="mb-6 ">
-					Just upload a pdf document or one or multiple images that contain chemical structure
-					depictions above. If a pdf document is uploaded, DECIMER Segmentation is used to detect
-					and segment all chemical structure depictions. The detected or uploaded chemical structure
-					depictions are processed using the powerful OCSR engine of DECIMER V2. The chemical
-					structure depictions and the corresponding SMILES representation are presented above. 
-					
-					You can edit the structures according to your needs in the 
-					<a href="{{ url('https://lifescience.opensource.epam.com/ketcher/') }}" target="_blank" class="text-blue-400 hover:text-blue-600 transition">
-						Ketcher chemical structure editor
-					</a>
-					windows before downloading
-					the segmented images and the correponding mol files.
-					Additionally, the IUPAC names of the chemical structures can be resolved using STOUT V2.
+                        <?php 
+                            $num_ketcher_frames = count(json_decode(Session::get('smiles_array')));
+                            if ($num_ketcher_frames > 20) {
+                                $num_ketcher_frames = 20;
+                            }
+                        ?>
+                        <button class="btn-primary" 
+                                onclick="stout_submit('{{ $num_ketcher_frames }}', 'stout_form_molfile_array')">
+                            Generate IUPAC names
+                        </button>
+                    </form>
+                    <!-- HEADER DOWNLOAD BUTTON -->
+                    <form id="archive_creation_form" action="{{ route('archive.creation.post') }}" method="POST" enctype="multipart/form-data" class="mr-2">
+                        @csrf
+                        <input type="hidden" name="img_paths" value="{{ Session::get('img_paths') }}" />
+                        <input type="hidden" name="structure_depiction_img_paths" value="{{ Session::get('structure_depiction_img_paths') }}" />
+                        <input type="hidden" name="iupac_array" value="{{ Session::get("iupac_array") }}" />
+                        <input type="hidden" id="smiles_array" name="smiles_array" value="{{ Session::get('smiles_array') }}" />
+                        <input type="hidden" id="header_download_form_molfile_array" name="mol_file_array" />
+                        <input type="hidden" id="classifier_result_array" name="classifier_result_array" value="{{ Session::get('classifier_result_array') }}" />
+                        <input type="hidden" id="header_download_form_has_segmentation_already_run" name="has_segmentation_already_run" />
+                        <input type="hidden" id="header_download_form_single_image_upload" name="single_image_upload" />
+                        <?php 
+                            $num_ketcher_frames = count(json_decode(Session::get('smiles_array')));
+                            if ($num_ketcher_frames > 20) {
+                                $num_ketcher_frames = 20;
+                            }
+                        ?>
+                        <button class="btn-secondary" 
+                                onclick="submit_with_updated_molfiles('{{ $num_ketcher_frames }}', 'header_download_form_molfile_array')">
+                            Download results 
+                        </button>
+                    </form>
+                @endif
+                
+                <!-- Navigation Links -->
+                <a href="{{ route('home') }}" class="text-gray-700 hover:text-blue-600 mx-3 transition">Home</a>
+                <a href="{{ url('/about') }}" class="text-gray-700 hover:text-blue-600 mx-3 transition">About</a>
+                <a href="https://github.com/Steinbeck-Lab/DECIMER.ai" target="_blank" class="flex items-center text-gray-700 hover:text-blue-600 mx-3 transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="mr-1" viewBox="0 0 16 16">
+                        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+                    </svg>
+                    GitHub
+                </a>
+            </nav>
+        </div>
+    </header>
+    
+    <main class="flex-grow py-4">
+        @yield('page-content')
+        
+        <!-- Processing sections for DECIMER -->
+        @if (isset($img_paths) || isset($structure_depiction_img_paths) || isset($smiles_array))
+            <div id="processing-results">
+                <!-- This will contain all the processing results that are currently in the index.blade.php -->
+            </div>
+        @endif
+    </main>
 
-				</p>
-			</div>
-		</section>
-
-		<!-- CITE US -->
-		<section class="py-20 text-justify">
-			<div class="max-w-screen-lg container mx-auto">
-				<h3 class="text-4xl font-bold mb-6">Cite us</h3>
-				<h4 class="text-xl mb-3 gray-800">If our toolkit helped your work, please cite our publications.</h4> 
-				<div class="flex flex-wrap -mx-2">
-					<div class="w-full sm:w1/2 mb-3 px-2">
-						<div class="p-4 bg-gray-200 h-full">
-							<ul class="list-disc">
-								<li>
-									<a href="{{ url('https://doi.org/10.1038/s41467-023-40782-0') }}" class="text-lg text-black mb-3" target="_blank">
-										DECIMER.ai: an open platform for automated optical chemical structure identification, segmentation and recognition in scientific publications </br> 
-										Rajan, K., Brinkhaus, H.O., Agea, I.A. Zielesny, A., Steinbeck, C.
-										<span class="italic">Nat Commun</span>, 
-										<span class="font-bold">14</span>, 5045 (2023).
-									</a>
-								</li>
-								<li>
-									<a href="{{ url('https://doi.org/10.1186/s13321-024-00872-7') }}" class="text-lg text-black mb-3" target="_blank">
-										Advancements in hand-drawn chemical structure recognition through an enhanced DECIMER architecture. </br> 
-										Rajan, K., Brinkhaus, H.O., Zielesny, A., Steinbeck, C.
-										<span class="italic">J Cheminform</span>, 
-										<span class="font-bold">16</span>, 78 (2024).
-									</a>
-								</li>
-								<li>
-									<a href="{{ url('https://doi.org/10.1186/s13321-020-00469-w') }}" class="text-lg text-black mb-3" target="_blank">
-										DECIMER: towards deep learning for chemical image recognition </br> 
-										Rajan, K., Zielesny, A., Steinbeck, C.
-										<span class="italic">J Cheminform</span>, 
-										<span class="font-bold">12</span>, 65 (2020).
-									</a>
-								</li>
-								<li>
-									<a href="{{ url('https://doi.org/10.1186/s13321-021-00496-1') }}" class="text-lg text-black mb-3" target="_blank">
-										DECIMER-Segmentation: Automated extraction of chemical structure depictions from scientific literature  </br>
-										Rajan, K., Brinkhaus, H.O., Sorokina, M. et al. 
-										<span class="italic">J Cheminform</span>, 
-										<span class="font-bold">13</span>, 20 (2021).
-									</a> 
-								</li>
-								<li>
-									<a href="{{ url('https://doi.org/10.1186/s13321-021-00538-8') }}" class="text-lg text-black mb-3" target="_blank">
-										DECIMER 1.0: deep learning for chemical image recognition using transformers </br>
-										Rajan, K., Zielesny, A., Steinbeck, C.
-										<span class="italic">J Cheminform</span>, 
-										<span class="font-bold">13</span>, 61 (2021).
-									</a>
-								</li>
-								<li>
-									<a href="{{ url('https://doi.org/10.1186/s13321-021-00512-4') }}" class="text-lg text-black mb-3" target="_blank">
-									STOUT: SMILES to IUPAC names using neural machine translation </br> 
-									Rajan, K., Zielesny, A., Steinbeck, C. 
-									<span class="italic">J Cheminform</span>, 
-									<span class="font-bold">13</span>, 34 (2021).
-									</a>
-								</li>
-							</ul>
-						</div>
-					</div>	
-				</div>
-				<div class="flex justify-center">
-					<a href="{{ url('https://cheminf.uni-jena.de/research/deep-learning/') }}" target="_blank" class="bg-gray-300 text-black text-center py-2 px-4 rounded hover:bg-blue-100 transition">Learn more</a>
-				</div>
-			</div>
-		</section>
-	</main>
-
-	<footer>
-		<div class="max-w-screen-lg container mx-auto p-4 text-justify">
-			<p>
-				Deep Learning for Chemical Image Recognition (DECIMER) is a step towards automated chemical 
-				image segmentation and recognition. DECIMER is actively developed and maintained by the
-				<a href="{{ url('https://cheminf.uni-jena.de/research/deep-learning/') }}" target="_blank" class="text-blue-400 hover:text-blue-600 transition">Steinbeck group</a> at the
-				<a href="{{ url('https://www.uni-jena.de/') }}" target="_blank" class="text-blue-400 hover:text-blue-600 transition">Friedrich Schiller University Jena</a>.
-				You need to have the right granted by the publisher of the uploaded documents and images to use them for data mining.
-				We do not store or use the data for anything other than automated processing and display of results in the web app. 
-				Your documents and images are only saved for one hour unless a problem is reported. If a problem is reported,
-				we will use the reported image to analyse errors before deleting them.
-				Google Analytics is used to get some basic statistics about the number of visitors.
-				You can look up a more detailed description of what happens with your data in our 
-				<a href="{{ route('privacy_policy') }}" target="_blank" class="text-blue-400 hover:text-blue-600 transition">privacy policy</a>. 
-				German law requires us to provide some information about who we are: 
-				<a href="{{ route('impressum') }}" target="_blank" class="text-blue-400 hover:text-blue-600 transition">Impressum - Legal Disclosure</a>.
-				The animated loading icon was generated using
-				<a href="{{ url('https://loading.io/icon/') }}" target="_blank" class="text-blue-400 hover:text-blue-600 transition">loading.io</a>.
-				If you run into problems, please file an issue on 
-				<a href="{{ url('https://github.com/Steinbeck-Lab/DECIMER.ai/issues') }}" target="_blank" class="text-blue-400 hover:text-blue-600 transition">Github</a> or 
-				<a href= "mailto:kohulan.rajan@uni-jena.de;christoph.steinbeck@uni-jena.de" class="text-blue-400 hover:text-blue-600 transition">contact us via email</a>.
-			</p>
-			<!-- Logos with links -->
-			<div class="grid grid-cols-3 gap-8">
-				<div>
-					<a href={{ url("https://github.com/Kohulan/DECIMER-Image-Segmentation") }} target="_blank">
-						<img src="DECIMER_Segmentation_logo.png" alt="DECIMER Segmentation Logo"/>
-					</a>
-				</div>
-				<div>
-					<a href={{ url("https://github.com/Kohulan/Smiles-TO-iUpac-Translator") }} target="_blank">
-						<img src="https://github.com/Kohulan/Smiles-TO-iUpac-Translator/blob/development/docs/_static/STOUT.png?raw=true" alt="STOUT Logo"/>
-					</a>
-				</div>
-				<div>
-					<a href={{ url("https://github.com/Kohulan/DECIMER-Image_Transformer") }} target="_blank">
-						<img src="DECIMER_Transformer_logo.png" alt="DECIMER OCSR Logo"/>
-					</a>
-				</div>
-			</div>
-		</div>
-	</footer>
-	
+    <footer class="bg-white border-t border-gray-200 mt-12">
+        <div class="max-w-screen-lg container mx-auto p-6">
+            <div class="flex flex-col md:flex-row md:justify-between">
+                <div class="mb-6 md:mb-0">
+                    <h3 class="text-lg font-semibold mb-4">DECIMER.ai</h3>
+                    <p class="text-sm text-gray-600 max-w-md">
+                        DECIMER (Deep lEarning for Chemical IMagE Recognition) is developed by the 
+                        <a href="https://cheminf.uni-jena.de/" target="_blank" class="text-blue-600 hover:text-blue-800 transition">Steinbeck group</a> 
+                        at Friedrich Schiller University Jena.
+                    </p>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-8 sm:grid-cols-3">
+                    <div>
+                        <h3 class="text-sm font-semibold mb-3 text-gray-500 uppercase">Project</h3>
+                        <ul class="space-y-2">
+                            <li>
+                                <a href="https://github.com/Steinbeck-Lab/DECIMER.ai" class="text-gray-600 hover:text-blue-600 transition">GitHub Repository</a>
+                            </li>
+                            <li>
+                                <a href="https://cheminf.uni-jena.de/research/deep-learning/" class="text-gray-600 hover:text-blue-600 transition">Research</a>
+                            </li>
+                        </ul>
+                    </div>
+                    
+                    <div>
+                        <h3 class="text-sm font-semibold mb-3 text-gray-500 uppercase">Legal</h3>
+                        <ul class="space-y-2">
+                            <li>
+                                <a href="{{ route('privacy_policy') }}" class="text-gray-600 hover:text-blue-600 transition">Privacy Policy</a>
+                            </li>
+                            <li>
+                                <a href="{{ route('impressum') }}" class="text-gray-600 hover:text-blue-600 transition">Impressum</a>
+                            </li>
+                        </ul>
+                    </div>
+                    
+                    <div>
+                        <h3 class="text-sm font-semibold mb-3 text-gray-500 uppercase">Contact</h3>
+                        <ul class="space-y-2">
+                            <li>
+                                <a href="mailto:kohulan.rajan@uni-jena.de;christoph.steinbeck@uni-jena.de" class="text-gray-600 hover:text-blue-600 transition">Email us</a>
+                            </li>
+                            <li>
+                                <a href="https://github.com/Steinbeck-Lab/DECIMER.ai/issues" class="text-gray-600 hover:text-blue-600 transition">Report Issues</a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-8 border-t border-gray-200 pt-6 flex flex-col md:flex-row items-center justify-between">
+                <p class="text-sm text-gray-500">
+                    &copy; {{ date('Y') }} DECIMER Project. All rights reserved.
+                </p>
+                <div class="flex space-x-6 mt-4 md:mt-0">
+                    <a href="https://github.com/Steinbeck-Lab/DECIMER.ai" class="text-gray-500 hover:text-gray-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+                        </svg>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </footer>
+    
 </body>
 
 </html>
