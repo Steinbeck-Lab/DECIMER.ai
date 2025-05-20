@@ -114,9 +114,21 @@
                         <span class="hidden sm:inline ml-1">GitHub</span>
                     </a>
                 </div>
+            </nav>
 
+            <div class="flex items-center absolute left-1/2 transform -translate-x-1/2">
+                <div class="flex items-center bg-gray-100 rounded-full px-3 py-1 shadow-inner" id="status_container" style="display: none;">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-500 animate-spin mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+                        <path d="M12 6v6l4 2"></path>
+                    </svg>
+                    <div class="text-sm font-medium text-gray-700" id="loading_text"></div>
+                </div>
+            </div>
+
+            <div class="flex items-center">
                 @if (Session::get('smiles_array'))
-                    <div class="flex space-x-2 ml-2">
+                    <div class="flex space-x-2 mr-2">
                     <!-- HEADER IUPAC GENERATION BUTTON -->
                     <form id="iupac_generation_form" action="{{ route('stout.iupac.post') }}" method="POST" enctype="multipart/form-data">
                             @csrf
@@ -168,21 +180,8 @@
     Download
 </button>
                         </form>
-                        </div>
+                    </div>
                 @endif
-            </nav>
-
-            <div class="flex items-center absolute left-1/2 transform -translate-x-1/2">
-                <div class="flex items-center bg-gray-100 rounded-full px-3 py-1 shadow-inner" id="status_container" style="display: none;">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-500 animate-spin mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
-                        <path d="M12 6v6l4 2"></path>
-                    </svg>
-                    <div class="text-sm font-medium text-gray-700" id="loading_text"></div>
-                </div>
-            </div>
-
-            <div class="flex items-center">
                 <img src="loading_icon_mini.gif" alt="Loading icon" class="mx-2" id="header_loading_icon" style="display: none; visibility: hidden;"/>
                 <div class="text-lg text-gray-800 mx-2" id="loading_text" style="display: inline;"></div>
             </div>
