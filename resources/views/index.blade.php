@@ -22,14 +22,18 @@
      <section class="max-w-screen-lg container mx-auto flex-grow">
         <div class="py-8">
             <!-- Logos with Google-inspired styling -->
-            <img src="DECIMER.gif" alt="DECIMER GIF Logo" id="decimer_logo_gif" style="display: none; margin: 0 auto; max-width: 450px;" />
-            <img src="DECIMER_Clean.png" alt="DECIMER Logo" id="decimer_logo" style="display: none; margin: 0 auto; max-width: 450px;" />
+            <div class="flex flex-col items-center">
+                <img src="DECIMER.gif" alt="DECIMER GIF Logo" id="decimer_logo_gif" style="display: none; margin: 0 auto; max-width: 450px;" />
+                <img src="DECIMER_Clean.png" alt="DECIMER Logo" id="decimer_logo" style="display: none; margin: 0 auto; max-width: 350px;" />
+                <p class="text-center text-gray-700 mt-2" id="logo_tagline" style="display: none;">Extract chemical structures from PDFs and images</p>
+            </div>
             <img src="loading_icon.gif" alt="Loading icon" class="mx-auto" id="loading_icon" style="display: none;" />
 
             <!-- DECIMER LOGO (Animated gif is only shown the first time we are sent to index view) -->
             @if (!Session::get('img_paths'))
                 <script>
-                    document.getElementById("decimer_logo_gif").style = "display: block; margin: 0 auto; max-width: 450px;"
+                    document.getElementById("decimer_logo_gif").style = "display: block; margin: 0 auto; max-width: 450px;";
+                    document.getElementById("logo_tagline").style = "display: block;";
                 </script>
 
                 <!-- UPLOAD BUTTON with Google-style -->
@@ -40,7 +44,6 @@
                             <div class="space-y-2 pointer-events-none">
                                 <div class="text-center">
                                     <span class="block text-gray-500 text-sm font-light">
-                                        Import chemical structures:<br>
                                         Drop files, click to browse, or paste (Ctrl+V)
                                     </span>
                                 </div>
@@ -156,7 +159,7 @@
                 </script>
             @elseif (Session::get('img_paths') == '[]')
                 <script>
-                    document.getElementById("decimer_logo").style = "display: block; margin: 0 auto; max-width: 450px;"
+                    document.getElementById("decimer_logo").style = "display: block; margin: 0 auto; max-width: 350px;"
                 </script>
                 @if (!Session::get('smiles_array'))
                     @if ($single_image_upload != 'true')
@@ -185,7 +188,7 @@
                 @endif
             @else
                 <script>
-                    document.getElementById("decimer_logo").style = "display: block; margin: 0 auto; max-width: 450px;"
+                    document.getElementById("decimer_logo").style = "display: block; margin: 0 auto; max-width: 350px;"
                 </script>
                 @if (!Session::get('structure_depiction_img_paths'))
                     <script>
@@ -334,9 +337,9 @@
 ); ?>
                 @if ($has_segmentation_already_run != 'true')
                     @if (count($structure_img_paths_array) == 1)
-                        <?php $img_paths                     = $structure_depiction_img_paths; ?>
-<?php $structure_depiction_img_paths = null; ?>
-<?php $single_image_upload           = "true"; ?>
+                        <?php $img_paths = $structure_depiction_img_paths; ?>
+<?php $structure_depiction_img_paths     = null; ?>
+<?php $single_image_upload               = "true"; ?>
                     @endif
                 @endif
 
