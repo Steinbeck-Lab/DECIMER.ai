@@ -24,15 +24,14 @@
             <!-- Logos with Google-inspired styling -->
             <div class="flex flex-col items-center">
                 <img src="DECIMER.gif" alt="DECIMER GIF Logo" id="decimer_logo_gif" style="display: none; margin: 0 auto; max-width: 450px;" />
-                <img src="DECIMER_Clean.png" alt="DECIMER Logo" id="decimer_logo" style="display: none; margin: 0 auto; max-width: 350px;" />
-                <p class="text-center text-gray-700 mt-2" id="logo_tagline" style="display: none;">Extract chemical structures from PDFs and images</p>
+                <img src="DECIMER_Clean.png" alt="DECIMER Logo" id="decimer_logo" style="display: none; margin: 0 auto; max-width: 450px;" />
             </div>
             <img src="loading_icon.gif" alt="Loading icon" class="mx-auto" id="loading_icon" style="display: none;" />
 
             <!-- DECIMER LOGO (Animated gif is only shown the first time we are sent to index view) -->
             @if (!Session::get('img_paths'))
                 <script>
-                    document.getElementById("decimer_logo_gif").style = "display: block; margin: 0 auto; max-width: 450px;";
+                    document.getElementById("decimer_logo").style = "display: block; margin: 0 auto; max-width: 450px;";
                     document.getElementById("logo_tagline").style = "display: block;";
                 </script>
 
@@ -159,7 +158,7 @@
                 </script>
             @elseif (Session::get('img_paths') == '[]')
                 <script>
-                    document.getElementById("decimer_logo").style = "display: block; margin: 0 auto; max-width: 350px;"
+                    document.getElementById("decimer_logo").style = "display: block; margin: 0 auto; max-width: 450px;"
                 </script>
                 @if (!Session::get('smiles_array'))
                     @if ($single_image_upload != 'true')
@@ -188,7 +187,7 @@
                 @endif
             @else
                 <script>
-                    document.getElementById("decimer_logo").style = "display: block; margin: 0 auto; max-width: 350px;"
+                    document.getElementById("decimer_logo").style = "display: block; margin: 0 auto; max-width: 450px;"
                 </script>
                 @if (!Session::get('structure_depiction_img_paths'))
                     <script>
