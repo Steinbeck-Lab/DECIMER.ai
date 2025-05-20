@@ -91,31 +91,32 @@
 
     <header class="bg-gradient-to-r from-white to-blue-50 shadow-sm sticky top-0 z-50">
         <div class="container mx-auto flex justify-between items-center py-3 px-4">
-            <!-- Logo Section -->
-            <div class="flex items-center">
-                <a href="{{ route('home') }}" class="flex items-center group">
-                    <img src="{{ asset('DECIMER_Clean.png') }}" alt="DECIMER" class="h-9 mr-2 transition-transform duration-300 group-hover:scale-105">
-                </a>
-            </div>
-
-            <div class="flex items-center absolute left-1/2 transform -translate-x-1/2">
-                <div class="flex items-center bg-gray-100 rounded-full px-3 py-1 shadow-inner" id="status_container" style="display: none;">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-500 animate-spin mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
-                        <path d="M12 6v6l4 2"></path>
-                    </svg>
-                    <div class="text-sm font-medium text-gray-700" id="loading_text"></div>
-                </div>
-            </div>
-
-            <div class="flex items-center">
-                <img src="loading_icon_mini.gif" alt="Loading icon" class="mx-2" id="header_loading_icon" style="display: none; visibility: hidden;"/>
-                <div class="text-lg text-gray-800 mx-2" id="loading_text" style="display: inline;"></div>
-            </div>
-
+            <!-- Navigation Links on the left -->
             <nav class="flex items-center space-x-1 sm:space-x-4">
+                <!-- Navigation Links -->
+                <div class="flex items-center space-x-1 sm:space-x-3">
+                    <a href="{{ route('home') }}" class="text-gray-700 hover:text-blue-600 transition px-2 py-1 rounded-md hover:bg-blue-50">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 sm:hidden" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
+                        </svg>
+                        <span class="hidden sm:inline">Home</span>
+                    </a>
+                    <a href="{{ url('/about') }}" class="text-gray-700 hover:text-blue-600 transition px-2 py-1 rounded-md hover:bg-blue-50">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 sm:hidden" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                        </svg>
+                        <span class="hidden sm:inline">About</span>
+                    </a>
+                    <a href="https://github.com/Steinbeck-Lab/DECIMER.ai" target="_blank" class="text-gray-700 hover:text-blue-600 transition px-2 py-1 rounded-md hover:bg-blue-50 flex items-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
+                            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+                        </svg>
+                        <span class="hidden sm:inline ml-1">GitHub</span>
+                    </a>
+                </div>
+
                 @if (Session::get('smiles_array'))
-                    <div class="flex space-x-2">
+                    <div class="flex space-x-2 ml-2">
                     <!-- HEADER IUPAC GENERATION BUTTON -->
                     <form id="iupac_generation_form" action="{{ route('stout.iupac.post') }}" method="POST" enctype="multipart/form-data">
                             @csrf
@@ -169,29 +170,22 @@
                         </form>
                         </div>
                 @endif
-
-                <!-- Navigation Links -->
-                <div class="flex items-center space-x-1 sm:space-x-3 ml-2">
-                    <a href="{{ route('home') }}" class="text-gray-700 hover:text-blue-600 transition px-2 py-1 rounded-md hover:bg-blue-50">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 sm:hidden" viewBox="0 0 20 20" fill="currentColor">
-                            <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" />
-                        </svg>
-                        <span class="hidden sm:inline">Home</span>
-                    </a>
-                    <a href="{{ url('/about') }}" class="text-gray-700 hover:text-blue-600 transition px-2 py-1 rounded-md hover:bg-blue-50">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 sm:hidden" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
-                        </svg>
-                        <span class="hidden sm:inline">About</span>
-                    </a>
-                    <a href="https://github.com/Steinbeck-Lab/DECIMER.ai" target="_blank" class="text-gray-700 hover:text-blue-600 transition px-2 py-1 rounded-md hover:bg-blue-50 flex items-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
-                            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
-                        </svg>
-                        <span class="hidden sm:inline ml-1">GitHub</span>
-                    </a>
-                </div>
             </nav>
+
+            <div class="flex items-center absolute left-1/2 transform -translate-x-1/2">
+                <div class="flex items-center bg-gray-100 rounded-full px-3 py-1 shadow-inner" id="status_container" style="display: none;">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-500 animate-spin mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10" stroke-opacity="0.25"></circle>
+                        <path d="M12 6v6l4 2"></path>
+                    </svg>
+                    <div class="text-sm font-medium text-gray-700" id="loading_text"></div>
+                </div>
+            </div>
+
+            <div class="flex items-center">
+                <img src="loading_icon_mini.gif" alt="Loading icon" class="mx-2" id="header_loading_icon" style="display: none; visibility: hidden;"/>
+                <div class="text-lg text-gray-800 mx-2" id="loading_text" style="display: inline;"></div>
+            </div>
         </div>
     </header>
 
