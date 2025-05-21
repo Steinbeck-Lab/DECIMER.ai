@@ -4,34 +4,45 @@
     <!-- Set env variables to make sure DECIMER Segmentation runs on single uploaded image -->
     @if ($img_paths = Session::get('img_paths'))
         @if ($structure_depiction_img_paths = Session::get('structure_depiction_img_paths'))
-            <?php $structure_img_paths_array = json_decode(
-                    $structure_depiction_img_paths
-            ); ?>
-<?php $has_segmentation_already_run = Session::get(
-        "has_segmentation_already_run"
-); ?>
-<?php $single_image_upload = Session::get("single_image_upload"); ?>
+            <?php        $structure_img_paths_array = json_decode(
+                        $structure_depiction_img_paths
+                    ); ?>
+            <?php        $has_segmentation_already_run = Session::get(
+                        "has_segmentation_already_run"
+                    ); ?>
+            <?php        $single_image_upload = Session::get("single_image_upload"); ?>
             @if ($has_segmentation_already_run != 'true')
                 @if (count($structure_img_paths_array) == 1)
-                    <?php $single_image_upload = "true"; ?>
+                    <?php                $single_image_upload = "true"; ?>
                 @endif
             @endif
         @endif
     @endif
 
-     <section class="max-w-screen-lg container mx-auto flex-grow">
+    <section class="max-w-screen-lg container mx-auto flex-grow">
         <div class="py-8">
             <!-- Logos with Google-inspired styling -->
             <div class="flex flex-col items-center">
-                <img src="DECIMER.gif" alt="DECIMER GIF Logo" id="decimer_logo_gif" style="display: none; margin: 0 auto; max-width: 450px;" />
-                <img src="DECIMER_Clean.png" alt="DECIMER Logo" id="decimer_logo" style="display: none; margin: 0 auto; max-width: 450px;" />
+                <img src="DECIMER.gif" alt="DECIMER GIF Logo" id="decimer_logo_gif"
+                    style="display: none; margin: 0 auto; max-width: 450px;" />
+                <img src="DECIMER_Clean.png" alt="DECIMER Logo" id="decimer_logo"
+                    style="display: none; margin: 0 auto; max-width: 450px;" />
             </div>
             <img src="loading_icon.gif" alt="Loading icon" class="mx-auto" id="loading_icon" style="display: none;" />
 
             <!-- DECIMER LOGO (Animated gif is only shown the first time we are sent to index view) -->
             @if (!Session::get('img_paths'))
                 <script>
-                    document.getElementById("decimer_logo").style = "display: block; margin: 0 auto; max-width: 450px;";
+                    // Check if this is the first visit using localStorage
+                    if (!localStorage.getItem('visited')) {
+                        // First visit - show GIF logo
+                        document.getElementById("decimer_logo_gif").style = "display: block; margin: 0 auto; max-width: 450px;";
+                        // Set visited flag in localStorage
+                        localStorage.setItem('visited', 'true');
+                    } else {
+                        // Subsequent visit - show static PNG logo
+                        document.getElementById("decimer_logo").style = "display: block; margin: 0 auto; max-width: 450px;";
+                    }
                     document.getElementById("logo_tagline").style = "display: block;";
                 </script>
 
@@ -39,7 +50,8 @@
                 <div class="container flex justify-center mt-8 mb-16">
                     <div class="w-full max-w-xl">
                         <!-- Combined drop zone and paste area -->
-                        <div id="upload-area" class="mx-auto bg-white border border-gray-200 shadow-md hover:shadow-lg rounded-full py-4 px-6 cursor-pointer transition relative flex flex-col items-center justify-center">
+                        <div id="upload-area"
+                            class="mx-auto bg-white border border-gray-200 shadow-md hover:shadow-lg rounded-full py-4 px-6 cursor-pointer transition relative flex flex-col items-center justify-center">
                             <div class="space-y-2 pointer-events-none">
                                 <div class="text-center">
                                     <span class="block text-gray-500 text-sm font-light">
@@ -48,13 +60,15 @@
                                 </div>
 
                                 <!-- Hidden file input -->
-                                <form id="upload_form" action="{{ route('file.upload.post') }}" method="POST" enctype="multipart/form-data">
+                                <form id="upload_form" action="{{ route('file.upload.post') }}" method="POST"
+                                    enctype="multipart/form-data">
                                     @csrf
                                     <input class="file-input hidden" type="file" name="file[]" multiple>
                                 </form>
 
                                 <!-- Hidden paste form -->
-                                <form id="paste_form" action="{{ route('clipboard.paste.post') }}" method="POST" enctype="multipart/form-data">
+                                <form id="paste_form" action="{{ route('clipboard.paste.post') }}" method="POST"
+                                    enctype="multipart/form-data">
                                     @csrf
                                     <input type="hidden" name="clipboard_image" id="clipboard_image_input">
                                 </form>
@@ -69,21 +83,21 @@
                 </div>
 
                 <script>
-                    document.addEventListener('DOMContentLoaded', function() {
+                    document.addEventListener('DOMContentLoaded', function () {
                         const uploadArea = document.getElementById('upload-area');
                         const fileInput = document.querySelector('.file-input');
                         const previewArea = document.getElementById('preview-area');
                         const previewImage = document.getElementById('preview-image');
 
                         // Handle click on upload area
-                        uploadArea.addEventListener('click', function(e) {
+                        uploadArea.addEventListener('click', function (e) {
                             if (e.target === uploadArea || e.target.parentNode === uploadArea) {
                                 fileInput.click();
                             }
                         });
 
                         // Handle file selection
-                        fileInput.addEventListener('change', function() {
+                        fileInput.addEventListener('change', function () {
                             document.getElementById("loading_icon").style = "display: centered;";
                             document.getElementById("header_loading_icon").style = "display: block; visibility: visible;";
                             document.getElementById("loading_text").innerHTML = "Uploading files...";
@@ -91,7 +105,7 @@
                         });
 
                         // Handle paste event
-                        document.addEventListener('paste', function(e) {
+                        document.addEventListener('paste', function (e) {
                             e.preventDefault();
                             const items = e.clipboardData.items;
 
@@ -100,7 +114,7 @@
                                     const blob = item.getAsFile();
                                     const reader = new FileReader();
 
-                                    reader.onload = function(e) {
+                                    reader.onload = function (e) {
                                         // Show preview
                                         previewArea.classList.remove('hidden');
                                         previewImage.src = e.target.result;
@@ -158,6 +172,7 @@
                 </script>
             @elseif (Session::get('img_paths') == '[]')
                 <script>
+                    // Always show static PNG logo after first visit
                     document.getElementById("decimer_logo").style = "display: block; margin: 0 auto; max-width: 450px;"
                 </script>
                 @if (!Session::get('smiles_array'))
@@ -187,6 +202,7 @@
                 @endif
             @else
                 <script>
+                    // Always show static PNG logo after first visit
                     document.getElementById("decimer_logo").style = "display: block; margin: 0 auto; max-width: 450px;"
                 </script>
                 @if (!Session::get('structure_depiction_img_paths'))
@@ -232,56 +248,56 @@
                 @endif
             @endif
             @if (Session::get('smiles_array'))
-                <p style="text-align:center" id="main_loading_text">
-                    The chemical structure depictions have been processed.</br>
-                    The results are presented below.</br></br></br>
-                </p>
-                <span id="smiles_error_span"></span>
-                <!-- DOWNLOAD BUTTON -->
-                <form id="archive_creation_form" action="{{ route('archive.creation.post') }}" method="POST"
-                    enctype="multipart/form-data">
-                    @csrf
-                    <div class="container d-flex justify-content-center">
-                        <div class="row">
-                            <div class="col-md-12">
-                                <div class="mx-auto bg-gray-300 text-center p-4 rounded hover:bg-blue-100 transition">
-                                    <span>
-                                        Download results
-                                    </span>
-                                    <input type="hidden" name="img_paths" value="{{ Session::get('img_paths') }}" />
-                                    <input type="hidden" name="structure_depiction_img_paths"
-                                        value="{{ Session::get('structure_depiction_img_paths') }}" />
-                                    <input type="hidden" name="iupac_array" value="{{ Session::get('iupac_array') }}" />
-                                    <input type="hidden" id="smiles_array" name="smiles_array"
-                                        value="{{ Session::get('smiles_array') }}" />
-                                    <input type="hidden" id="download_form_molfile_array" name="mol_file_array" />
-                                    <input type="hidden" id="classifier_result_array" name="classifier_result_array"
-                                        value="{{ Session::get('classifier_result_array') }}" />
-                                    <input type="hidden" id="download_form_has_segmentation_already_run"
-                                        name="has_segmentation_already_run" />
-                                    <input type="hidden" id=download_form_single_image_upload name="single_image_upload" />
-                                    <?php
-                                        $num_ketcher_frames = count(
-                                            json_decode(
-                                                Session::get("smiles_array")
-                                            )
-                                        );
-                                        if ($num_ketcher_frames > 20) {
-                                            $num_ketcher_frames = 20;
-                                        }
-                                    ?>
-                                    <button class="file-input"
-                                        onclick="submit_with_updated_molfiles('{{ $num_ketcher_frames }}', 'download_form_molfile_array')">
+                    <p style="text-align:center" id="main_loading_text">
+                        The chemical structure depictions have been processed.</br>
+                        The results are presented below.</br></br></br>
+                    </p>
+                    <span id="smiles_error_span"></span>
+                    <!-- DOWNLOAD BUTTON -->
+                    <form id="archive_creation_form" action="{{ route('archive.creation.post') }}" method="POST"
+                        enctype="multipart/form-data">
+                        @csrf
+                        <div class="container d-flex justify-content-center">
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <div class="mx-auto bg-gray-300 text-center p-4 rounded hover:bg-blue-100 transition">
+                                        <span>
+                                            Download results
+                                        </span>
+                                        <input type="hidden" name="img_paths" value="{{ Session::get('img_paths') }}" />
+                                        <input type="hidden" name="structure_depiction_img_paths"
+                                            value="{{ Session::get('structure_depiction_img_paths') }}" />
+                                        <input type="hidden" name="iupac_array" value="{{ Session::get('iupac_array') }}" />
+                                        <input type="hidden" id="smiles_array" name="smiles_array"
+                                            value="{{ Session::get('smiles_array') }}" />
+                                        <input type="hidden" id="download_form_molfile_array" name="mol_file_array" />
+                                        <input type="hidden" id="classifier_result_array" name="classifier_result_array"
+                                            value="{{ Session::get('classifier_result_array') }}" />
+                                        <input type="hidden" id="download_form_has_segmentation_already_run"
+                                            name="has_segmentation_already_run" />
+                                        <input type="hidden" id=download_form_single_image_upload name="single_image_upload" />
+                                        <?php
+                $num_ketcher_frames = count(
+                    json_decode(
+                        Session::get("smiles_array")
+                    )
+                );
+                if ($num_ketcher_frames > 20) {
+                    $num_ketcher_frames = 20;
+                }
+                                                            ?>
+                                        <button class="file-input"
+                                            onclick="submit_with_updated_molfiles('{{ $num_ketcher_frames }}', 'download_form_molfile_array')">
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                </form>
-                @if ($download_link = Session::get('download_link'))
-                    <script async type="module">
-                        downloadURI("{{ $download_link }}", "{{ basename($download_link) }}");
-                    </script>
-                @endif
+                    </form>
+                    @if ($download_link = Session::get('download_link'))
+                        <script async type="module">
+                            downloadURI("{{ $download_link }}", "{{ basename($download_link) }}");
+                        </script>
+                    @endif
             @endif
             </br>
             <div role="alert" id='alert-if-safari'></div>
@@ -304,11 +320,10 @@
                 @if ($img_paths != $structure_depiction_img_paths)
                     <div class="text-xl mb-3 gray-800">
                         Display uploaded document
-                        <input type="checkbox" id="page_image_checkbox"
-                            onclick="display_or_not('page_image_checkbox', 'page_images')">
+                        <input type="checkbox" id="page_image_checkbox" onclick="display_or_not('page_image_checkbox', 'page_images')">
                     </div>
                 @endif
-                <?php $img_paths_array = json_decode($img_paths); ?>
+                <?php        $img_paths_array = json_decode($img_paths); ?>
                 @if (count($img_paths_array) == 10)
                     <div class="text-xl mb-3 text-red-800">
                         <strong>Warning:</strong> If you upload a pdf document with more than 10 pages,
@@ -325,20 +340,20 @@
 
             <!-- Handle data about uploaded/segmented structures and their SMILES/IUPAC representations -->
             @if ($structure_depiction_img_paths = Session::get('structure_depiction_img_paths'))
-                <?php $structure_img_paths_array = json_decode(
+                <?php        $structure_img_paths_array = json_decode(
                         $structure_depiction_img_paths
-                ); ?>
-<?php $has_segmentation_already_run = Session::get(
-        "has_segmentation_already_run"
-); ?>
-<?php $single_image_upload = Session::get(
-        "single_image_upload"
-); ?>
+                    ); ?>
+                <?php        $has_segmentation_already_run = Session::get(
+                        "has_segmentation_already_run"
+                    ); ?>
+                <?php        $single_image_upload = Session::get(
+                        "single_image_upload"
+                    ); ?>
                 @if ($has_segmentation_already_run != 'true')
                     @if (count($structure_img_paths_array) == 1)
-                        <?php $img_paths = $structure_depiction_img_paths; ?>
-<?php $structure_depiction_img_paths     = null; ?>
-<?php $single_image_upload               = "true"; ?>
+                        <?php                $img_paths = $structure_depiction_img_paths; ?>
+                        <?php                $structure_depiction_img_paths = null; ?>
+                        <?php                $single_image_upload = "true"; ?>
                     @endif
                 @endif
 
@@ -352,21 +367,21 @@
                     </div>
                 @endif
                 @if ($smiles_array_str = Session::get('smiles_array'))
-                    <?php $smiles_array = json_decode($smiles_array_str); ?>
+                    <?php            $smiles_array = json_decode($smiles_array_str); ?>
                 @endif
                 @if ($iupac_array_str = Session::get('iupac_array'))
-                    <?php $iupac_array = json_decode($iupac_array_str); ?>
+                    <?php            $iupac_array = json_decode($iupac_array_str); ?>
                 @endif
                 @if ($validity_array = Session::get('validity_array'))
-                    <?php $validity_array = json_decode($validity_array); ?>
+                    <?php            $validity_array = json_decode($validity_array); ?>
                 @endif
                 @if ($inchikey_array = Session::get('inchikey_array'))
-                    <?php $inchikey_array = json_decode($inchikey_array); ?>
+                    <?php            $inchikey_array = json_decode($inchikey_array); ?>
                 @endif
                 @if ($classifier_result_array = Session::get('classifier_result_array'))
-                    <?php $classifier_result_array = json_decode(
-                            $classifier_result_array
-                    ); ?>
+                    <?php            $classifier_result_array = json_decode(
+                                $classifier_result_array
+                            ); ?>
                 @endif
 
                 <div class="grid grid-cols-3 gap-4">
@@ -387,57 +402,61 @@
                                     <strong>Resolved SMILES representation</strong></br>
                                     <a class="break-words"> {{ $smiles_array[$key] }} </a>
                                     @if ("$validity_array[$key]" != 'invalid')
-                                    <?php // Check if the molecule has stereochemistry
-                                    $has_stereo = substr($inchikey_array[$key], 14, 1) !== "A"; ?>
-                                    <a> - </a>
-                                    <span class="text-blue-400">
-                                        Search on PubChem:
-                                        @if ($has_stereo)
-                                            <span class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-                                                <input type="checkbox" name="toggle" id="toggle-{{ $key }}" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"/>
-                                                <label for="toggle-{{ $key }}" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
-                                            </span>
-                                            <span id="search-type-{{ $key }}">with stereo</span>
-                                        @endif
-                                        <a id="pubchem-link-{{ $key }}" href="https://pubchem.ncbi.nlm.nih.gov/#query={{ $inchikey_array[$key] }}"
-                                            target="_blank" class="hover:text-blue-600 transition">
-                                            Search
+                                        <?php                        // Check if the molecule has stereochemistry
+                                                    $has_stereo = substr($inchikey_array[$key], 14, 1) !== "A"; ?>
+                                        <a> - </a>
+                                        <span class="text-blue-400">
+                                            Search on PubChem:
+                                            @if ($has_stereo)
+                                                <span class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                                                    <input type="checkbox" name="toggle" id="toggle-{{ $key }}"
+                                                        class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
+                                                    <label for="toggle-{{ $key }}"
+                                                        class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
+                                                </span>
+                                                <span id="search-type-{{ $key }}">with stereo</span>
+                                            @endif
+                                            <a id="pubchem-link-{{ $key }}"
+                                                href="https://pubchem.ncbi.nlm.nih.gov/#query={{ $inchikey_array[$key] }}" target="_blank"
+                                                class="hover:text-blue-600 transition">
+                                                Search
+                                            </a>
+                                        </span>
+                                        <br> <!-- Line break added here -->
+                                        <a href="https://coconut.naturalproducts.net/search?q={{ $inchikey_array[$key] }}" target="_blank"
+                                            class="text-green-500 hover:text-green-800 transition">
+                                            Search for this structure on COCONUT
                                         </a>
-                                    </span>
-                                    <br> <!-- Line break added here -->
-                                    <a href="https://coconut.naturalproducts.net/search?q={{ $inchikey_array[$key] }}"
-                                        target="_blank" class="text-green-500 hover:text-green-800 transition">
-                                        Search for this structure on COCONUT
-                                    </a>
 
-                                    @if ($has_stereo)
-                                        <script>
-                                            document.getElementById('toggle-{{ $key }}').addEventListener('change', function() {
-                                                var searchType = document.getElementById('search-type-{{ $key }}');
-                                                var pubchemLink = document.getElementById('pubchem-link-{{ $key }}');
-                                                if (this.checked) {
-                                                    searchType.textContent = 'without stereo';
-                                                    pubchemLink.href = 'https://pubchem.ncbi.nlm.nih.gov/#query={{ substr($inchikey_array[$key], 0, 14) }}';
-                                                } else {
-                                                    searchType.textContent = 'with stereo';
-                                                    pubchemLink.href = 'https://pubchem.ncbi.nlm.nih.gov/#query={{ $inchikey_array[$key] }}';
+                                        @if ($has_stereo)
+                                            <script>
+                                                document.getElementById('toggle-{{ $key }}').addEventListener('change', function () {
+                                                    var searchType = document.getElementById('search-type-{{ $key }}');
+                                                    var pubchemLink = document.getElementById('pubchem-link-{{ $key }}');
+                                                    if (this.checked) {
+                                                        searchType.textContent = 'without stereo';
+                                                        pubchemLink.href = 'https://pubchem.ncbi.nlm.nih.gov/#query={{ substr($inchikey_array[$key], 0, 14) }}';
+                                                    } else {
+                                                        searchType.textContent = 'with stereo';
+                                                        pubchemLink.href = 'https://pubchem.ncbi.nlm.nih.gov/#query={{ $inchikey_array[$key] }}';
+                                                    }
+                                                });
+                                            </script>
+
+                                            <style>
+                                                .toggle-checkbox:checked {
+                                                    @apply: right-0 border-green-400;
+                                                    right: 0;
+                                                    border-color: #68D391;
                                                 }
-                                            });
-                                        </script>
 
-                                        <style>
-                                            .toggle-checkbox:checked {
-                                                @apply: right-0 border-green-400;
-                                                right: 0;
-                                                border-color: #68D391;
-                                            }
-                                            .toggle-checkbox:checked + .toggle-label {
-                                                @apply: bg-green-400;
-                                                background-color: #68D391;
-                                            }
-                                        </style>
+                                                .toggle-checkbox:checked+.toggle-label {
+                                                    @apply: bg-green-400;
+                                                    background-color: #68D391;
+                                                }
+                                            </style>
+                                        @endif
                                     @endif
-                                @endif
                                     </br>
                                 @endif
                                 <!-- Present IUPAC name -->
@@ -456,16 +475,16 @@
                                     <!-- Invalid SMILES warning -->
                                     @if ("$validity_array[$key]" == 'invalid')
                                         <div class="text-red-800">
-                                            <strong>Warning:</strong> SMILES is invalid or contains R groups and may not be depicted correctly in the editor window!
+                                            <strong>Warning:</strong> SMILES is invalid or contains R groups and may not be depicted correctly in
+                                            the editor window!
                                         </div>
                                     @endif
                                     <!-- Problem report form (no redirection)-->
                                     <iframe name="dummyframe" id="dummyframe" style="display: none;"></iframe>
-                                    <form id="problem_report_form_{{ $key }}" target="dummyframe"
-                                        action="{{ route('problem.report.post') }}" method="POST">
+                                    <form id="problem_report_form_{{ $key }}" target="dummyframe" action="{{ route('problem.report.post') }}"
+                                        method="POST">
                                         @csrf
-                                        <input type="hidden" name="structure_depiction_img_path"
-                                            value="{{ $struc_img_path }}" />
+                                        <input type="hidden" name="structure_depiction_img_path" value="{{ $struc_img_path }}" />
                                         <input type="hidden" name="smiles" value="{{ $smiles_array[$key] }}" />
                                     </form>
                                     <!-- Problem report button (no redirection)-->
@@ -483,8 +502,8 @@
                         <div class="col-span-2">
                             @if ($smiles_array_str = Session::get('smiles_array'))
                                 @if ($key < 20)
-                                    <iframe id='{{ $key * 2 + 1 }}' name='{{ $key * 2 + 1 }}'
-                                        src="ketcher_standalone/index.html" width="100%" height="420px"
+                                    <iframe id='{{ $key * 2 + 1 }}' name='{{ $key * 2 + 1 }}' src="ketcher_standalone/index.html" width="100%"
+                                        height="420px"
                                         onload="loadMol('{{ json_encode(str_replace('\\', '\\\\', $validity_array[$key])) }}', '{{ $key * 2 + 1 }}')">
                                     </iframe>
                                 @else
@@ -503,7 +522,7 @@
                 <!-- For single image upload: If no structure has been segmented, run OCSR on uploaded image -->
                 @if ($single_image_upload == 'true')
                     @if ($structure_depiction_img_paths == '[]')
-                        <?php $structure_depiction_img_paths = $img_paths; ?>
+                        <?php                $structure_depiction_img_paths = $img_paths; ?>
                     @endif
                 @endif
 
@@ -514,10 +533,8 @@
                             <form id="OCSR_form" action="{{ route('decimer.ocsr.post') }}" method="POST">
                                 @csrf
                                 <input type="hidden" name="img_paths" value="{{ $img_paths }}" />
-                                <input type="hidden" name="structure_depiction_img_paths"
-                                    value="{{ $structure_depiction_img_paths }}" />
-                                <input type="hidden" name="has_segmentation_already_run"
-                                    value="{{ $has_segmentation_already_run }}" />
+                                <input type="hidden" name="structure_depiction_img_paths" value="{{ $structure_depiction_img_paths }}" />
+                                <input type="hidden" name="has_segmentation_already_run" value="{{ $has_segmentation_already_run }}" />
                                 <input type="hidden" name="single_image_upload" value="{{ $single_image_upload }}" />
                             </form>
                             <script async type="module">
