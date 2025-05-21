@@ -42,6 +42,10 @@
     <style>
         body {
             font-family: Arial, sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
         }
 
         .header-container {
@@ -119,33 +123,35 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 40px 0;
-            min-height: calc(100vh - 132px);
+            padding: 20px 0;
+            flex: 1;
         }
 
         .footer {
             background-color: #f8f9fa;
             border-top: 1px solid #e5e7eb;
-            padding: 16px 24px;
+            padding: 10px 24px;
+            margin-top: auto;
         }
 
         .footer-content {
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 8px;
         }
 
         .footer-description {
             font-size: 13px;
             color: #5f6368;
             text-align: center;
+            margin-bottom: 8px;
         }
 
         .footer-bottom {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding-top: 12px;
+            padding-top: 8px;
             border-top: 1px solid #e5e7eb;
         }
 
@@ -266,7 +272,7 @@
     </style>
 </head>
 
-<body class="bg-white min-h-screen flex flex-col">
+<body class="bg-white flex flex-col min-h-screen">
     <!-- Google-style Header -->
     <header class="header-container sticky top-0 z-50">
         <!-- Left-aligned navigation links -->
@@ -408,7 +414,7 @@
             <!-- Footer bottom section with left-aligned copyright and right-aligned links -->
             <div class="footer-bottom">
                 <div class="footer-copyright">
-                    &copy; {{ date('Y') }} <span class="font-semibold">DECIMER Project</span>. All rights reserved.
+                    &copy; 2025 <span class="font-semibold">DECIMER Project</span>. All rights reserved.
                 </div>
 
                 <div class="footer-links">
