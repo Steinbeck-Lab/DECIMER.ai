@@ -305,7 +305,8 @@
         <!-- Right-aligned action buttons -->
         <div class="header-actions">
             @if (Session::get('smiles_array'))
-                        <!-- IUPAC Generation Button -->
+                <!-- Ketcher Button -->
+                        <!-- IUPAC Generation Button - Commented out
                         <form id="iupac_generation_form" action="{{ route('stout.iupac.post') }}" method="POST"
                             enctype="multipart/form-data">
                             @csrf
@@ -335,6 +336,7 @@
                                 Generate IUPAC
                             </button>
                         </form>
+                        -->
 
                         <!-- Download Button -->
                         <form id="archive_creation_form" action="{{ route('archive.creation.post') }}" method="POST"

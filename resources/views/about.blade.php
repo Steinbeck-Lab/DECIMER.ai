@@ -120,11 +120,20 @@
                         <p class="text-gray-600">Chemical structure detection and extraction</p>
                     </a>
                 </div>
+                <!--
                 <div class="text-center">
                     <a href={{ url("https://github.com/Kohulan/Smiles-TO-iUpac-Translator") }} target="_blank" class="block hover:opacity-80 transition">
                         <img src="https://github.com/Kohulan/Smiles-TO-iUpac-Translator/blob/development/docs/_static/STOUT.png?raw=true" alt="STOUT Logo" class="mx-auto mb-4 max-h-32"/>
                         <h3 class="text-xl font-semibold mb-2">STOUT</h3>
                         <p class="text-gray-600">SMILES to IUPAC name translation</p>
+                    </a>
+                </div>
+                -->
+                <div class="text-center">
+                    <a href={{ url("https://github.com/Steinbeck-Lab/DECIMER-Image-Classifier") }} target="_blank" class="block hover:opacity-80 transition">
+                        <img src="https://github.com/Steinbeck-Lab/DECIMER-Image-Classifier/blob/main/DECIMER_IC.png?raw=true" alt="STOUT Logo" class="mx-auto mb-4 max-h-32"/>
+                        <h3 class="text-xl font-semibold mb-2">DECIMER Image Classifier</h3>
+                        <p class="text-gray-600">Chemical structure classification</p>
                     </a>
                 </div>
                 <div class="text-center">
