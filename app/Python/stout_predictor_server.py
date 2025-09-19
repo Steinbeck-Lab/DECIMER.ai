@@ -39,14 +39,14 @@ def service_connection(key, mask):
             sock.close()
     if mask & selectors.EVENT_WRITE:
         if data.outb:
-            smiles = data.outb.decode('utf-8')
+            smiles = data.outb.decode("utf-8")
             if "*" in smiles:
                 iupac_name = "Unable to generate IUPAC name from Markush structure"
             else:
                 # Run STOUT V2
-                iupac_name = (translate_forward(smiles))
+                iupac_name = translate_forward(smiles)
             # Send it back
-            processed_info = json.dumps(iupac_name).encode('utf-8')
+            processed_info = json.dumps(iupac_name).encode("utf-8")
             print(f"Echoing {processed_info} to {data.addr}")
             sock.send(processed_info)  # Should be ready to write
             data.outb = b""
@@ -65,7 +65,7 @@ def run_server(port: int):
     lsock.bind((host, port))
     lsock.listen()
     print(f"Listening on {(host, port)}")
-    #lsock.setblocking(False)
+    # lsock.setblocking(False)
     sel.register(lsock, selectors.EVENT_READ, data=None)
     while True:
         try:

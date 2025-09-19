@@ -36,7 +36,7 @@ def decode_smiles_array(str_smiles_arr: str) -> List[str]:
     """
     str_smiles_arr = str_smiles_arr[1:-1]
     str_smiles_arr = '["' + str_smiles_arr + '"]'
-    str_smiles_arr = str_smiles_arr.replace(',', '","')
+    str_smiles_arr = str_smiles_arr.replace(",", '","')
     str_smiles_arr = str_smiles_arr.replace("\\\\", "\\")
     str_smiles_arr = str_smiles_arr.replace("\\/", "/")
     str_smiles_arr = str_smiles_arr.replace("\\N", "\\\\N")
@@ -57,8 +57,7 @@ def cdk_smiles_to_IAtomContainer(smiles: str):
     """
     cdk_base = "org.openscience.cdk"
     SCOB = JClass(cdk_base + ".silent.SilentChemObjectBuilder")
-    SmilesParser = JClass(
-        cdk_base + ".smiles.SmilesParser")(SCOB.getInstance())
+    SmilesParser = JClass(cdk_base + ".smiles.SmilesParser")(SCOB.getInstance())
     molecule = SmilesParser.parseSmiles(smiles)
     # Instantiate StructureDiagramGenerator, determine coordinates
     sdg = JClass(cdk_base + ".layout.StructureDiagramGenerator")()
@@ -107,7 +106,6 @@ def cdk_IAtomContainer_to_mol_str(i_atom_container) -> str:
     return str(mol_str)
 
 
-
 def main():
     """
     This script takes a stringified array with SMILES str from sys.argv and
@@ -126,5 +124,5 @@ def main():
     print(json.dumps(mol_block_arr))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
