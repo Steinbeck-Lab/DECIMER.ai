@@ -23,15 +23,15 @@ def send_and_receive(path: str, port: int):
     host = "supervisor"  # The server's hostname or IP address
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.connect((host, port))
-        s.sendall(path.encode('utf-8'))
+        s.sendall(path.encode("utf-8"))
         data = s.recv(32768)
-    return data.decode('utf-8')
+    return data.decode("utf-8")
 
 
 def main():
     # Make sure the array with paths can be digested by eval
-    paths = sys.argv[1].replace(',', '","')
-    paths = paths.replace('[', '["').replace(']', '"]')
+    paths = sys.argv[1].replace(",", '","')
+    paths = paths.replace("[", '["').replace("]", '"]')
     paths = eval(paths)
 
     # Create endless iterator of shuffled ports
@@ -40,13 +40,12 @@ def main():
     random.shuffle(ports)
     ports = cycle(ports)
     # Wrap up pairs of path and port and send out requests parallely
-    starmap_tuples = [(path, next(ports))
-                      for path in paths]
+    starmap_tuples = [(path, next(ports)) for path in paths]
     with Pool(len(paths)) as p:
         SMILES = p.starmap(send_and_receive, starmap_tuples)
 
     print(json.dumps(SMILES))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

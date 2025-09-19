@@ -12,9 +12,9 @@ def RGBA2RGB(im_path: str) -> None:
         im_path (str): image path
     """
     img = Image.open(im_path)
-    if img.mode == 'RGBA':
+    if img.mode == "RGBA":
         img.load()
-        new_img = Image.new('RGB', img.size, (255, 255, 255))
+        new_img = Image.new("RGB", img.size, (255, 255, 255))
         new_img.paste(img, mask=img.split()[3])
         new_img.save(im_path, "PNG")
 
@@ -44,5 +44,5 @@ def main():
     RGBA2RGB(im_path)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

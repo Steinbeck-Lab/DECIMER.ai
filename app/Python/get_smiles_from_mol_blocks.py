@@ -18,7 +18,7 @@ def decode_mol_block_array(str_mol_block_arr: str) -> List[str]:
     """
     str_mol_block_arr = str_mol_block_arr[1:-1]
     str_mol_block_arr = '["' + str_mol_block_arr + '"]'
-    str_mol_block_arr = str_mol_block_arr.replace(',', '","')
+    str_mol_block_arr = str_mol_block_arr.replace(",", '","')
     str_mol_block_arr = str_mol_block_arr.replace('""', '"')
     mol_block_arr = eval(str_mol_block_arr)
     return mol_block_arr
@@ -42,5 +42,5 @@ def main():
     print(json.dumps(smiles))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

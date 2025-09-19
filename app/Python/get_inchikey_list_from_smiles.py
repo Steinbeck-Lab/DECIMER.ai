@@ -18,7 +18,7 @@ def decode_smiles_array(str_smiles_arr: str) -> List[str]:
     """
     str_smiles_arr = str_smiles_arr[1:-1]
     str_smiles_arr = '["' + str_smiles_arr + '"]'
-    str_smiles_arr = str_smiles_arr.replace(',', '","')
+    str_smiles_arr = str_smiles_arr.replace(",", '","')
     str_smiles_arr = str_smiles_arr.replace("\\\\", "\\")
     str_smiles_arr = str_smiles_arr.replace("\\/", "/")
     str_smiles_arr = str_smiles_arr.replace("\\N", "\\\\N")
@@ -42,5 +42,5 @@ def main():
     print(json.dumps(validity_arr))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

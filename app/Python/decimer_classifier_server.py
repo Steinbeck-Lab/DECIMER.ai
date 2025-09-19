@@ -39,14 +39,15 @@ def service_connection(key, mask):
     if mask & selectors.EVENT_WRITE:
         if data.outb:
             # Edit recieved path
-            path = data.outb.decode('utf-8')
-            file_dir = './storage/app/public/media/'
+            path = data.outb.decode("utf-8")
+            file_dir = "./storage/app/public/media/"
             file_name = os.path.split(path)[1]
             path = os.path.join(file_dir, file_name)
+            print(path)
             # Run DECIMER Image Classifier
             result = decimer_classifier.is_chemical_structure(img=path)
             # Send it back
-            processed_info = str(result).encode('utf-8')
+            processed_info = str(result).encode("utf-8")
             print(f"Echoing {processed_info} to {data.addr}")
             sock.send(processed_info)  # Should be ready to write
             data.outb = b""
