@@ -50,7 +50,7 @@ DECIMER is actively developed and maintained by the [Steinbeck group](https://ch
 ### How to run DECIMER Web locally
 
 ```bash
-git clone https://github.com/OBrink/DECIMER.ai.git
+git clone https://github.com/Steinbeck-Lab/DECIMER.ai
 sudo chmod -R 777 DECIMER.ai
 cd DECIMER.ai/
 mv .env.example .env
