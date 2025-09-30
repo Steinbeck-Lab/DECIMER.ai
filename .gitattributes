@@ -8,3 +8,29 @@
 
 /.github export-ignore
 CHANGELOG.md export-ignore
+
+# Ensure consistent line endings across all platforms
+* text=auto
+
+# Force LF for shell scripts
+*.sh text eol=lf
+
+# Force LF for Python scripts
+*.py text eol=lf
+
+# Force LF for PHP files
+*.php text eol=lf
+
+# Force LF for config files
+*.conf text eol=lf
+*.ini text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.zip binary
