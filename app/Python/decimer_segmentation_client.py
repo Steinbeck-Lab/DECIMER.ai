@@ -1,21 +1,41 @@
 import sys
-import random
 import json
-from itertools import cycle
-from multiprocessing import Pool
 import socket
+from multiprocessing import Pool
+from itertools import cycle
+import random
 
 
-def send_and_receive(input_path: str, port: int):
-    HOST = "supervisor"
+def test_port(port):
+    """Test if a port is accepting connections."""
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(30)
-            s.connect((HOST, port))
+            s.settimeout(1)
+            s.connect(("supervisor", port))
+            return port
+    except:
+        return None
+
+
+def get_available_ports(port_range):
+    """Discover which ports are actually available."""
+    available = []
+    for port in port_range:
+        if test_port(port):
+            available.append(port)
+    return available
+
+
+def send_and_receive(input_path, port):
+    """Send path to segmentation server and receive result."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect(("supervisor", port))
             s.sendall(input_path.encode("utf-8"))
             data = s.recv(32768)
             return data.decode("utf-8")
     except Exception as e:
+        print(f"Error on port {port}: {e}", file=sys.stderr)
         return json.dumps([])
 
 
@@ -32,37 +52,46 @@ def main():
             print(json.dumps([]))
             return
 
-    except (IndexError, json.JSONDecodeError):
+    except (IndexError, json.JSONDecodeError) as e:
+        print(f"Error parsing input: {e}", file=sys.stderr)
         print(json.dumps([]))
         return
 
-    num_ports = 6
-    ports = list(range(23456, 23456 + num_ports))
-    random.shuffle(ports)
-    ports = cycle(ports)
+    # Auto-discover available ports
+    port_range = range(23456, 23462)  # 23456-23461
+    available_ports = get_available_ports(port_range)
 
+    if not available_ports:
+        print(json.dumps([]))
+        return
+
+    # Use all available ports with load balancing
+    random.shuffle(available_ports)
+    ports = cycle(available_ports)
+
+    # Create work tuples
     starmap_tuples = [(path, next(ports)) for path in paths]
 
-    try:
+    # Process in parallel if multiple ports, sequential if only one
+    if len(available_ports) > 1:
         with Pool(len(paths)) as p:
-            json_array_path_strings = p.starmap(send_and_receive, starmap_tuples)
+            results = p.starmap(send_and_receive, starmap_tuples)
+    else:
+        results = [send_and_receive(path, available_ports[0]) for path in paths]
 
-        all_paths = []
-        for path_string in json_array_path_strings:
-            if path_string and path_string.strip():
-                try:
-                    parsed = json.loads(path_string)
-                    if isinstance(parsed, list):
-                        all_paths.extend(parsed)
-                    else:
-                        all_paths.append(parsed)
-                except json.JSONDecodeError:
-                    continue
+    # Collect all paths from results
+    all_paths = []
+    for result in results:
+        try:
+            parsed = json.loads(result)
+            if isinstance(parsed, list):
+                all_paths.extend(parsed)
+            else:
+                all_paths.append(parsed)
+        except json.JSONDecodeError:
+            continue
 
-        print(json.dumps(all_paths))
-
-    except Exception:
-        print(json.dumps([]))
+    print(json.dumps(all_paths))
 
 
 if __name__ == "__main__":

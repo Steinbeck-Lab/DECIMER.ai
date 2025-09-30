@@ -21,12 +21,10 @@
         window.dataLayer = window.dataLayer || [];
         function gtag() { dataLayer.push(arguments); }
         gtag('js', new Date());
-
         gtag('config', 'G-VKSWMKC79R');
     </script>
     <script>
         var _paq = window._paq = window._paq || [];
-        /* tracker methods like "setCustomDimension" should be called before "trackPageView" */
         _paq.push(['trackPageView']);
         _paq.push(['enableLinkTracking']);
         (function () {
@@ -38,7 +36,6 @@
         })();
     </script>
 
-    <!-- Add some additional styling -->
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -192,24 +189,19 @@
             from {
                 transform: rotate(0deg);
             }
-
             to {
                 transform: rotate(360deg);
             }
         }
 
-        /* Animation utility classes */
         .animate-pulse {
             animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
         }
 
         @keyframes pulse {
-
-            0%,
-            100% {
+            0%, 100% {
                 opacity: 1;
             }
-
             50% {
                 opacity: 0.5;
             }
@@ -223,40 +215,14 @@
             0% {
                 transform: translateY(0px);
             }
-
             50% {
                 transform: translateY(-10px);
             }
-
             100% {
                 transform: translateY(0px);
             }
         }
 
-        .animate-spin-slow {
-            animation: spin 20s linear infinite;
-        }
-
-        .animate-gradient {
-            background-size: 200% 200%;
-            animation: gradient 15s ease infinite;
-        }
-
-        @keyframes gradient {
-            0% {
-                background-position: 0% 50%;
-            }
-
-            50% {
-                background-position: 100% 50%;
-            }
-
-            100% {
-                background-position: 0% 50%;
-            }
-        }
-
-        /* Responsive adjustments */
         @media (max-width: 768px) {
             .footer-bottom {
                 flex-direction: column;
@@ -273,9 +239,9 @@
 </head>
 
 <body class="bg-white flex flex-col min-h-screen">
-    <!-- Google-style Header -->
+    <!-- Header -->
     <header class="header-container sticky top-0 z-50">
-        <!-- Left-aligned navigation links -->
+        <!-- Left navigation links -->
         <nav class="nav-links">
             <a href="{{ route('home') }}" class="nav-link">Home</a>
             <a href="{{ url('/about') }}" class="nav-link">About</a>
@@ -302,73 +268,46 @@
             </div>
         </div>
 
-        <!-- Right-aligned action buttons -->
+        <!-- Right action buttons -->
         <div class="header-actions">
             @if (Session::get('smiles_array'))
-                <!-- Ketcher Button -->
-                        <!-- IUPAC Generation Button - Commented out
-                        <form id="iupac_generation_form" action="{{ route('stout.iupac.post') }}" method="POST"
-                            enctype="multipart/form-data">
-                            @csrf
-                            <input type="hidden" name="img_paths" value="{{ Session::get('img_paths') }}" />
-                            <input type="hidden" name="structure_depiction_img_paths"
-                                value="{{ Session::get('structure_depiction_img_paths') }}" />
-                            <input type="hidden" name="iupac_array" value="{{ Session::get('iupac_array') }}" />
-                            <input type="hidden" id="smiles_array" name="smiles_array" value="{{ Session::get('smiles_array') }}" />
-                            <input type="hidden" id="stout_form_molfile_array" name="mol_file_array" />
-                            <input type="hidden" id="classifier_result_array" name="classifier_result_array"
-                                value="{{ Session::get('classifier_result_array') }}" />
-                            <input type="hidden" id="stout_form_has_segmentation_already_run" name="has_segmentation_already_run" />
-                            <input type="hidden" id="stout_form_single_image_upload" name="single_image_upload" />
-                            <?php
-                $num_ketcher_frames = count(json_decode(Session::get('smiles_array')));
-                if ($num_ketcher_frames > 20) {
-                    $num_ketcher_frames = 20;
-                }
-                                ?>
-                            <button class="btn-primary"
-                                onclick="stout_submit('{{ $num_ketcher_frames }}', 'stout_form_molfile_array')">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline mr-1" fill="none" viewBox="0 0 24 24"
-                                    stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                                </svg>
-                                Generate IUPAC
-                            </button>
-                        </form>
-                        -->
-
-                        <!-- Download Button -->
-                        <form id="archive_creation_form" action="{{ route('archive.creation.post') }}" method="POST"
-                            enctype="multipart/form-data">
-                            @csrf
-                            <input type="hidden" name="img_paths" value="{{ Session::get('img_paths') }}" />
-                            <input type="hidden" name="structure_depiction_img_paths"
-                                value="{{ Session::get('structure_depiction_img_paths') }}" />
-                            <input type="hidden" name="iupac_array" value="{{ Session::get('iupac_array') }}" />
-                            <input type="hidden" id="smiles_array" name="smiles_array" value="{{ Session::get('smiles_array') }}" />
-                            <input type="hidden" id="header_download_form_molfile_array" name="mol_file_array" />
-                            <input type="hidden" id="classifier_result_array" name="classifier_result_array"
-                                value="{{ Session::get('classifier_result_array') }}" />
-                            <input type="hidden" id="header_download_form_has_segmentation_already_run"
-                                name="has_segmentation_already_run" />
-                            <input type="hidden" id="header_download_form_single_image_upload" name="single_image_upload" />
-                            <?php
-                $num_ketcher_frames = count(json_decode(Session::get('smiles_array')));
-                if ($num_ketcher_frames > 20) {
-                    $num_ketcher_frames = 20;
-                }
-                                ?>
-                            <button class="btn-secondary"
-                                onclick="submit_with_updated_molfiles('{{ $num_ketcher_frames }}', 'header_download_form_molfile_array')">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline mr-1" fill="none" viewBox="0 0 24 24"
-                                    stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                                </svg>
-                                Download
-                            </button>
-                        </form>
+                <!-- Download Button -->
+                <form id="archive_creation_form" action="{{ route('archive.creation.post') }}" method="POST"
+                    enctype="multipart/form-data">
+                    @csrf
+                    <input type="hidden" name="img_paths" value="{{ Session::get('img_paths') }}" />
+                    <input type="hidden" name="structure_depiction_img_paths"
+                        value="{{ Session::get('structure_depiction_img_paths') }}" />
+                    <input type="hidden" id="smiles_array" name="smiles_array" value="{{ Session::get('smiles_array') }}" />
+                    <input type="hidden" id="header_download_form_molfile_array" name="mol_file_array" />
+                    <input type="hidden" id="classifier_result_array" name="classifier_result_array"
+                        value="{{ Session::get('classifier_result_array') }}" />
+                    <input type="hidden" id="header_download_form_has_segmentation_already_run"
+                        name="has_segmentation_already_run" />
+                    <input type="hidden" id="header_download_form_single_image_upload" name="single_image_upload" />
+                    <?php
+                        $smiles_session = Session::get('smiles_array');
+                        $num_ketcher_frames = 0;
+                        if ($smiles_session) {
+                            $smiles_decoded = json_decode($smiles_session);
+                            if (is_array($smiles_decoded) || is_countable($smiles_decoded)) {
+                                $num_ketcher_frames = count($smiles_decoded);
+                            }
+                        }
+                        if ($num_ketcher_frames > 20) {
+                            $num_ketcher_frames = 20;
+                        }
+                    ?>
+                    <button class="btn-secondary"
+                        onclick="submit_with_updated_molfiles('{{ $num_ketcher_frames }}', 'header_download_form_molfile_array')">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline mr-1" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                        </svg>
+                        Download
+                    </button>
+                </form>
             @endif
 
             <!-- Loading indicator -->
@@ -381,19 +320,11 @@
     <!-- Main Content -->
     <main class="main-content">
         @yield('page-content')
-
-        <!-- Processing sections for DECIMER -->
-        @if (isset($img_paths) || isset($structure_depiction_img_paths) || isset($smiles_array))
-            <div id="processing-results">
-                <!-- This will contain all the processing results -->
-            </div>
-        @endif
     </main>
 
-    <!-- Google-style Footer -->
+    <!-- Footer -->
     <footer class="footer">
         <div class="footer-content">
-            <!-- Description text in a single line -->
             <div class="footer-description">
                 DECIMER (Deep lEarning for Chemical IMagE Recognition) is developed with
                 <svg xmlns="http://www.w3.org/2000/svg" class="inline-block h-4 w-4 text-yellow-700 animate-float"
@@ -413,7 +344,6 @@
                     class="text-indigo-600 hover:text-indigo-800 transition">issue on GitHub</a>.
             </div>
 
-            <!-- Footer bottom section with left-aligned copyright and right-aligned links -->
             <div class="footer-bottom">
                 <div class="footer-copyright">
                     &copy; 2025 <span class="font-semibold">DECIMER Project</span>. All rights reserved.

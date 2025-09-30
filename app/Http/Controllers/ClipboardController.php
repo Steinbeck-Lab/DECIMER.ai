@@ -25,11 +25,20 @@ class ClipboardController extends Controller
             // Get the base64 image data
             $image_data = $request->clipboard_image;
 
+            // Verify it's a valid base64 image
+            if (strpos($image_data, 'data:image') === false) {
+                return redirect()->route('home')->with('errors', ['Invalid image data']);
+            }
+
             // Remove the data:image/png;base64, part
             $image_data = substr($image_data, strpos($image_data, ',') + 1);
 
             // Decode base64 data
             $image = base64_decode($image_data);
+            
+            if ($image === false) {
+                return redirect()->route('home')->with('errors', ['Failed to decode image data']);
+            }
 
             // Generate unique filename
             $filename = 'clipboard_' . time() . '.png';
@@ -40,16 +49,13 @@ class ClipboardController extends Controller
             // Create the img_paths array with just this image
             $img_paths = json_encode([storage_path('app/public/media/' . $filename)]);
 
-            // Store in session
-            session([
-                'img_paths' => $img_paths,
-                'single_image_upload' => 'true',
-            ]);
-
-            return redirect()->route('home');
+            // Store in session and redirect
+            return redirect()->route('home')
+                ->with('img_paths', $img_paths)
+                ->with('single_image_upload', 'true');
 
         } catch (\Exception $e) {
-            return redirect()->route('home')->withErrors(['Error processing clipboard image: ' . $e->getMessage()]);
+            return redirect()->route('home')->with('errors', ['Error processing clipboard image: ' . $e->getMessage()]);
         }
     }
 }

@@ -2,43 +2,50 @@ version: '3.7'
 
 services:
     app:
-        image: app
+        image: decimer-app:latest
         build:
             context: .
             dockerfile: ./docker/Dockerfile
             args:
-                - PHP_VERSION=${PHP_VERSION:-8.2}
+                - PHP_VERSION=8.2
+        container_name: decimer_app
+        restart: unless-stopped
         volumes:
             - ./:/var/www/app
             - /var/www/app/vendor
+        networks:
+            - app-net
         extra_hosts:
             - "internal.host:host-gateway"
-        networks:
-            - app-net
+
     nginx:
         image: nginx:alpine
+        container_name: decimer_nginx
+        restart: unless-stopped
         ports:
-          - "${APP_PORT:-8080}:80"
+            - "${APP_PORT:-8080}:80"
         volumes:
-            - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:cached
-            - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:cached
-            - ./:/var/www/app:cached
-        restart: on-failure
+            - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+            - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+            - ./public:/var/www/app/public:cached
+            - ./storage/app/public:/var/www/app/storage/app/public:cached
         depends_on:
             - app
         networks:
             - app-net
+
     supervisor:
-        image: app
-        networks:
-            - app-net
+        image: decimer-app:latest
+        container_name: decimer_supervisor
+        restart: unless-stopped
         volumes:
             - ./:/var/www/app
             - /var/www/app/vendor
         depends_on:
             - app
-            - nginx
-        command: supervisord
+        networks:
+            - app-net
+        command: supervisord -n -c /etc/supervisor/supervisord.conf
 
 networks:
     app-net:

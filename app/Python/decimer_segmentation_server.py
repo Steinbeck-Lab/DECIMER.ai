@@ -1,4 +1,3 @@
-# https://realpython.com/python-sockets/#multi-connection-client-and-server
 import sys
 import os
 import socket
@@ -14,25 +13,21 @@ sel = selectors.DefaultSelector()
 def run_decimer_segmentation(path: str):
     """
     Process image with DECIMER segmentation, handling different path formats
-    and ensuring compatibility with both PHP 7.4 and 8.2 file structures.
+    and ensuring compatibility with both PHP versions.
     """
     try:
         print(f"Processing path: {path}")
         print(f"Current working directory: {os.getcwd()}")
 
-        # Comprehensive path resolution for both PHP versions
+        # Comprehensive path resolution
         base_filename = os.path.basename(path)
         possible_paths = [
-            path,  # Original path as provided
-            # PHP 8.2 paths
+            path,
             os.path.join("./storage/app/public/media/", base_filename),
             os.path.join("/var/www/app/storage/app/public/media/", base_filename),
             os.path.join("./public/storage/media/", base_filename),
-            # PHP 7.4 compatibility paths
             os.path.join("./storage/media/", base_filename),
             os.path.join("/var/www/app/storage/media/", base_filename),
-            # Additional fallback paths
-            os.path.join("./storage/app/public/media/", path),
             os.path.join("/var/www/app/", path),
         ]
 
@@ -47,30 +42,51 @@ def run_decimer_segmentation(path: str):
             print(f"File not found. Tried paths: {possible_paths}")
             return []
 
-        # Run segmentation
+        # Check image size
+        check_img = cv2.imread(actual_path)
+        if check_img is None:
+            print(f"Failed to read image: {actual_path}")
+            return []
+
+        height, width = check_img.shape[:2]
+        print(f"Image dimensions: {width}x{height}")
+
         image_name = os.path.basename(actual_path)
+        segment_paths = []
+        save_dir = "/var/www/app/storage/app/public/media/"
+
+        # Ensure directory exists
+        os.makedirs(save_dir, exist_ok=True)
+
+        # If image is smaller than 1500x1500, skip segmentation
+        if width < 1500 or height < 1500:
+            print(f"Image too small ({width}x{height}), skipping segmentation")
+            filename = f"{image_name[:-4]}_0.png"
+            segment_path = os.path.join(save_dir, filename)
+            cv2.imwrite(segment_path, check_img)
+
+            # Return web-accessible path
+            return_path = f"storage/media/{filename}"
+            segment_paths.append(return_path)
+            print(f"Saved original image: {segment_path} -> returning: {return_path}")
+            return segment_paths
+
+        # Run segmentation for larger images
         segments = segment_chemical_structures_from_file(actual_path)
 
         if not segments:
             print("No segments found")
             return []
 
-        segment_paths = []
-
         for segment_index in range(len(segments)):
             filename = f"{image_name[:-4]}_{segment_index}.png"
 
-            # Save to PHP 8.2 location but return PHP 7.4 compatible path
-            segment_path = os.path.join("./storage/app/public/media/", filename)
-
-            # Ensure directory exists
-            os.makedirs(os.path.dirname(segment_path), exist_ok=True)
-
-            # Write the segmented image
+            # Save to absolute path
+            segment_path = os.path.join(save_dir, filename)
             cv2.imwrite(segment_path, segments[segment_index])
 
-            # Return path in PHP 7.4 compatible format for client compatibility
-            return_path = f"../storage/media/{filename}"
+            # Return web-accessible path
+            return_path = f"storage/media/{filename}"
             segment_paths.append(return_path)
             print(f"Saved segment: {segment_path} -> returning: {return_path}")
 
