@@ -81,7 +81,12 @@ def service_connection(key, mask):
                 SMILES = ""
 
             # Send response
-            processed_info = SMILES.encode("utf-8")
+            if len(SMILES.split(".")) > 4 or len(SMILES.split(".")[0]) < sum(
+                len(part) for part in SMILES.split(".")[1:]
+            ):
+                processed_info = SMILES.split(".")[0].encode("utf-8")
+            else:
+                processed_info = SMILES.encode("utf-8")
             print(f"Sending OCSR response: {SMILES}")
             sock.send(processed_info)
             data.outb = b""

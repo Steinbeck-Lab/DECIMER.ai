@@ -1,26 +1,46 @@
 import sys
 import os
+import json
 from PIL import Image
 
 
 def main():
-    """
-    This script takes a stringified json array image path from sys.argv[1],
-    checks if it has an exif-tag and prints 'true' or 'false'
-    """
-    paths = sys.argv[1]
-    # Make sure the array with paths can be digested by eval
-    paths = sys.argv[1].replace(",", '","')
-    paths = paths.replace("[", '["').replace("]", '"]')
-    paths = eval(paths)
+    """Count images with EXIF tags from JSON array of paths."""
+    try:
+        if len(sys.argv) < 2:
+            print("0")
+            return
+
+        # CRITICAL FIX: Use json.loads instead of eval
+        json_input = sys.argv[1]
+        paths = json.loads(json_input)
+
+        if not isinstance(paths, list):
+            print("0")
+            return
+
+    except (json.JSONDecodeError, IndexError) as e:
+        print(f"Error parsing input: {e}", file=sys.stderr)
+        print("0")
+        return
+
     num_exif_tags = 0
+    dir_path = "../storage/app/public/media/"
+
     for image_path in paths:
-        dir = "../storage/app/public/media/"
-        image_path = os.path.join(dir, os.path.split(image_path)[1])
-        image = Image.open(image_path)
-        exif_tag = image.getexif()
-        if exif_tag != {}:
-            num_exif_tags += 1
+        try:
+            filename = os.path.basename(image_path)
+            full_path = os.path.join(dir_path, filename)
+
+            if os.path.exists(full_path):
+                image = Image.open(full_path)
+                exif_tag = image.getexif()
+                if exif_tag:
+                    num_exif_tags += 1
+        except Exception as e:
+            print(f"Error processing {image_path}: {e}", file=sys.stderr)
+            continue
+
     print(num_exif_tags)
 
 

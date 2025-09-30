@@ -6,33 +6,37 @@ from pdf2image import convert_from_path
 
 def convert_pdf_to_images(pdf_path: str):
     """
-    This function takes the path of a pdf file, converts the pages to 300 DPI
-    images, saves the resulting PNG files in the directory of the input pdf
-    file and returns a json array containing the paths of the created pdf_files
+    Convert PDF pages to images and return web-accessible paths.
 
     Args:
-        pdf_path (str): path of pdf file
+        pdf_path (str): Path to PDF file relative to storage (e.g., 'public/media/file.pdf')
 
     Returns:
-        _type_: json array with paths of generated png images
+        str: JSON array of web-accessible image paths
     """
-    # Define path relative from location of Python script
+    # Get absolute paths
     pdf_dir = os.path.split(__file__)[0]
     pdf_name = os.path.split(pdf_path)[1]
     base_path = os.path.join(pdf_dir, "../../storage/app/")
     full_pdf_path = os.path.join(base_path, pdf_path)
 
-    # Convert pdf document to images
-    # poppler_path = os.path.join(os.path.split(__file__)[0], 'poppler/bin/')
-    # last_page param --> PAGE LIMITATION TO AVOID ABUSE OF WEB APP
+    # Convert PDF to images (limit to 10 pages)
     page_images = convert_from_path(full_pdf_path, 300, last_page=10)
+
     im_paths = []
-    num = 0
-    for image in page_images:
-        im_path = "{}_{}.png".format(full_pdf_path, num)
-        image.save(im_path, format="PNG")
-        im_paths.append("media/{}_{}.png".format(pdf_name, num))
-        num += 1
+    save_dir = "/var/www/app/storage/app/public/media/"
+
+    # Ensure directory exists
+    os.makedirs(save_dir, exist_ok=True)
+
+    for num, image in enumerate(page_images):
+        filename = f"{pdf_name}_{num}.png"
+        save_path = os.path.join(save_dir, filename)
+        image.save(save_path, format="PNG")
+
+        # Return web-accessible path with storage/ prefix
+        web_path = f"storage/media/{filename}"
+        im_paths.append(web_path)
 
     im_paths.sort()
     return json.dumps(im_paths)

@@ -20,19 +20,19 @@ class DecimerSegmentationController extends Controller
     }
 
     public function SegmentChemicalStructures(array $img_paths) {
-        Log::info('=== SegmentChemicalStructures DEBUG ===');
+        Log::info('=== SegmentChemicalStructures START ===');
         Log::info('Input paths: ' . json_encode($img_paths));
         
         try {
             $json_input = json_encode($img_paths);
             Log::info('JSON input: ' . $json_input);
             
-            $command = 'python3 ../app/Python/decimer_segmentation_client.py ' . escapeshellarg($json_input);
-            Log::info('Command: ' . $command);
+            $command = 'python3 ../app/Python/decimer_segmentation_client.py';
+            Log::info('Command: ' . $command . ' ' . escapeshellarg($json_input));
             
             $output = [];
             $return_code = 0;
-            exec($command . ' 2>&1', $output, $return_code);
+            exec($command . ' ' . escapeshellarg($json_input) . ' 2>&1', $output, $return_code);
             
             Log::info('Return code: ' . $return_code);
             Log::info('Raw output: ' . json_encode($output));
@@ -43,11 +43,16 @@ class DecimerSegmentationController extends Controller
                 return [];
             }
             
+            if (empty($output)) {
+                Log::error('Empty output from Python script');
+                return [];
+            }
+            
             $json_output = end($output);
             Log::info('Last line of output: ' . var_export($json_output, true));
             
             if (empty($json_output)) {
-                Log::error('Empty output from Python script');
+                Log::error('Empty last line from Python script');
                 return [];
             }
             
@@ -83,7 +88,7 @@ class DecimerSegmentationController extends Controller
             
             if (empty($img_paths)) {
                 Log::error('No image paths provided');
-                return back()->withErrors(['No image paths provided']);
+                return back()->with('errors', ['No image paths provided']);
             }
             
             $img_paths = str_replace(' ', '', $img_paths);
@@ -94,7 +99,7 @@ class DecimerSegmentationController extends Controller
             
             if (!is_array($img_paths)) {
                 Log::error('Invalid image paths format');
-                return back()->withErrors(['Invalid image paths format']);
+                return back()->with('errors', ['Invalid image paths format']);
             }
 
             ini_set('max_execution_time', 300);
@@ -113,12 +118,12 @@ class DecimerSegmentationController extends Controller
                 ->with('img_paths', json_encode($img_paths))
                 ->with('structure_depiction_img_paths', json_encode($structure_depiction_img_paths))
                 ->with('has_segmentation_already_run', "true")
-                ->with('single_image_upload', $requestData['single_image_upload']);
+                ->with('single_image_upload', $requestData['single_image_upload'] ?? 'false');
                 
         } catch (\Exception $e) {
             Log::error('Exception in DecimerSegmentationPost: ' . $e->getMessage());
             Log::error('Stack trace: ' . $e->getTraceAsString());
-            return back()->withErrors(['Processing failed: ' . $e->getMessage()]);
+            return back()->with('errors', ['Processing failed: ' . $e->getMessage()]);
         }
     }
 }

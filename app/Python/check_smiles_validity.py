@@ -28,20 +28,19 @@ def decode_smiles_array(str_smiles_arr: str) -> List[str]:
     DECIMERController and returns a list of SMILES strings
 
     Args:
-        str_smiles_arr (str): stringified array with SMILES strings
-                              as returned by the php function json_decode()
+        str_smiles_arr (str): JSON string with SMILES strings
 
     Returns:
         List[str]: List of SMILES strings
     """
-    str_smiles_arr = str_smiles_arr[1:-1]
-    str_smiles_arr = '["' + str_smiles_arr + '"]'
-    str_smiles_arr = str_smiles_arr.replace(",", '","')
-    str_smiles_arr = str_smiles_arr.replace("\\\\", "\\")
-    str_smiles_arr = str_smiles_arr.replace("\\/", "/")
-    str_smiles_arr = str_smiles_arr.replace("\\N", "\\\\N")
-    smiles_arr = eval(str_smiles_arr)
-    return smiles_arr
+    try:
+        smiles_arr = json.loads(str_smiles_arr)
+        if not isinstance(smiles_arr, list):
+            return []
+        return smiles_arr
+    except json.JSONDecodeError as e:
+        print(f"Error decoding SMILES array: {e}", file=sys.stderr)
+        return []
 
 
 def cdk_smiles_to_IAtomContainer(smiles: str):
@@ -112,15 +111,34 @@ def main():
     prints a stringified list of strings ("valid" or "invalid") that indicate
     whether or not the given SMILES represent valid molecules
     """
-    smiles_arr = decode_smiles_array(sys.argv[1])
+    try:
+        if len(sys.argv) < 2:
+            print(json.dumps([]))
+            return
+
+        smiles_arr = decode_smiles_array(sys.argv[1])
+
+        if not smiles_arr:
+            print(json.dumps([]))
+            return
+
+    except Exception as e:
+        print(f"Error parsing input: {e}", file=sys.stderr)
+        print(json.dumps([]))
+        return
+
     mol_block_arr = []
     for smiles in smiles_arr:
         try:
-            mol_block = smiles_to_mol_str(smiles)
-            mol_block_arr.append(mol_block)
+            if smiles and smiles.strip():
+                mol_block = smiles_to_mol_str(smiles)
+                mol_block_arr.append(mol_block)
+            else:
+                mol_block_arr.append("invalid")
         except Exception as e:
-            print(e)
+            print(f"Error processing SMILES '{smiles}': {e}", file=sys.stderr)
             mol_block_arr.append("invalid")
+
     print(json.dumps(mol_block_arr))
 
 

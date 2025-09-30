@@ -10,18 +10,19 @@ def decode_mol_block_array(str_mol_block_arr: str) -> List[str]:
     and returns a list of mol block strings that can be processed with RDKit
 
     Args:
-        str_mol_block_arr (str): stringified array with mol block strings
-                                 as returned by the php function json_decode()
+        str_mol_block_arr (str): JSON string with mol block strings
 
     Returns:
         List[str]: List of mol block strings
     """
-    str_mol_block_arr = str_mol_block_arr[1:-1]
-    str_mol_block_arr = '["' + str_mol_block_arr + '"]'
-    str_mol_block_arr = str_mol_block_arr.replace(",", '","')
-    str_mol_block_arr = str_mol_block_arr.replace('""', '"')
-    mol_block_arr = eval(str_mol_block_arr)
-    return mol_block_arr
+    try:
+        mol_block_arr = json.loads(str_mol_block_arr)
+        if not isinstance(mol_block_arr, list):
+            return []
+        return mol_block_arr
+    except json.JSONDecodeError as e:
+        print(f"Error decoding mol block array: {e}", file=sys.stderr)
+        return []
 
 
 def main():
@@ -29,16 +30,39 @@ def main():
     This script takes a stringified array with mol str from sys.argv and
     prints the corresponding stringified array with SMILES representations
     """
-    mol_block_arr = decode_mol_block_array(sys.argv[1])
-    smiles = []
+    try:
+        if len(sys.argv) < 2:
+            print(json.dumps([]))
+            return
 
+        mol_block_arr = decode_mol_block_array(sys.argv[1])
+
+        if not mol_block_arr:
+            print(json.dumps([]))
+            return
+
+    except Exception as e:
+        print(f"Error parsing input: {e}", file=sys.stderr)
+        print(json.dumps([]))
+        return
+
+    smiles = []
     for mol_block_str in mol_block_arr:
-        mol = Chem.MolFromMolBlock(mol_block_str)
-        # empty mol block str from Ketcher have length of 102
-        if mol and len(mol_block_str) > 102:
-            smiles.append(Chem.MolToSmiles(mol, kekuleSmiles=True))
-        else:
+        try:
+            if (
+                mol_block_str and len(mol_block_str) > 102
+            ):  # empty mol block str from Ketcher have length of 102
+                mol = Chem.MolFromMolBlock(mol_block_str)
+                if mol:
+                    smiles.append(Chem.MolToSmiles(mol, kekuleSmiles=True))
+                else:
+                    smiles.append("invalid")
+            else:
+                smiles.append("invalid")
+        except Exception as e:
+            print(f"Error processing mol block: {e}", file=sys.stderr)
             smiles.append("invalid")
+
     print(json.dumps(smiles))
 
 
