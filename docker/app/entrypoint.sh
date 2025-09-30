@@ -1,40 +1,48 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
 echo "=========================================="
-echo "DECIMER.ai Container Initialization"
-echo "=========================================="
-
-# Fix permissions (important for mounted volumes)
 echo "→ Setting permissions..."
-chown -R www-data:www-data /var/www/app/storage /var/www/app/bootstrap/cache 2>/dev/null || true
-chmod -R 775 /var/www/app/storage /var/www/app/bootstrap/cache 2>/dev/null || true
+echo "=========================================="
+chown -R www-data:www-data /var/www/app/storage /var/www/app/bootstrap/cache
+chmod -R 775 /var/www/app/storage /var/www/app/bootstrap/cache
 
-# Create storage symlink
 echo "→ Creating storage symlink..."
-if [ ! -L /var/www/app/public/storage ]; then
-    php artisan storage:link 2>/dev/null || echo "  (symlink creation skipped)"
+rm -f /var/www/app/public/storage
+ln -sf /var/www/app/storage/app/public /var/www/app/public/storage
+
+if [ -L /var/www/app/public/storage ]; then
+    echo "✓ Symlink created successfully"
+else
+    echo "✗ Failed to create symlink"
+    exit 1
 fi
 
-# Ensure directories exist
 echo "→ Ensuring directories exist..."
-mkdir -p /var/www/app/storage/app/public/reported_results 2>/dev/null || true
-chown -R www-data:www-data /var/www/app/storage 2>/dev/null || true
+mkdir -p /var/www/app/storage/app/public/media
+mkdir -p /var/www/app/storage/logs
+mkdir -p /var/www/app/storage/framework/sessions
+mkdir -p /var/www/app/storage/framework/views
+mkdir -p /var/www/app/storage/framework/cache
+mkdir -p /var/www/app/bootstrap/cache
 
-# Optimize Laravel for production
+echo "→ Setting final permissions..."
+chown -R www-data:www-data /var/www/app/storage
+chown -R www-data:www-data /var/www/app/bootstrap/cache
+chmod -R 775 /var/www/app/storage
+chmod -R 775 /var/www/app/bootstrap/cache
+
 echo "→ Optimizing Laravel..."
-php artisan config:cache 2>/dev/null || true
-php artisan route:cache 2>/dev/null || true
-php artisan view:cache 2>/dev/null || true
-
-# Create log file
-touch /var/www/app/storage/logs/laravel.log 2>/dev/null || true
-chown www-data:www-data /var/www/app/storage/logs/laravel.log 2>/dev/null || true
+php artisan config:clear
+php artisan config:cache
+php artisan route:clear
+php artisan route:cache
+php artisan view:clear
+php artisan view:cache
 
 echo "=========================================="
 echo "✓ Setup complete"
-echo "Starting: $@"
+echo "Starting: php-fpm"
 echo "=========================================="
 
-# Execute whatever command was passed
-exec "$@"
+php-fpm && supervisord
