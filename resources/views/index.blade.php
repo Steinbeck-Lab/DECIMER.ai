@@ -1,57 +1,54 @@
 @extends('layouts.default')
 
 @section('page-content')
-    <!-- Set env variables to make sure DECIMER Segmentation runs on single uploaded image -->
-    @if ($img_paths = Session::get('img_paths'))
-        @if ($structure_depiction_img_paths = Session::get('structure_depiction_img_paths'))
-            <?php
-            $structure_img_paths_array = json_decode($structure_depiction_img_paths);
-            $structure_img_paths_array = is_array($structure_img_paths_array) ? $structure_img_paths_array : [];
-            ?>
-            <?php
-            $has_segmentation_already_run = Session::get("has_segmentation_already_run");
-            ?>
-            <?php
-            $single_image_upload = Session::get("single_image_upload");
-            ?>
-            @if ($has_segmentation_already_run != 'true')
-                @if (count($structure_img_paths_array) == 1)
-                    <?php
-                    $single_image_upload = "true";
-                    ?>
-                @endif
-            @endif
-        @endif
-    @endif
-
-    <!-- JavaScript Functions -->
+    <!-- JavaScript Functions - Required for Ketcher and Form Handling -->
     <script>
         // Load molecular structure into Ketcher iframe
         function loadMol(molBlock, frameId) {
+    try {
+        const iframe = document.getElementById(frameId);
+        if (!iframe) {
+            console.error('Iframe not found:', frameId);
+            return;
+        }
+        
+        function tryLoadMolecule() {
             try {
-                const iframe = document.getElementById(frameId);
-                if (!iframe) {
-                    console.error('Iframe not found:', frameId);
-                    return;
-                }
-                
-                // Wait for iframe to load completely
-                iframe.onload = function() {
-                    try {
-                        if (iframe.contentWindow && iframe.contentWindow.ketcher) {
-                            const parsedMol = JSON.parse(molBlock);
-                            if (parsedMol && parsedMol !== 'invalid') {
-                                iframe.contentWindow.ketcher.setMolecule(parsedMol);
-                            }
-                        }
-                    } catch (e) {
-                        console.error('Error loading molecule into Ketcher:', e);
+                if (iframe.contentWindow && iframe.contentWindow.ketcher) {
+                    // Check if molBlock is a string (MOL format) or needs parsing
+                    let molData = molBlock;
+                    
+                    // If it looks like JSON, parse it
+                    if (typeof molBlock === 'string' && molBlock.trim().startsWith('{')) {
+                        molData = JSON.parse(molBlock);
                     }
-                };
+                    
+                    // Skip invalid data
+                    if (molData && molData !== 'invalid') {
+                        iframe.contentWindow.ketcher.setMolecule(molData);
+                        console.log('Molecule loaded successfully for iframe:', frameId);
+                    } else {
+                        console.warn('Invalid mol block for iframe:', frameId);
+                    }
+                } else {
+                    // Ketcher not ready yet, retry
+                    setTimeout(tryLoadMolecule, 500);
+                }
             } catch (e) {
-                console.error('Error in loadMol:', e);
+                console.error('Error loading molecule into Ketcher:', e);
             }
         }
+        
+        // Check if iframe is already loaded
+        if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
+            tryLoadMolecule();
+        } else {
+            iframe.onload = tryLoadMolecule;
+        }
+    } catch (e) {
+        console.error('Error in loadMol:', e);
+    }
+}
 
         // Toggle display of elements
         function display_or_not(checkbox_id, element_id) {
@@ -84,13 +81,11 @@
                 }
             }
             
-            // Set the mol blocks in the hidden input
             const targetInput = document.getElementById(target_input_id);
             if (targetInput) {
                 targetInput.value = JSON.stringify(mol_blocks);
             }
             
-            // Also update other hidden fields
             const hasSegmentation = document.getElementById('download_form_has_segmentation_already_run');
             const singleImage = document.getElementById('download_form_single_image_upload');
             
@@ -104,7 +99,6 @@
                 if (sourceValue) singleImage.value = sourceValue.value;
             }
             
-            // Submit the form
             event.target.form.submit();
         }
 
@@ -128,7 +122,38 @@
             link.click();
             document.body.removeChild(link);
         }
+
+        // Null-safe value setter
+        function safeSetValue(elementId, value) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                element.value = value || '';
+            }
+        }
     </script>
+
+    <!-- Set env variables to make sure DECIMER Segmentation runs on single uploaded image -->
+    @if ($img_paths = Session::get('img_paths'))
+        @if ($structure_depiction_img_paths = Session::get('structure_depiction_img_paths'))
+            <?php
+            $structure_img_paths_array = json_decode($structure_depiction_img_paths);
+            $structure_img_paths_array = is_array($structure_img_paths_array) ? $structure_img_paths_array : [];
+            ?>
+            <?php
+            $has_segmentation_already_run = Session::get("has_segmentation_already_run");
+            ?>
+            <?php
+            $single_image_upload = Session::get("single_image_upload");
+            ?>
+            @if ($has_segmentation_already_run != 'true')
+                @if (count($structure_img_paths_array) == 1)
+                    <?php
+                    $single_image_upload = "true";
+                    ?>
+                @endif
+            @endif
+        @endif
+    @endif
 
     <section class="max-w-screen-lg container mx-auto flex-grow">
         <div class="py-8">
@@ -144,7 +169,6 @@
             <!-- DECIMER LOGO (Animated gif is only shown the first time we are sent to index view) -->
             @if (!Session::get('img_paths'))
                 <script>
-                    // Check if this is the first visit using localStorage
                     if (!localStorage.getItem('visited')) {
                         document.getElementById("decimer_logo_gif").style = "display: block; margin: 0 auto; max-width: 450px;";
                         localStorage.setItem('visited', 'true');
@@ -510,155 +534,175 @@
                     ?>
                 @endif
 
-                <div class="grid grid-cols-3 gap-4">
+                <div class="space-y-8">
                     @foreach ($structure_img_paths_array as $key => $struc_img_path)
-                        <div class="col-span-3 border-t">
-                            @if ($key < 20)
-                                @if (Session::get('smiles_array'))
-                                    <?php
-                                    $classifier_result = $classifier_result_array[$key] ?? 'True';
-                                    $current_smiles = $smiles_array[$key] ?? '';
-                                    $current_validity = $validity_array[$key] ?? 'invalid';
-                                    $current_inchikey = $inchikey_array[$key] ?? 'invalid';
-                                    ?>
-                                    
-                                    @if ($classifier_result == 'False')
-                                        <div class="text-red-800">
-                                            <strong>We are not sure if this is a chemical structure.</strong></br>
-                                            Our system has come to the conclusion that this
-                                            image might not be a chemical structure depiction. </br>
-                                            A SMILES string has been generated anyway.
-                                        </div>
-                                    @endif
+    <div class="border-t border-gray-200 pt-6 pb-6">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <!-- SMILES and Info Section -->
+            <div class="lg:col-span-12">
+                @if ($key < 20)
+                    @if (Session::get('smiles_array'))
+                        <?php
+                        $classifier_result = $classifier_result_array[$key] ?? 'True';
+                        $current_smiles = $smiles_array[$key] ?? '';
+                        $current_validity = $validity_array[$key] ?? 'invalid';
+                        $current_inchikey = $inchikey_array[$key] ?? 'invalid';
+                        ?>
+                        
+                        @if ($classifier_result == 'False')
+                            <div class="text-red-800 mb-2">
+                                <strong>We are not sure if this is a chemical structure.</strong><br>
+                                Our system has come to the conclusion that this image might not be a chemical structure depiction.<br>
+                                A SMILES string has been generated anyway.
+                            </div>
+                        @endif
 
-                                    <strong>Resolved SMILES representation</strong></br>
-                                    <a class="break-words"> {{ $current_smiles }} </a>
-                                    
-                                    @if ($current_validity != 'invalid')
-                                        <?php
-                                        $has_stereo = false;
-                                        if (is_string($current_inchikey) && strlen($current_inchikey) === 27) {
-                                            $has_stereo = substr($current_inchikey, 14, 1) !== "A";
-                                        }
-                                        ?>
-                                        <a> - </a>
-                                        <span class="text-blue-400">
-                                            Search on PubChem:
-                                            @if ($has_stereo)
-                                                <span class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-                                                    <input type="checkbox" name="toggle" id="toggle-{{ $key }}"
-                                                        class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
-                                                    <label for="toggle-{{ $key }}"
-                                                        class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
-                                                </span>
-                                                <span id="search-type-{{ $key }}">with stereo</span>
-                                            @endif
-                                            <a id="pubchem-link-{{ $key }}"
-                                                href="https://pubchem.ncbi.nlm.nih.gov/#query={{ $current_inchikey }}" target="_blank"
-                                                class="hover:text-blue-600 transition">
-                                                Search
-                                            </a>
+                        <div class="mb-2">
+                            <strong>Resolved SMILES representation</strong><br>
+                            <span class="break-words">{{ $current_smiles }}</span>
+                        </div>
+                        
+                        @if ($current_validity != 'invalid')
+                            <?php
+                            $has_stereo = false;
+                            if (is_string($current_inchikey) && strlen($current_inchikey) === 27) {
+                                $has_stereo = substr($current_inchikey, 14, 1) !== "A";
+                            }
+                            ?>
+                            <div class="mb-2">
+                                <span class="text-blue-400">
+                                    Search on PubChem:
+                                    @if ($has_stereo)
+                                        <span class="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                                            <input type="checkbox" name="toggle" id="toggle-{{ $key }}"
+                                                class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" />
+                                            <label for="toggle-{{ $key }}"
+                                                class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"></label>
                                         </span>
-                                        <br>
-                                        <a href="https://coconut.naturalproducts.net/search?q={{ $current_inchikey }}" target="_blank"
-                                            class="text-green-500 hover:text-green-800 transition">
-                                            Search for this structure on COCONUT
-                                        </a>
-
-                                        @if ($has_stereo)
-                                            <?php
-                                            $inchikey_no_stereo = substr($current_inchikey, 0, 14);
-                                            ?>
-                                            <script>
-                                                document.getElementById('toggle-{{ $key }}').addEventListener('change', function () {
-                                                    var searchType = document.getElementById('search-type-{{ $key }}');
-                                                    var pubchemLink = document.getElementById('pubchem-link-{{ $key }}');
-                                                    if (this.checked) {
-                                                        searchType.textContent = 'without stereo';
-                                                        pubchemLink.href = 'https://pubchem.ncbi.nlm.nih.gov/#query={{ $inchikey_no_stereo }}';
-                                                    } else {
-                                                        searchType.textContent = 'with stereo';
-                                                        pubchemLink.href = 'https://pubchem.ncbi.nlm.nih.gov/#query={{ $current_inchikey }}';
-                                                    }
-                                                });
-                                            </script>
-
-                                            <style>
-                                                .toggle-checkbox:checked {
-                                                    right: 0;
-                                                    border-color: #68D391;
-                                                }
-                                                .toggle-checkbox:checked+.toggle-label {
-                                                    background-color: #68D391;
-                                                }
-                                            </style>
-                                        @endif
+                                        <span id="search-type-{{ $key }}">with stereo</span>
                                     @endif
-                                    </br>
-                                @endif
-                                @if (Session::get('iupac_array'))
-                                    <?php
-                                    $current_iupac = $iupac_array[$key] ?? '';
-                                    ?>
-                                    <strong>IUPAC name</strong> </br>
-                                    <a class="break-words"> {{ $current_iupac }} </a></br>
-                                @endif
-                            @endif
-                        </div>
-                        <div class="frame">
-                            <img src="{{ URL::asset($struc_img_path) }}" alt="extracted structure depiction"
-                                class="chemical_structure_img">
-                            @if (Session::get('smiles_array'))
-                                @if ($key < 20)
-                                    <?php
-                                    $current_validity = $validity_array[$key] ?? 'invalid';
-                                    $current_smiles = $smiles_array[$key] ?? '';
-                                    ?>
-                                    @if ($current_validity == 'invalid')
-                                        <div class="text-red-800">
-                                            <strong>Warning:</strong> SMILES is invalid or contains R groups and may not be depicted correctly in
-                                            the editor window!
-                                        </div>
-                                    @endif
-                                    <iframe name="dummyframe" id="dummyframe" style="display: none;"></iframe>
-                                    <form id="problem_report_form_{{ $key }}" target="dummyframe" action="{{ route('problem.report.post') }}"
-                                        method="POST">
-                                        @csrf
-                                        <input type="hidden" name="structure_depiction_img_path" value="{{ $struc_img_path }}" />
-                                        <input type="hidden" name="smiles" value="{{ $current_smiles }}" />
-                                    </form>
-                                    <a href="" target="_blank" id="problem_report_link_{{ $key }}"
-                                        class="text-blue-400 hover:text-blue-600 transition absolute bottom-0"
-                                        onclick="handle_problem_report({{ $key }})">
-                                        Report a problem with this result
+                                    <a id="pubchem-link-{{ $key }}"
+                                        href="https://pubchem.ncbi.nlm.nih.gov/#query={{ $current_inchikey }}" target="_blank"
+                                        class="hover:text-blue-600 transition">
+                                        Search
                                     </a>
-                                @else
-                                    <strong>The image has not been processed.</strong> </br>
-                                @endif
-                            @endif
-                        </div>
-                        <div class="col-span-2">
-                            @if ($smiles_array_str = Session::get('smiles_array'))
-                                @if ($key < 20)
+                                </span>
+                                <br>
+                                <a href="https://coconut.naturalproducts.net/search?q={{ $current_inchikey }}" target="_blank"
+                                    class="text-green-500 hover:text-green-800 transition">
+                                    Search for this structure on COCONUT
+                                </a>
+
+                                @if ($has_stereo)
                                     <?php
-                                    $current_validity = $validity_array[$key] ?? 'invalid';
-                                    $validity_json = json_encode(str_replace('\\', '\\\\', $current_validity));
+                                    $inchikey_no_stereo = substr($current_inchikey, 0, 14);
                                     ?>
-                                    <iframe id='{{ $key * 2 + 1 }}' name='{{ $key * 2 + 1 }}' src="ketcher_standalone/index.html" width="100%"
-                                        height="420px"
-                                        onload="loadMol({{ $validity_json }}, '{{ $key * 2 + 1 }}')">
-                                    </iframe>
-                                @else
-                                    <div class="text-xl mb-3 text-red-800">
-                                        <strong>Warning:</strong> It appears like you uploaded more than 20 chemical
-                                        structure depictions (or we detected more than 20 structures in your uploaded
-                                        document). Only the first 20 structures are processed. Please host your own
-                                        version of this application if you want to process a large amounts of data.
-                                    </div>
+                                    <script>
+                                        document.getElementById('toggle-{{ $key }}').addEventListener('change', function () {
+                                            var searchType = document.getElementById('search-type-{{ $key }}');
+                                            var pubchemLink = document.getElementById('pubchem-link-{{ $key }}');
+                                            if (this.checked) {
+                                                searchType.textContent = 'without stereo';
+                                                pubchemLink.href = 'https://pubchem.ncbi.nlm.nih.gov/#query={{ $inchikey_no_stereo }}';
+                                            } else {
+                                                searchType.textContent = 'with stereo';
+                                                pubchemLink.href = 'https://pubchem.ncbi.nlm.nih.gov/#query={{ $current_inchikey }}';
+                                            }
+                                        });
+                                    </script>
+
+                                    <style>
+                                        .toggle-checkbox:checked {
+                                            right: 0;
+                                            border-color: #68D391;
+                                        }
+                                        .toggle-checkbox:checked+.toggle-label {
+                                            background-color: #68D391;
+                                        }
+                                    </style>
                                 @endif
+                            </div>
+                        @endif
+
+                        @if (Session::get('iupac_array'))
+                            <?php
+                            $current_iupac = $iupac_array[$key] ?? '';
+                            ?>
+                            <div class="mb-2">
+                                <strong>IUPAC name</strong><br>
+                                <span class="break-words">{{ $current_iupac }}</span>
+                            </div>
+                        @endif
+                    @endif
+                @endif
+            </div>
+
+            <!-- Image Section -->
+<div class="lg:col-span-4">
+    <div style="width: 100%; height: 500px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1rem; background: #f9fafb;">
+        <div style="width: 100%; height: 400px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+            <img src="{{ URL::asset($struc_img_path) }}" 
+                 alt="extracted structure depiction"
+                 style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain;">
+        </div>
+                    
+                    @if (Session::get('smiles_array'))
+                        @if ($key < 20)
+                            <?php
+                            $current_validity = $validity_array[$key] ?? 'invalid';
+                            $current_smiles = $smiles_array[$key] ?? '';
+                            ?>
+                            @if ($current_validity == 'invalid')
+                                <div class="text-red-800 text-sm mt-2">
+                                    <strong>Warning:</strong> SMILES is invalid or contains R groups and may not be depicted correctly in the editor window!
+                                </div>
                             @endif
+                            <iframe name="dummyframe" id="dummyframe" style="display: none;"></iframe>
+                            <form id="problem_report_form_{{ $key }}" target="dummyframe" action="{{ route('problem.report.post') }}"
+                                method="POST">
+                                @csrf
+                                <input type="hidden" name="structure_depiction_img_path" value="{{ $struc_img_path }}" />
+                                <input type="hidden" name="smiles" value="{{ $current_smiles }}" />
+                            </form>
+                            <a href="" target="_blank" id="problem_report_link_{{ $key }}"
+                                class="text-blue-400 hover:text-blue-600 transition text-sm mt-2"
+                                onclick="handle_problem_report({{ $key }})">
+                                Report a problem with this result
+                            </a>
+                        @else
+                            <div class="text-sm mt-2">
+                                <strong>The image has not been processed.</strong>
+                            </div>
+                        @endif
+                    @endif
+                </div>
+            </div>
+
+            <!-- Ketcher Section -->
+            <div class="lg:col-span-8">
+                @if ($smiles_array_str = Session::get('smiles_array'))
+                    @if ($key < 20)
+                        <?php
+                        $current_validity = $validity_array[$key] ?? 'invalid';
+                        $validity_json = json_encode(str_replace('\\', '\\\\', $current_validity));
+                        ?>
+                        <iframe id='{{ $key * 2 + 1 }}' name='{{ $key * 2 + 1 }}' src="ketcher_standalone/index.html" width="100%"
+                            height="500px" style="border: 1px solid #e5e7eb; border-radius: 4px;"
+                            onload="loadMol({{ $validity_json }}, '{{ $key * 2 + 1 }}')">
+                        </iframe>
+                    @else
+                        <div class="text-xl text-red-800">
+                            <strong>Warning:</strong> It appears like you uploaded more than 20 chemical
+                            structure depictions (or we detected more than 20 structures in your uploaded
+                            document). Only the first 20 structures are processed. Please host your own
+                            version of this application if you want to process large amounts of data.
                         </div>
-                    @endforeach
+                    @endif
+                @endif
+            </div>
+        </div>
+    </div>
+@endforeach
                 </div>
 
                 @if ($single_image_upload == 'true')
@@ -714,14 +758,6 @@
             @endif
         @endif
         <script>
-            // Null-safe value setter function
-            function safeSetValue(elementId, value) {
-                const element = document.getElementById(elementId);
-                if (element) {
-                    element.value = value || '';
-                }
-            }
-            
             const hasSegmentation = "{{ $has_segmentation_already_run ?? '' }}";
             const singleImageUpload = "{{ $single_image_upload ?? '' }}";
             
