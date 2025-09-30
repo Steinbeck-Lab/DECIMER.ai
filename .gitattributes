@@ -12,10 +12,8 @@ CHANGELOG.md export-ignore
 # Ensure consistent line endings across all platforms
 * text=auto
 
-# Force LF for shell scripts
+# Force LF for shell scripts and Python
 *.sh text eol=lf
-
-# Force LF for Python scripts
 *.py text eol=lf
 
 # Force LF for PHP files

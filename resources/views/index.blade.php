@@ -24,6 +24,112 @@
         @endif
     @endif
 
+    <!-- JavaScript Functions -->
+    <script>
+        // Load molecular structure into Ketcher iframe
+        function loadMol(molBlock, frameId) {
+            try {
+                const iframe = document.getElementById(frameId);
+                if (!iframe) {
+                    console.error('Iframe not found:', frameId);
+                    return;
+                }
+                
+                // Wait for iframe to load completely
+                iframe.onload = function() {
+                    try {
+                        if (iframe.contentWindow && iframe.contentWindow.ketcher) {
+                            const parsedMol = JSON.parse(molBlock);
+                            if (parsedMol && parsedMol !== 'invalid') {
+                                iframe.contentWindow.ketcher.setMolecule(parsedMol);
+                            }
+                        }
+                    } catch (e) {
+                        console.error('Error loading molecule into Ketcher:', e);
+                    }
+                };
+            } catch (e) {
+                console.error('Error in loadMol:', e);
+            }
+        }
+
+        // Toggle display of elements
+        function display_or_not(checkbox_id, element_id) {
+            const checkbox = document.getElementById(checkbox_id);
+            const element = document.getElementById(element_id);
+            if (checkbox && element) {
+                element.style.display = checkbox.checked ? 'block' : 'none';
+            }
+        }
+
+        // Get mol files from all Ketcher frames and submit form
+        function submit_with_updated_molfiles(num_frames, target_input_id) {
+            event.preventDefault();
+            
+            const mol_blocks = [];
+            for (let i = 0; i < num_frames; i++) {
+                const frameId = (i * 2 + 1).toString();
+                const iframe = document.getElementById(frameId);
+                
+                try {
+                    if (iframe && iframe.contentWindow && iframe.contentWindow.ketcher) {
+                        const molBlock = iframe.contentWindow.ketcher.getMolfile();
+                        mol_blocks.push(molBlock);
+                    } else {
+                        mol_blocks.push('');
+                    }
+                } catch (e) {
+                    console.error('Error getting mol file from frame:', frameId, e);
+                    mol_blocks.push('');
+                }
+            }
+            
+            // Set the mol blocks in the hidden input
+            const targetInput = document.getElementById(target_input_id);
+            if (targetInput) {
+                targetInput.value = JSON.stringify(mol_blocks);
+            }
+            
+            // Also update other hidden fields
+            const hasSegmentation = document.getElementById('download_form_has_segmentation_already_run');
+            const singleImage = document.getElementById('download_form_single_image_upload');
+            
+            if (hasSegmentation) {
+                const sourceValue = document.getElementById('has_segmentation_already_run');
+                if (sourceValue) hasSegmentation.value = sourceValue.value;
+            }
+            
+            if (singleImage) {
+                const sourceValue = document.getElementById('single_image_upload');
+                if (sourceValue) singleImage.value = sourceValue.value;
+            }
+            
+            // Submit the form
+            event.target.form.submit();
+        }
+
+        // Handle problem report submission
+        function handle_problem_report(key) {
+            event.preventDefault();
+            const form = document.getElementById('problem_report_form_' + key);
+            if (form) {
+                form.submit();
+                alert('Thank you for reporting this problem. We will review it.');
+            }
+            return false;
+        }
+
+        // Download file from URL
+        function downloadURI(uri, name) {
+            const link = document.createElement('a');
+            link.download = name;
+            link.href = uri;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+
     <section class="max-w-screen-lg container mx-auto flex-grow">
         <div class="py-8">
             <!-- Logos with Google-inspired styling -->
@@ -540,7 +646,7 @@
                                     ?>
                                     <iframe id='{{ $key * 2 + 1 }}' name='{{ $key * 2 + 1 }}' src="ketcher_standalone/index.html" width="100%"
                                         height="420px"
-                                        onload="loadMol('{{ $validity_json }}', '{{ $key * 2 + 1 }}')">
+                                        onload="loadMol({{ $validity_json }}, '{{ $key * 2 + 1 }}')">
                                     </iframe>
                                 @else
                                     <div class="text-xl mb-3 text-red-800">
