@@ -329,7 +329,7 @@ docker-compose -f docker-compose.windows.yml up -d
 
 If DECIMER.ai powers your research, please cite our work:
 
-### 🏆 Primary Citation
+### 🏆 [Primary Citation](https://doi.org/10.1038/s41467-023-40782-0)
 
 ```bibtex
 @article{rajan2023decimer,
@@ -352,7 +352,7 @@ If DECIMER.ai powers your research, please cite our work:
 <details>
 <summary>📚 <b>Additional Publications</b></summary>
 
-#### Enhanced Architecture (2024)
+#### [Enhanced Architecture (2024)](https://doi.org/10.1186/s13321-024-00872-7)
 ```bibtex
 @article{rajan2024advancements,
   title   = {Advancements in hand-drawn chemical structure recognition through 
@@ -368,7 +368,7 @@ If DECIMER.ai powers your research, please cite our work:
 }
 ```
 
-#### Segmentation Method (2021)
+#### [Segmentation Method (2021)](https://doi.org/10.1186/s13321-021-00496-1)
 ```bibtex
 @article{rajan2021segmentation,
   title   = {DECIMER-Segmentation: Automated extraction of chemical structure 
@@ -384,7 +384,7 @@ If DECIMER.ai powers your research, please cite our work:
 }
 ```
 
-#### Transformer Architecture (2021)
+#### [Transformer Architecture (2021)](https://doi.org/10.1186/s13321-021-00538-8)
 ```bibtex
 @article{rajan2021transformer,
   title   = {DECIMER 1.0: deep learning for chemical image recognition 
@@ -399,7 +399,7 @@ If DECIMER.ai powers your research, please cite our work:
 }
 ```
 
-#### Original Paper (2020)
+#### [Initial Research Paper (2020)](https://doi.org/10.1186/s13321-020-00469-w)
 ```bibtex
 @article{rajan2020decimer,
   title   = {DECIMER: towards deep learning for chemical image recognition},
@@ -466,7 +466,7 @@ This project is licensed under the **MIT License**, making it free for both acad
 ```
 MIT License
 
-Copyright (c) 2025 Steinbeck Lab
+Copyright (c) 2025 Kohulan @ Steinbeck Lab
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -484,13 +484,13 @@ furnished to do so, subject to the following conditions:
 
 <div align="center">
 
-### 🎓 Developed by the Steinbeck Group
+### 🎓 Maintained by the [Kohulan](https://www.kohulanr.com/#) @ Steinbeck Group
 
 <a href="https://cheminf.uni-jena.de">
 <img src="https://github.com/Kohulan/DECIMER-Image-to-SMILES/blob/master/assets/CheminfGit.png" width="400" alt="Cheminformatics Group"/>
 </a>
 
-**[Cheminformatics and Computational Metabolomics Research Group](https://cheminf.uni-jena.de)**  
+**[Natural Products Cheminformatics Research Group](https://cheminf.uni-jena.de)**  
 Institute for Inorganic and Analytical Chemistry  
 Friedrich Schiller University Jena, Germany
 
@@ -532,11 +532,16 @@ Friedrich Schiller University Jena, Germany
 
 ### 🙏 Acknowledgments
 
-This project has been supported by:
-- The German Research Foundation (DFG)
-- NFDI4Chem - Chemistry Consortium in the National Research Data Infrastructure
-- Carl Zeiss Foundation
-- Leibniz Association
+Funded by [Carl Zeiss Foundation](https://www.carl-zeiss-stiftung.de/en) and the [Deutsche Forschungsgemeinschaft (DFG, German Research Foundation)](https://www.dfg.de/) under the [ChemBioSys](https://www.chembiosys.de/en/) (Project INF) - Project number: **239748522 - SFB 1127**.
+
+<div style="display: flex; justify-content: space-between;">
+  <a href="https://www.dfg.de/" target="_blank">
+    <img src="https://github.com/Steinbeck-Lab/cheminformatics-microservice/blob/main/docs/public/dfg_logo_schriftzug_blau_foerderung_en.gif" width="30%" alt="DFG Logo">
+  </a>
+  <a href="https://www.chembiosys.de/en/welcome.html" target="_blank">
+    <img src="https://github.com/Steinbeck-Lab/cheminformatics-microservice/assets/30716951/45c8e153-8322-4563-a51d-cbdbe4e08627" width="30%" alt="Chembiosys Logo">
+  </a>
+</div>
 
 ---
 
