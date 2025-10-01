@@ -2,7 +2,7 @@ services:
     app:
         build:
             context: .
-            dockerfile: ./docker/Dockerfile.m1
+            dockerfile: ./docker/Dockerfile.apple_silicon
             args:
                 - PHP_VERSION=8.2
         image: decimer-app-m1:latest
