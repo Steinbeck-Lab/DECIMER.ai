@@ -2,7 +2,7 @@
 set -e
 
 echo "=========================================="
-echo "DECIMER.ai Container Initialization (Linux)"
+echo "DECIMER.ai Container Initialization (M1)"
 echo "=========================================="
 
 # Create .env if it doesn't exist
