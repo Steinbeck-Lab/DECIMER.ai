@@ -158,8 +158,9 @@ COPY docker/app/supervisor.conf /etc/supervisor/conf.d/worker.conf
 # Create supervisor main config
 RUN printf "[unix_http_server]\nfile=/var/run/supervisor.sock\nchmod=0700\n\n[supervisord]\nnodaemon=true\nlogfile=/var/www/app/storage/logs/supervisord.log\npidfile=/var/run/supervisord.pid\nchildlogdir=/var/www/app/storage/logs\nuser=root\nloglevel=info\n\n[rpcinterface:supervisor]\nsupervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface\n\n[supervisorctl]\nserverurl=unix:///var/run/supervisor.sock\n\n[include]\nfiles = /etc/supervisor/conf.d/*.conf\n" > /etc/supervisor/supervisord.conf
 
-# Setup entrypoint (Windows version)
+# Setup entrypoint for Windows
 COPY docker/app/entrypoint-windows.sh /usr/local/bin/entrypoint.sh
+
 RUN chmod +x /usr/local/bin/entrypoint.sh && \
     sed -i 's/\r$//' /usr/local/bin/entrypoint.sh
 
