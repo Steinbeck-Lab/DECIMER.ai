@@ -1,0 +1,169 @@
+ARG PHP_VERSION="8.2"
+FROM php:${PHP_VERSION}-fpm-bookworm
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV COMPOSER_ALLOW_SUPERUSER=1
+
+# Update and upgrade
+RUN apt-get update && apt-get upgrade -y
+
+# Install core dependencies
+RUN apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    wget \
+    unzip \
+    zip \
+    vim \
+    supervisor \
+    ca-certificates \
+    gnupg \
+    lsb-release
+
+# Install build tools
+RUN apt-get install -y --no-install-recommends \
+    build-essential \
+    pkg-config
+
+# Install PHP extension dependencies
+RUN apt-get install -y --no-install-recommends \
+    libpng-dev \
+    libjpeg-dev \
+    libonig-dev \
+    libxml2-dev \
+    zlib1g-dev \
+    libzip-dev
+
+# Install Python
+RUN apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-dev
+
+# Install media processing tools
+RUN apt-get install -y --no-install-recommends \
+    poppler-utils \
+    ffmpeg \
+    libsm6 \
+    libxext6
+
+# Install Java
+RUN apt-get install -y --no-install-recommends default-jre-headless || \
+    apt-get install -y --no-install-recommends openjdk-17-jre-headless
+
+# Install Node.js 18.x
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs
+
+# Clean up
+RUN apt-get autoremove --purge -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Install PHP extensions
+RUN docker-php-ext-configure gd --with-jpeg && \
+    docker-php-ext-install -j$(nproc) \
+        opcache \
+        intl \
+        pdo_mysql \
+        mbstring \
+        exif \
+        pcntl \
+        bcmath \
+        gd \
+        zip
+
+# Install APCu
+RUN pecl install apcu && docker-php-ext-enable apcu
+
+# Copy PHP configuration
+COPY docker/app/php.ini $PHP_INI_DIR/conf.d/
+
+# Install Composer
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+# Set working directory
+WORKDIR /var/www/app
+
+# Copy dependency files first for better caching
+COPY package*.json composer.json composer.lock ./
+
+# Install Node dependencies
+RUN npm install && npm cache clean --force
+
+# Install Composer dependencies
+RUN composer install --no-scripts --no-autoloader --prefer-dist --no-interaction
+
+# Copy application code
+COPY . /var/www/app
+
+# Remove broken symlink if exists
+RUN rm -f public/storage
+
+# Ensure .env.example exists with proper content
+RUN if [ ! -f .env.example ]; then \
+        echo 'APP_NAME=DECIMER' > .env.example && \
+        echo 'APP_ENV=local' >> .env.example && \
+        echo 'APP_KEY=' >> .env.example && \
+        echo 'APP_DEBUG=true' >> .env.example && \
+        echo 'APP_URL=http://localhost:8080' >> .env.example && \
+        echo '' >> .env.example && \
+        echo 'LOG_CHANNEL=stack' >> .env.example && \
+        echo 'LOG_LEVEL=debug' >> .env.example; \
+    fi
+
+# Create .env from example if not exists
+RUN if [ ! -f .env ]; then \
+        cp .env.example .env && \
+        echo "Created .env from .env.example"; \
+    fi
+
+# Build assets
+RUN npm run production
+
+# Optimize Composer autoloader
+RUN composer dump-autoload --optimize --no-interaction
+
+# Install Python packages
+COPY docker/requirements.txt /tmp/requirements.txt
+RUN python3 -m pip install --upgrade pip setuptools wheel --break-system-packages && \
+    python3 -m pip install --no-cache-dir -r /tmp/requirements.txt --break-system-packages && \
+    rm /tmp/requirements.txt
+
+# Install DECIMER packages
+RUN python3 -m pip install --no-deps --no-cache-dir --break-system-packages \
+    git+https://github.com/Kohulan/DECIMER-Image_Transformer && \
+    python3 -m pip install --no-deps --no-cache-dir --break-system-packages \
+    git+https://github.com/Kohulan/DECIMER-Image-Segmentation@v1.5.0 && \
+    python3 -m pip install --no-deps --no-cache-dir --break-system-packages \
+    git+https://github.com/Iagea/DECIMER-Image-Classifier@146b00be2fe6f8fa6670a4255969d4747502b7f2
+
+# Create directories
+RUN mkdir -p \
+    storage/app/public/media \
+    storage/app/public/reported_results \
+    storage/framework/cache/data \
+    storage/framework/sessions \
+    storage/framework/views \
+    storage/logs \
+    bootstrap/cache
+
+# Set permissions
+RUN chown -R www-data:www-data storage bootstrap/cache public && \
+    chmod -R 775 storage bootstrap/cache
+
+# Copy supervisor config
+COPY docker/app/supervisor.conf /etc/supervisor/conf.d/worker.conf
+
+# Create supervisor main config
+RUN printf "[unix_http_server]\nfile=/var/run/supervisor.sock\nchmod=0700\n\n[supervisord]\nnodaemon=true\nlogfile=/var/www/app/storage/logs/supervisord.log\npidfile=/var/run/supervisord.pid\nchildlogdir=/var/www/app/storage/logs\nuser=root\nloglevel=info\n\n[rpcinterface:supervisor]\nsupervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface\n\n[supervisorctl]\nserverurl=unix:///var/run/supervisor.sock\n\n[include]\nfiles = /etc/supervisor/conf.d/*.conf\n" > /etc/supervisor/supervisord.conf
+
+# Setup entrypoint (Windows version)
+COPY docker/app/entrypoint-windows.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh && \
+    sed -i 's/\r$//' /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["php-fpm"]
+
+EXPOSE 9000
