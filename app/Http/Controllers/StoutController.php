@@ -35,7 +35,7 @@ class StoutController extends Controller
         if ($num_structures > 20){
             $num_structures = 20;
         }
-        file_put_contents('stout_log.tsv', $now . "\t" . $num_structures . "\n", FILE_APPEND | LOCK_EX);
+        file_put_contents(storage_path('logs/stout_log.tsv'), $now . "\t" . $num_structures . "\n", FILE_APPEND | LOCK_EX);
     }
 
     public function StoutPost(Request $request)

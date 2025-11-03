@@ -16,7 +16,7 @@ class DecimerSegmentationController extends Controller
     public function LogSegmentationProcesses(int $num_pages, int $num_structures){
         $now = new DateTime();
         $now = $now->getTimestamp();
-        file_put_contents('decimer_segmentation_log.tsv', $now . "\t" . $num_pages . "\t" . $num_structures . "\n", FILE_APPEND | LOCK_EX);
+        file_put_contents(storage_path('logs/decimer_segmentation_log.tsv'), $now . "\t" . $num_pages . "\t" . $num_structures . "\n", FILE_APPEND | LOCK_EX);
     }
 
     public function SegmentChemicalStructures(array $img_paths) {
