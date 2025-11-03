@@ -91,7 +91,7 @@ class DecimerController extends Controller
             $now = new DateTime();
             $timestamp = $now->getTimestamp();
             $num_structures_processed = min($num_structures, 20);
-            file_put_contents('decimer_ocsr_log.tsv', $timestamp . "\t" . $num_structures_processed . "\t" . $num_exif_tags . "\n", FILE_APPEND | LOCK_EX);
+            file_put_contents(storage_path('logs/decimer_ocsr_log.tsv'), $timestamp . "\t" . $num_structures_processed . "\t" . $num_exif_tags . "\n", FILE_APPEND | LOCK_EX);
 
             return back()
                 ->with('img_paths', $img_paths)
