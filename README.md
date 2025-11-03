@@ -148,19 +148,24 @@ graph LR
 # Clone the repository
 git clone https://github.com/Steinbeck-Lab/DECIMER.ai
 cd DECIMER.ai/
+cp .env.example .env # Creates an environment file
+
+# ⚠️ IMPORTANT: For systems with less than 32GB RAM
+# Edit docker/app/supervisor.conf to reduce resource allocation
+# See https://github.com/Steinbeck-Lab/DECIMER.ai/wiki for details
 
 # Build and launch
-docker-compose build --no-cache
-docker-compose up -d
+docker compose build --no-cache
+docker compose up -d
 
 # Monitor startup (optional)
-docker-compose logs -f supervisor
+docker compose logs -f supervisor
 ```
 
 **🍎 For Apple Silicon (M1/M2/M3):**
 ```bash
-docker-compose -f docker-compose.m1.yml build --no-cache
-docker-compose -f docker-compose.m1.yml up -d
+docker compose -f docker-compose.apple_silicon.yml build --no-cache
+docker compose -f docker-compose.apple_silicon.yml up -d
 ```
 
 </details>
@@ -175,6 +180,7 @@ docker-compose -f docker-compose.m1.yml up -d
 ```cmd
 git clone https://github.com/Steinbeck-Lab/DECIMER.ai
 cd DECIMER.ai\
+cp .env.example .env
 
 # Run the automated build script
 build-windows.bat
