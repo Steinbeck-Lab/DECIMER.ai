@@ -64,8 +64,8 @@ RUN pip3 install --upgrade pip setuptools wheel --break-system-packages && \
     pip3 install -r /tmp/requirements.txt --break-system-packages && \
     rm /tmp/requirements.txt
 
-# Install DECIMER packages
-RUN pip3 install --no-deps --break-system-packages git+https://github.com/Kohulan/DECIMER-Image_Transformer && \
+# Install DECIMER packages (pinned for reproducible rebuilds)
+RUN pip3 install --no-deps --break-system-packages decimer==2.8.0 && \
     pip3 install --no-deps --break-system-packages git+https://github.com/Kohulan/DECIMER-Image-Segmentation@v1.5.0 && \
     pip3 install --no-deps --break-system-packages git+https://github.com/Iagea/DECIMER-Image-Classifier@146b00be2fe6f8fa6670a4255969d4747502b7f2
 
