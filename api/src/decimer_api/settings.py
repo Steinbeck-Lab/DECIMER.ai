@@ -1,0 +1,152 @@
+"""Runtime configuration, read from the environment (names as in `.env.example`)."""
+
+from __future__ import annotations
+
+import logging
+import re
+from ipaddress import IPv4Network, IPv6Network, ip_network
+from pathlib import Path
+from typing import Annotated, Any, Self
+
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+log = logging.getLogger("decimer_api.settings")
+
+Network = IPv4Network | IPv6Network
+
+MIB = 1024 * 1024
+INGEST_MARGIN_SECONDS = 5.0  # for everything around the child: staging, Redis, the reply
+BYTES_PER_MB = MIB
+
+
+class Settings(BaseSettings):
+    """Every setting has an environment variable of the same name in upper case."""
+
+    model_config = SettingsConfigDict(extra="ignore", case_sensitive=False)
+
+    # --- storage ---
+    redis_url: str = "redis://localhost:6379/0"
+    data_dir: Path = Path("/data/jobs")
+
+    # --- retention (ROADMAP §3) ---
+    # A finished job (done or failed) is deleted this long after it ends.
+    job_ttl_seconds: int = Field(default=3600, gt=0)
+    # A queued job's record lives this long. It must outlast the longest plausible wait in the
+    # queue, otherwise a job could expire before it starts.
+    queued_job_ttl_seconds: int = Field(default=6 * 3600, gt=0)
+    # A running job's record lives this long after its last save(). The worker saves after every
+    # stage; if it dies, the record (and the client's slot) goes after this long.
+    running_job_ttl_seconds: int = Field(default=20 * 60, gt=0)
+    # A client's slot is held from the moment its upload starts. If the request dies without
+    # releasing it, the reservation expires after this long.
+    reservation_ttl_seconds: int = Field(default=600, gt=0)
+    # The sweep never touches a folder younger than this (an upload may still be in flight).
+    sweep_grace_seconds: int = Field(default=900, gt=0)
+
+    # --- limits (ROADMAP §3) ---
+    max_pdf_pages: int = Field(default=10, gt=0)
+    max_structures: int = Field(default=20, gt=0)  # applied by the worker
+    max_upload_mb: int = Field(default=100, gt=0)
+    max_upload_files: int = Field(default=50, gt=0)
+    # Applies to every decoded image and to every PDF page rendered at 300 DPI. 50 MP is a B2
+    # page (500 x 707 mm = 49 MP; A2 is 34.8 MP). The seg service itself refuses above 150 MP.
+    max_image_pixels: int = Field(default=50_000_000, gt=0)
+    # All pages of one job together. The biggest legitimate job is the page limit (10) at the
+    # biggest page size (50 MP), so 10 x 50 MP; it also bounds the disk one job can take,
+    # because every image is stored as PNG.
+    max_job_pixels: int = Field(default=500_000_000, gt=0)
+    # Uploads parsed at the same time in this process, each in a child process. One client may
+    # run only one at a time (see `ingest_gate`), so this must be at least 2: with one slot a
+    # single client could keep everybody else waiting.
+    ingest_concurrency: int = 2
+    # How long a request may wait for an ingest slot (its client's turn, then a free slot)
+    # before it gets 503.
+    ingest_wait_seconds: float = Field(default=20.0, gt=0)
+    # Wall-clock limit for one ingest child process; it is killed after this.
+    ingest_timeout_seconds: float = Field(default=30.0, gt=0)
+    # The reverse proxy's read timeout (nginx proxy_read_timeout; its default is 60 s). The wait
+    # plus the child's deadline plus a margin must fit inside it, or the proxy answers 504 while
+    # the API is still working.
+    proxy_read_timeout_seconds: float = Field(default=60.0, gt=0)
+    # Address space an ingest child may allocate beyond what it uses after start-up (RLIMIT_AS).
+    ingest_memory_mb: int = Field(default=1536, gt=0)
+
+    # --- fairness ---
+    max_active_jobs_per_ip: int = Field(default=2, gt=0)
+    queue_max: int = Field(default=50, gt=0)
+    queue_retry_after_seconds: int = Field(default=30, gt=0)
+    # CIDRs of the reverse proxies; X-Forwarded-For is honoured only from these peers.
+    # Comma or space separated. Empty means no proxy is trusted.
+    trusted_proxy_cidr: Annotated[list[Network], NoDecode] = Field(default_factory=list)
+    # Key for hashing client addresses. Set it when running more than one API process;
+    # when empty, a random key is generated at start (counters then reset on restart).
+    ip_hash_secret: str = ""
+
+    # --- media ---
+    # Production hands the file to nginx with X-Accel-Redirect; development streams it itself.
+    media_stream_direct: bool = False
+    media_accel_prefix: str = "/_protected/jobs"
+
+    # --- serving (python -m decimer_api) ---
+    host: str = "127.0.0.1"
+    port: int = Field(default=8000, ge=1, le=65535)
+
+    @field_validator("trusted_proxy_cidr", mode="before")
+    @classmethod
+    def _split_cidrs(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            items = [item for item in re.split(r"[,\s]+", value) if item]
+            try:
+                return [ip_network(item, strict=False) for item in items]
+            except ValueError as error:
+                raise ValueError(f"TRUSTED_PROXY_CIDR: {error}") from error
+        return value
+
+    @field_validator("ingest_concurrency")
+    @classmethod
+    def _at_least_two_ingests(cls, value: int) -> int:
+        if value < 2:
+            raise ValueError(
+                "INGEST_CONCURRENCY must be at least 2: a client may use only one ingest slot "
+                "at a time, and with a single slot that client would block everyone else."
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _ingest_fits_in_the_proxy_timeout(self) -> Self:
+        needed = self.ingest_wait_seconds + self.ingest_timeout_seconds + INGEST_MARGIN_SECONDS
+        if needed >= self.proxy_read_timeout_seconds:
+            raise ValueError(
+                f"INGEST_WAIT_SECONDS ({self.ingest_wait_seconds:g}) + INGEST_TIMEOUT_SECONDS "
+                f"({self.ingest_timeout_seconds:g}) + {INGEST_MARGIN_SECONDS:g} s margin must be "
+                f"below PROXY_READ_TIMEOUT_SECONDS ({self.proxy_read_timeout_seconds:g}), "
+                "or the proxy gives up on requests the API is still handling."
+            )
+        return self
+
+    @field_validator("trusted_proxy_cidr")
+    @classmethod
+    def _check_cidrs(cls, networks: list[Network]) -> list[Network]:
+        """A trusted network is one whose X-Forwarded-For we believe, so a broad one lets any
+        client in it choose the address its limit is counted against."""
+        for network in networks:
+            if network.prefixlen == 0:
+                raise ValueError(
+                    f"TRUSTED_PROXY_CIDR: {network} would trust every client. "
+                    "List the addresses of your proxies."
+                )
+            broad = 24 if network.version == 4 else 64
+            if network.prefixlen < broad:
+                log.warning(
+                    "TRUSTED_PROXY_CIDR contains %s, wider than /%d. Every host in it can set "
+                    "X-Forwarded-For and so choose the address its limits are counted against. "
+                    "List proxy addresses, not client networks.",
+                    network,
+                    broad,
+                )
+        return networks
+
+    @property
+    def max_upload_bytes(self) -> int:
+        return self.max_upload_mb * BYTES_PER_MB
