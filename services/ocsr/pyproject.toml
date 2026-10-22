@@ -11,6 +11,7 @@ dependencies = [
     "decimer==2.8.0",
     "decimer-service",
     "numpy==1.26.3",
+    "opencv-python-headless==4.11.0.86",
     "pillow>=13.0.0",
     "protobuf==4.25.1",
     "pystow",
@@ -47,6 +48,16 @@ addopts = '-m "not slow"'
 markers = [
     "slow: runs the real DECIMER Image Transformer on the golden crops (CPU, TensorFlow); select with -m slow",
 ]
+
+[tool.uv]
+# decimer imports cv2 but never opens a window. opencv-python also needs libGL.so.1 and
+# libglib2.0-0 at import time; the headless wheel does not, so the runtime image needs no apt
+# packages. decimer declares opencv-python, so it is excluded from the resolution (not locked at
+# all) and the headless wheel, pinned to the version that was locked before, is a direct dependency
+# and provides cv2 instead. Not an override with a marker that never matches: that leaves an
+# sdist-only opencv-python entry in uv.lock, which every later `uv lock` has to build to read its
+# metadata (see the seg patch).
+exclude-dependencies = ["opencv-python"]
 
 [tool.uv.sources]
 decimer-service = { path = "../common", editable = true }

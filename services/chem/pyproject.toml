@@ -47,6 +47,20 @@ markers = [
     "slow: runs the real Orthonym engine in a JVM (needs a Java 11+ runtime and the OPSIN and centres jars); select with -m slow",
 ]
 
+[tool.uv]
+# Build backends are pinned too (deploy/patches). Orthonym is built from source at
+# install time (hatchling with a build hook), in an isolated environment. Without this uv takes
+# the newest hatchling and its dependencies on PyPI that day and runs it. Versions: the newest releases
+# that were two weeks old on 2026-10-22. uv-build is the project's own backend (CI uses 0.13.5).
+build-constraint-dependencies = [
+    "hatchling==1.32.4",
+    "pathspec==1.1.1",
+    "pluggy==1.6.0",
+    "trove-classifiers==2026.9.21.13",
+    "packaging==26.3",
+    "uv-build==0.13.5",
+]
+
 [tool.uv.sources]
 decimer-service = { path = "../common", editable = true }
 orthonym = { git = "https://github.com/Steinbeck-Lab/Orthonym", rev = "110ed8153b365973ad90c518a3ea96fbebb13c8b" }
