@@ -35,3 +35,12 @@ hs_err_pid*.log
 .idea/
 .vscode/
 .DS_Store
+
+# Tool caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Test output
+playwright-report/
+test-results/
