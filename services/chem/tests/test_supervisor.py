@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import glob
 import json
 import multiprocessing
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
+import threading
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -428,6 +432,7 @@ async def main():
     namer = ProcessNamer(Settings(startup_timeout_s=30), factory="fakes:make_engine")
     await namer.start()
     print(namer.pid, flush=True)
+    print(namer._scratch, flush=True)
     await namer.name_many(["HANG"])  # the test kills this process while the child is stuck
 
 asyncio.run(main())
@@ -463,6 +468,7 @@ def test_the_naming_process_dies_with_its_parent_even_when_stuck() -> None:
     try:
         assert parent.stdout is not None
         child = int(parent.stdout.readline())
+        scratch = parent.stdout.readline().strip()
         assert alive(child)
         time.sleep(0.3)  # the child is now inside the HANG call
         parent.kill()  # SIGKILL: no shutdown code runs in the parent
@@ -473,6 +479,8 @@ def test_the_naming_process_dies_with_its_parent_even_when_stuck() -> None:
         assert not alive(child), "the naming process outlived its parent"
     finally:
         parent.kill()
+        # A parent that is killed cannot clean up after itself: its scratch directory stays.
+        shutil.rmtree(scratch, ignore_errors=True)
 
 
 # --- the wire: JSON only, never pickle ---------------------------------------------------
@@ -613,6 +621,228 @@ async def test_a_namer_can_be_started_again_after_it_was_stopped() -> None:
     await n.start()
     await n.stop()
     await n.start()
+    try:
+        assert await pid_of(n) > 0
+    finally:
+        await n.stop()
+
+
+# --- a reply the parent cannot make sense of: that structure's engine_error -----------------
+
+
+class _AliveProcess:
+    """Stands in for the child process of a scripted worker."""
+
+    pid = 999_999
+    exitcode = None
+
+    def is_alive(self) -> bool:
+        return True
+
+    def kill(self) -> None:
+        pass
+
+    def join(self, timeout: float | None = None) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+
+Reply = Callable[[list[Any]], bytes]
+
+
+def good(request: list[Any]) -> bytes:
+    named = {
+        "name": f"{request[2]}-ok",
+        "tier": "pin_verified",
+        "verified": "opsin",
+        "reason": None,
+    }
+    return json.dumps(["result", request[1], named, False]).encode()
+
+
+def valid_but(**fields: Any) -> Reply:
+    """A reply that is well formed except for what `fields` overrides."""
+
+    def reply(request: list[Any]) -> bytes:
+        payload = {"name": "n", "tier": "pin_verified", "verified": "opsin", "reason": None}
+        return json.dumps(["result", request[1], {**payload, **fields}, False]).encode()
+
+    return reply
+
+
+def raw(data: bytes) -> Reply:
+    return lambda request: data
+
+
+def scripted_namer(*replies: Reply) -> ProcessNamer:
+    """A namer whose first worker is a script: it answers each request with the next reply.
+
+    Whatever follows the script is served by a real child process running the fake engine."""
+    namer = make()
+    parent, child = multiprocessing.Pipe()
+    namer._worker = supervisor._Worker(_AliveProcess(), parent, {})  # type: ignore[arg-type]
+
+    def play() -> None:
+        try:
+            for reply in replies:
+                child.send_bytes(reply(json.loads(child.recv_bytes())))
+        except OSError:  # the parent closed its end: it has stopped trusting this "process"
+            pass
+
+    threading.Thread(target=play, daemon=True).start()
+    return namer
+
+
+BROKEN_REPLIES = {
+    "a number": raw(b"5"),
+    "an object": raw(b'{"result": 1}'),
+    "a string": raw(b'"result"'),
+    "null": raw(b"null"),
+    "an empty array": raw(b"[]"),
+    "an array that does not start with a word": raw(b"[1, 2, 3, 4]"),
+    "an array of the wrong length": raw(b'["result", 1]'),
+    "nesting deep enough to overflow the parser": raw(b"[" * 100_000 + b"]" * 100_000),
+    "bytes that are not JSON": raw(b"\xff\xfe\x00"),
+    "a result larger than anything the engine says": valid_but(name="x" * (1 << 20)),
+    "a lone surrogate (not UTF-8)": valid_but(name="\ud800"),
+    "a lone surrogate in the tier": valid_but(tier="\udfff"),
+    "a number as the name": valid_but(name=5),
+}
+
+
+@pytest.mark.parametrize("reply", BROKEN_REPLIES.values(), ids=BROKEN_REPLIES.keys())
+async def test_a_reply_that_makes_no_sense_costs_that_structure_only_and_the_process_is_replaced(
+    reply: Reply,
+) -> None:
+    n = scripted_namer(good, reply)
+    try:
+        results = await bounded(n.name_many(["a", "b", "c"]))
+        # the name already made is kept, the broken answer is that structure's engine_error, and
+        # the next structure is served by the replacement: never a failed request
+        assert [r.name for r in results] == ["a-ok", None, "c@0.50"]
+        assert results[1].reason == "engine_error"
+        assert n.pid != _AliveProcess.pid  # the process that said it was dropped
+    finally:
+        await n.stop()
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        b"5",
+        b'{"a": 1}',
+        b"[]",
+        b"[1]",
+        b"[" * 100_000 + b"]" * 100_000,
+        b"\xff\xfe",
+        b'["result"' + b" " * (1 << 20) + b"]",
+    ],
+    ids=[
+        "number",
+        "object",
+        "empty array",
+        "no leading word",
+        "deep nesting",
+        "bytes",
+        "oversized",
+    ],
+)
+def test_exchange_raises_engine_failure_for_anything_but_a_modest_json_array(data: bytes) -> None:
+    parent, child = multiprocessing.Pipe()
+    sender = threading.Thread(target=lambda: _quiet_send(child, data), daemon=True)
+    sender.start()
+    with pytest.raises(supervisor.EngineFailure):
+        supervisor._exchange(parent, None, 5)
+
+
+def _quiet_send(conn: Any, data: bytes) -> None:
+    try:
+        conn.send_bytes(data)
+    except OSError:
+        pass
+
+
+def test_exchange_still_returns_an_ordinary_reply() -> None:
+    parent, child = multiprocessing.Pipe()
+    child.send_bytes(b'["result", 3, {"name": null}, false]')
+    assert supervisor._exchange(parent, None, 5) == ["result", 3, {"name": None}, False]
+
+
+async def test_a_reply_too_large_to_read_from_a_real_process_is_an_engine_error(
+    namer: ProcessNamer,
+) -> None:
+    before = await pid_of(namer)
+    [r] = await bounded(namer.name_many(["HUGE"]))  # the child is stuck sending 2 MiB
+    assert (r.name, r.reason) == (None, "engine_error")
+    await until(lambda: namer.pid not in (None, before))
+
+
+async def test_a_lone_surrogate_from_a_real_process_is_an_engine_error(
+    namer: ProcessNamer,
+) -> None:
+    [r] = await bounded(namer.name_many(["SURROGATE"]))
+    assert (r.name, r.reason) == (None, "engine_error")
+
+
+@pytest.mark.parametrize("text", ["\ud800", "ok\udfff", "\udc00x"])
+@pytest.mark.parametrize("field", ["name", "tier", "verified", "reason"])
+def test_parse_result_refuses_text_that_is_not_utf8(field: str, text: str) -> None:
+    payload = {"name": "n", "tier": "t", "verified": "v", "reason": "r", field: text}
+    assert supervisor.parse_result(payload) is None
+
+
+def test_parse_result_accepts_any_text_that_encodes() -> None:
+    payload = {
+        "name": "2-(acetyloxy)benzoic acid",
+        "tier": "ünï ⁶",
+        "verified": None,
+        "reason": "",
+    }
+    assert supervisor.parse_result(payload) == NameResult(
+        "2-(acetyloxy)benzoic acid", "ünï ⁶", None, ""
+    )
+
+
+# --- no scratch directory is left behind ---------------------------------------------------
+
+
+def scratch_dirs() -> set[str]:
+    return set(glob.glob(os.path.join(tempfile.gettempdir(), "decimer-chem-*")))
+
+
+@pytest.mark.parametrize("how", ["engine fails", "never ready", "exits", "no factory"])
+async def test_a_failed_start_removes_the_scratch_directory(
+    how: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings = FAST
+    factory = "fakes:make_engine"
+    if how == "engine fails":
+        monkeypatch.setenv("FAKE_ENGINE_FAIL_START", "1")
+    elif how == "never ready":
+        monkeypatch.setenv("FAKE_ENGINE_HANG_START", "1")
+        settings = replace(FAST, startup_timeout_s=1.0)
+    elif how == "exits":
+        monkeypatch.setenv("FAKE_ENGINE_EXIT_START", "1")
+    else:
+        factory = "fakes:no_such_factory"
+    before = scratch_dirs()
+    n = ProcessNamer(settings, factory=factory)
+    with pytest.raises(RuntimeError):
+        await bounded(n.start())
+    assert scratch_dirs() == before  # the failed start did not leave its directory
+
+
+async def test_a_namer_whose_start_failed_can_be_started_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FAKE_ENGINE_FAIL_START", "1")
+    n = make()
+    with pytest.raises(RuntimeError):
+        await bounded(n.start())
+    monkeypatch.delenv("FAKE_ENGINE_FAIL_START")
+    await bounded(n.start())
     try:
         assert await pid_of(n) > 0
     finally:

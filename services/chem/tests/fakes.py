@@ -106,6 +106,10 @@ class FakeEngine:
             return NameResult(Derived("n"), Derived("pin_verified"), Derived("opsin"), None)
         if smiles == "BADFIELD":  # a field that is not a string at all
             return NameResult(123, "pin_verified", "opsin", None)  # type: ignore[arg-type]
+        if smiles == "HUGE":  # a reply far larger than any name: the parent must not read it
+            return NameResult("x" * (2 << 20), "pin_verified", "opsin", None)
+        if smiles == "SURROGATE":  # JSON allows "\ud800", a lone surrogate that is not UTF-8
+            return NameResult("\ud800", "pin_verified", "opsin", None)
         if smiles == "CWD":  # where the process runs, reported as the name
             return NameResult(os.getcwd(), "pin_verified", "opsin", None)
         if smiles == "LEAK":  # a result, after which the process asks to be replaced

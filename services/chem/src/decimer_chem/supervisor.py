@@ -64,6 +64,10 @@ _UNAVAILABLE = NameResult(None, None, None, ENGINE_UNAVAILABLE_REASON)
 #: Relative paths in these are made absolute before the child changes into its scratch directory.
 _PATH_ENV = ("ORTHONYM_JAR_DIR", "ORTHONYM_CACHE_DIR", "XDG_CACHE_HOME", "JAVA_HOME")
 
+#: The largest message either end will read. A SMILES is at most 2000 characters and a name a few
+#: hundred; anything near a megabyte is a bug or worse, and is refused without reading it.
+MAX_MESSAGE_BYTES = 1 << 20
+
 #: Two crashes in a row inside one request: the engine is not coming back for this request.
 MAX_CONSECUTIVE_CRASHES = 2
 
@@ -148,8 +152,8 @@ def worker_main(conn: Connection, factory: str, settings: Settings, scratch: str
         return
     while True:
         try:
-            message = json.loads(conn.recv_bytes())
-        except (EOFError, OSError, ValueError):
+            message = json.loads(conn.recv_bytes(MAX_MESSAGE_BYTES))
+        except (EOFError, OSError, ValueError, RecursionError):
             return  # the parent is gone, or no longer speaks to us
         if message[0] == "stop":
             return
@@ -177,22 +181,37 @@ def _send(conn: Connection, message: tuple[Any, ...]) -> bool:
 # --- the parent --------------------------------------------------------------------------
 
 
-def _exchange(
-    conn: Connection, message: tuple[Any, ...] | None, wait_s: float
-) -> tuple[Any, ...] | None:
+def _exchange(conn: Connection, message: tuple[Any, ...] | None, wait_s: float) -> list[Any] | None:
     """Send `message` (if any) and wait up to `wait_s` for the reply; None if none came in time.
 
     Runs in a thread: the pipe calls block. Raises EngineFailure if the other end is gone or sent
-    anything that is not JSON (a pickle is never loaded).
+    anything but a modest JSON array that starts with a word: a pickle (never loaded), a message
+    over `MAX_MESSAGE_BYTES` (not read), bytes that are not JSON, nesting deep enough to overflow
+    the parser, a number or an object. Whatever the break, the caller treats it like a crash.
     """
     try:
         if message is not None:
             conn.send_bytes(json.dumps(message).encode())
         if not conn.poll(wait_s):
             return None
-        return cast(tuple[Any, ...], json.loads(conn.recv_bytes()))
-    except (EOFError, OSError, ValueError) as exc:
-        raise EngineFailure("naming process died or sent something that is not JSON") from exc
+        reply = json.loads(conn.recv_bytes(MAX_MESSAGE_BYTES))
+    except EOFError as exc:
+        raise EngineFailure("naming process died") from exc
+    except OSError as exc:  # a broken pipe, or a message over the limit ("bad message length")
+        raise EngineFailure(f"naming process pipe failed: {exc}") from exc
+    except (ValueError, RecursionError) as exc:  # not JSON (or not UTF-8), or nested too deeply
+        raise EngineFailure("naming process sent something that is not valid JSON") from exc
+    if not isinstance(reply, list) or not reply or not isinstance(reply[0], str):
+        raise EngineFailure("naming process sent a reply that is not a JSON array with a tag")
+    return reply
+
+
+def _encodes(text: str) -> bool:
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 def parse_result(payload: object) -> NameResult | None:
@@ -202,6 +221,8 @@ def parse_result(payload: object) -> NameResult | None:
         return None
     if any(value is not None and type(value) is not str for value in payload.values()):
         return None
+    if any(value is not None and not _encodes(value) for value in payload.values()):
+        return None  # a lone surrogate ("\\ud800") is valid JSON but cannot be written as UTF-8
     return NameResult(payload["name"], payload["tier"], payload["verified"], payload["reason"])
 
 
@@ -260,9 +281,15 @@ class ProcessNamer:
     async def start(self) -> None:
         self._failed = None
         self._stopped = False
-        worker = await self._acquire(self._settings.startup_timeout_s + self._settings.kill_grace_s)
-        if worker is None:
-            raise RuntimeError("naming process did not become ready")
+        try:
+            worker = await self._acquire(
+                self._settings.startup_timeout_s + self._settings.kill_grace_s
+            )
+            if worker is None:
+                raise RuntimeError("naming process did not become ready")
+        except BaseException:
+            await self.stop()  # a start that failed leaves nothing behind (its scratch directory)
+            raise
 
     async def stop(self) -> None:
         self._stopped = True  # first: nothing started from here on, whatever is still in flight
@@ -335,9 +362,11 @@ class ProcessNamer:
             reply = await asyncio.to_thread(
                 _exchange, worker.conn, ("name", rid, smiles, limit_s), wait_s
             )
-        except EngineFailure:
+        except EngineFailure as exc:
+            # The reason is one of the fixed texts above: no structure, no engine message.
             log.error(
-                "naming process died while naming a structure", extra={"pid": worker.process.pid}
+                "naming process failed while naming a structure",
+                extra={"pid": worker.process.pid, "reason": str(exc)},
             )
             self._replace()
             return _ENGINE_ERROR, True
