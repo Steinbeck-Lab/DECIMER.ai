@@ -7,6 +7,10 @@ overrides = [
     { name = "ipyplot", marker = "sys_platform == 'never'" },
     { name = "tensorflow", specifier = "==2.15.1" },
 ]
+build-constraints = [
+    { name = "setuptools", specifier = "==84.0.0" },
+    { name = "uv-build", specifier = "==0.13.5" },
+]
 
 [[package]]
 name = "absl-py"

@@ -75,11 +75,12 @@ RUN if [ "$OPENCV_GUI_LIBS" = "1" ]; then \
 
 # Root-owned and read-only for the service. pystow writes README.md into its home directory at import
 # when the file is missing (a PermissionError on a read-only /models), so the file is there already.
-# Everything is made world-readable (the build context's permissions are whatever the host's umask gave)
-# and a check as the service user below proves it.
+# Modes are set outright (the build context's permissions are whatever the host's umask gave, and 002
+# would leave group-writable files): owner rw, everyone else read-only. A check as the service user
+# below proves that everything is readable and that nothing under /models is writable.
 COPY --from=weights /w/ocsr/ /models/
 RUN printf '%s\n' 'Model weights baked into the image at build time (deploy/weights/SHA256SUMS).' > /models/README.md \
-    && chmod -R a+rX /models
+    && chmod -R u=rwX,go=rX /models
 
 COPY --from=builder /opt/venv /opt/venv
 COPY deploy/healthcheck.py /usr/local/bin/healthcheck.py
@@ -106,6 +107,7 @@ RUN python -c "import decimer_ocsr, decimer_service, cv2, tensorflow as tf; prin
     && find /models -type f -exec head -c 1 {} + > /dev/null \
     && test -r /models/DECIMER-V2/DECIMER_model/saved_model.pb \
     && test -r /models/DECIMER-V2/DECIMER_HandDrawn_model/saved_model.pb \
+    && [ -z "$(find /models -writable)" ] \
     && find /tmp -mindepth 1 -delete
 
 EXPOSE 8002

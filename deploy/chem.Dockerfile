@@ -71,9 +71,10 @@ RUN groupadd --system --gid 10001 app \
 
 COPY --from=jre /opt/java/openjdk /opt/java/openjdk
 # The jars are written 0600 by Orthonym's own download and the build context's permissions are whatever
-# the host's umask gave: make them readable for the service user (it only reads them), and prove it below.
+# the host's umask gave: set the modes outright (owner rw, everyone else read-only; the service user only
+# reads the jars), and prove below that they are readable and that nothing there is writable for it.
 COPY --from=jars /w/chem/ /opt/orthonym/jars/
-RUN chmod -R a+rX /opt/orthonym
+RUN chmod -R u=rwX,go=rX /opt/orthonym
 COPY --from=builder /opt/venv /opt/venv
 COPY deploy/healthcheck.py /usr/local/bin/healthcheck.py
 
@@ -104,6 +105,7 @@ RUN java -version \
     && find /opt/orthonym/jars -type f -exec head -c 1 {} + > /dev/null \
     && test -r /opt/orthonym/jars/opsin-cli-2.9.0-jar-with-dependencies.jar \
     && test -r /opt/orthonym/jars/centres-cli-1.2.1.jar \
+    && [ -z "$(find /opt/orthonym -writable)" ] \
     && find /tmp -mindepth 1 -delete
 
 EXPOSE 8004

@@ -55,6 +55,15 @@ override-dependencies = [
     "tensorflow==2.15.1",
     "ipyplot ; sys_platform == 'never'",
 ]
+# Build backends are pinned too (deploy/patches). decimer-image-classifier is built from source at
+# install time (setup.py, setuptools), in an isolated environment. Without this uv takes
+# the newest setuptools on PyPI that day and runs it (wheel is not pinned: a setup.py-only
+# project never requests it under the fallback backend). Versions: the newest releases
+# that were two weeks old on 2026-10-22. uv-build is the project's own backend (CI uses 0.13.5).
+build-constraint-dependencies = [
+    "setuptools==84.0.0",
+    "uv-build==0.13.5",
+]
 
 [tool.uv.sources]
 decimer-image-classifier = { git = "https://github.com/Iagea/DECIMER-Image-Classifier", rev = "146b00be2fe6f8fa6670a4255969d4747502b7f2" }

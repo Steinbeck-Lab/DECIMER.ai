@@ -10,8 +10,9 @@
 #
 # Base image: see seg.Dockerfile (python 3.11 on Debian 13 trixie, tag and digest pinned).
 # No OpenCV in this service's lock file, so no opencv question here. Before building, apply
-# deploy/patches/apply-pyproject-patches.sh to services/cls: it pins the build backend (setuptools,
-# wheel) of the decimer-image-classifier git dependency, which is built from source during the install.
+# deploy/patches/apply-pyproject-patches.sh to services/cls: it pins the build backend (setuptools) of
+# the decimer-image-classifier git dependency, which is built from source during the install. For
+# release builds see the --no-cache note in deploy/README.md.
 
 ARG PYTHON_IMAGE=python:3.11.17-slim-trixie@sha256:cce12316475d7d56d605f76e1d811d0dc4e7227f2d4afd29951521264f504ff8
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.13.5@sha256:32a7bb39b496babbd997b0a39a4d66c126bdaf5661b302bf6f06abda8deca6ff
@@ -72,8 +73,11 @@ ENV PATH=/opt/venv/bin:$PATH \
     PORT=8003
 
 USER 10001:10001
-# Smoke test at build time: imports only, no model load.
-RUN python -c "import decimer_cls, decimer_service, tensorflow as tf; print('tensorflow', tf.__version__)" \
+# Smoke test at build time, as the service user: imports only (the service's production wiring,
+# decimer_cls.app, and TensorFlow), no model load; then nothing in the model directory may be
+# writable for the service user (the files are root-owned, as the package installer wrote them).
+RUN python -c "import decimer_cls.app, decimer_service, tensorflow as tf; print('tensorflow', tf.__version__)" \
+    && [ -z "$(find /opt/venv/lib/python3.11/site-packages/decimer_image_classifier/model -writable)" ] \
     && find /tmp -mindepth 1 -delete
 
 EXPOSE 8003

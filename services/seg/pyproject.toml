@@ -11,7 +11,7 @@ dependencies = [
     "decimer-segmentation",
     "decimer-service",
     "numpy==1.26.3",
-    "opencv-python>=4.11.0.86",
+    "opencv-python-headless==4.11.0.86",
     "protobuf==4.25.1",
     "tensorflow==2.15.1",
 ]
@@ -45,6 +45,25 @@ asyncio_mode = "auto"
 addopts = '-m "not slow"'
 markers = [
     "slow: runs the real Mask R-CNN on rendered pages of the golden PDF (CPU, about 35 s); select with -m slow",
+]
+
+[tool.uv]
+# The service imports cv2 but never opens a window. opencv-python also needs libGL.so.1 and
+# libglib2.0-0 at import time; the headless wheel does not, so the runtime image needs no apt
+# packages. decimer-segmentation declares opencv-python, so it is excluded from the resolution
+# (not locked at all), and the headless wheel, pinned to the version that was locked before (the
+# two wheels share a version scheme), is a direct dependency instead. Not an override with a marker
+# that never matches: that leaves an sdist-only opencv-python entry in uv.lock, which every later
+# `uv lock` has to build to read its metadata, and that build fails against the pinned setuptools.
+exclude-dependencies = ["opencv-python"]
+# Build backends are pinned too (deploy/patches). decimer-segmentation is built from source at
+# install time (setup.py, setuptools), in an isolated environment. Without this uv takes
+# the newest setuptools on PyPI that day and runs it (wheel is not pinned: a setup.py-only
+# project never requests it under the fallback backend). Versions: the newest releases
+# that were two weeks old on 2026-10-22. uv-build is the project's own backend (CI uses 0.13.5).
+build-constraint-dependencies = [
+    "setuptools==84.0.0",
+    "uv-build==0.13.5",
 ]
 
 [tool.uv.sources]

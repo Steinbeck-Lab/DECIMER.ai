@@ -58,8 +58,10 @@ are never pulled (`pull_policy: never`): there is no registry namespace somebody
     dependencies (decimer-segmentation and decimer-image-classifier with setuptools, Orthonym with
     hatchling and a build hook) are built from source during `uv sync`, in an isolated environment whose
     backend uv resolves fresh from PyPI. That code runs at install time, with network access, and
-    `uv.lock` does not pin it. The constraints pin setuptools 84.0.0, wheel 0.48.0, hatchling 1.32.4 and
-    its dependencies, and `uv-build` 0.13.5 (the newest releases that were two weeks old on 2026-10-22).
+    `uv.lock` does not pin it. The constraints pin setuptools 84.0.0 (seg, cls; `wheel` is not pinned,
+    because a setup.py-only project never requests it under the fallback backend), hatchling 1.32.4 and
+    its dependencies (chem), and `uv-build` 0.13.5 (the newest releases that were two weeks old on
+    2026-10-22). **Release builds must pass `--no-cache`** (next to the build commands in step 4).
     Checked: uv honors them when it builds the git dependency. The alternative, prebuilding the three
     wheels and hashing them, would take them out of `uv.lock`; the constraints keep the lock the single
     source and are a few lines each. Without the patches the builds still work, with an unpinned backend.
@@ -302,6 +304,15 @@ docker build -f deploy/api.Dockerfile  -t localhost/decimer-next/api:local  .   
 docker build -f deploy/web.Dockerfile  -t localhost/decimer-next/edge:local .   # or: $DC build edge
 # Without the pyproject patches add --build-arg OPENCV_GUI_LIBS=1 (seg, ocsr). UI-only demo: --build-arg VITE_API=mock.
 ```
+
+**Release builds pass `--no-cache`** (`docker build --no-cache ...`, or `$DC build --no-cache <service>`), so that
+the pinned setuptools really builds the git wheels (decimer-segmentation, decimer-image-classifier, Orthonym).
+The `uv sync` step keeps uv's cache in a BuildKit cache mount, and with a warm mount uv installs the wheel it
+built from the git dependency in an earlier build instead of building it again: a seg rebuild after `uv.lock`
+had changed printed no `Built decimer-segmentation` line, so a changed backend pin would not have been
+applied. With `--no-cache` the mount starts empty (checked for seg and cls: every package is downloaded and
+`Built decimer-segmentation` / `Built decimer-image-classifier` appears again; 62 s for seg, 52 s for cls on
+the VM). If a build must keep the cache, at least make uv rebuild decimer-segmentation.
 
 The builds need the network (PyPI, GitHub, npm, Docker Hub for the base images); the images do not. Tag releases
 (`DECIMER_TAG=2026-11-03` in `.env`, or `-t localhost/decimer-next/seg:2026-11-03`) so that the previous images stay.

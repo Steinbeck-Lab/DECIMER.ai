@@ -10,7 +10,8 @@ constraints are honored when the git dependency is built (uv -v shows setuptools
 Prebuilding and hashing wheels was the alternative; it would take the git dependencies out of
 uv.lock, which is worse. uv.lock records the constraints in its [manifest], so `uv sync --locked`
 needs the lock refreshed after the patch: apply-pyproject-patches.sh does it.
-Here: decimer-image-classifier (git, setup.py) is built with setuptools and wheel.
+Here: decimer-image-classifier (git, setup.py) is built with setuptools. wheel is not pinned: a setup.py-only
+project never requests it under the fallback backend (the Opus review of the first build).
 
 --- a/services/cls/pyproject.toml
 +++ b/services/cls/pyproject.toml
@@ -20,11 +21,11 @@ Here: decimer-image-classifier (git, setup.py) is built with setuptools and whee
  ]
 +# Build backends are pinned too (deploy/patches). decimer-image-classifier is built from source at
 +# install time (setup.py, setuptools), in an isolated environment. Without this uv takes
-+# the newest setuptools and wheel on PyPI that day and runs it. Versions: the newest releases
++# the newest setuptools on PyPI that day and runs it (wheel is not pinned: a setup.py-only
++# project never requests it under the fallback backend). Versions: the newest releases
 +# that were two weeks old on 2026-10-22. uv-build is the project's own backend (CI uses 0.13.5).
 +build-constraint-dependencies = [
 +    "setuptools==84.0.0",
-+    "wheel==0.48.0",
 +    "uv-build==0.13.5",
 +]
  

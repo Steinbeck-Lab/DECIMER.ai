@@ -10,9 +10,11 @@
 # fails the build. This file only reads deploy/weights/seg/ (see seg.Dockerfile.dockerignore for
 # everything else that reaches the build).
 #
-# Before building, apply deploy/patches/apply-pyproject-patches.sh to services/seg: it switches to
-# opencv-python-headless and pins the build backend of the decimer-segmentation git dependency
-# (setuptools, wheel). Without it the build still works (OPENCV_GUI_LIBS=1) but runs an unpinned backend.
+# The pyproject patch (deploy/patches/apply-pyproject-patches.sh) is applied to services/seg in the
+# repository: it switches to opencv-python-headless and pins the build backend (setuptools) of the
+# decimer-segmentation git dependency. A checkout without it can still build with the legacy fallback
+# --build-arg OPENCV_GUI_LIBS=1, but then runs an unpinned backend. For release builds see the
+# --no-cache note in deploy/README.md.
 #
 # Base image: python 3.11 on Debian 13 (trixie). The wheels are manylinux, so the distribution only
 # matters for its support window: bookworm is in LTS since 2026-06, trixie has regular security
@@ -29,6 +31,16 @@ WORKDIR /w
 COPY deploy/weights/verify.sh deploy/weights/SHA256SUMS ./
 COPY deploy/weights/seg/ ./seg/
 RUN sh verify.sh --strict seg /w/seg /w/SHA256SUMS
+# Made ready for the runtime stage only AFTER the check (so the check sees exactly the listed files).
+# pystow writes a README.md into its home directory when it is imported and the file is missing, which
+# a read-only /models would turn into a PermissionError at import: so the file is there already.
+# Modes are set outright, not added to (the build context's permissions are whatever the host's umask
+# gave, and 002 would leave group-writable files): owner rw (directories rwx), everyone else read-only
+# (directories searchable). A check as the service user in the runtime stage proves that the files are
+# readable and that nothing under /models is writable. Done here and not after the COPY into the runtime
+# stage, where a chmod -R would store the 272 MB weights a second time in a new layer.
+RUN printf '%s\n' 'Model weights baked into the image at build time (deploy/weights/SHA256SUMS).' > /w/seg/README.md \
+    && chmod -R u=rwX,go=rX /w/seg
 
 # ---- builder: the virtualenv, from services/seg/uv.lock ----------------------------------------
 FROM ${PYTHON_IMAGE} AS builder
@@ -59,11 +71,12 @@ FROM ${PYTHON_IMAGE} AS runtime
 LABEL org.opencontainers.image.title="decimer-seg" \
       org.opencontainers.image.description="DECIMER Segmentation model service (decimer.ai)"
 
-# opencv-python needs libGL.so.1 and libglib2.0-0 at import time. The intended fix is the headless
-# wheel (deploy/patches/seg-pyproject.patch, applied to services/seg): no apt packages, no X11 or
-# mesa libraries in the image. Until that patch is applied, build with
-#   --build-arg OPENCV_GUI_LIBS=1
-# to install the two packages instead. The smoke test below fails the build if cv2 does not import.
+# cv2 comes from the opencv-python-headless wheel (services/seg/pyproject.toml and uv.lock, see
+# deploy/patches/seg-pyproject.patch): it needs neither libGL.so.1 nor libglib2.0-0, so this stage
+# installs no apt packages and the image carries no X11 or mesa libraries. OPENCV_GUI_LIBS=1 is a
+# legacy fallback for a checkout without the patch, whose lock still has the full opencv-python wheel:
+# it installs those two libraries. Leave it at 0. The smoke test below fails the build if cv2 does not
+# import.
 ARG OPENCV_GUI_LIBS=0
 # hadolint ignore=DL3008
 RUN if [ "$OPENCV_GUI_LIBS" = "1" ]; then \
@@ -75,14 +88,9 @@ RUN if [ "$OPENCV_GUI_LIBS" = "1" ]; then \
     && useradd --system --uid 10001 --gid app --no-create-home --home-dir /nonexistent \
                --shell /usr/sbin/nologin app
 
-# The weights, root-owned and read-only for the service. pystow writes a README.md into its home
-# directory when it is imported and the file is missing, which a read-only /models would turn into
-# a PermissionError at import: so the file is there already. Everything is made world-readable
-# (the build context's permissions are whatever the host's umask gave), and a check as the service
-# user below proves it.
+# The weights (and pystow's README.md), checked in the weights stage: root-owned and read-only for the
+# service; a check as the service user below proves they are readable.
 COPY --from=weights /w/seg/ /models/
-RUN printf '%s\n' 'Model weights baked into the image at build time (deploy/weights/SHA256SUMS).' > /models/README.md \
-    && chmod -R a+rX /models
 
 COPY --from=builder /opt/venv /opt/venv
 COPY deploy/healthcheck.py /usr/local/bin/healthcheck.py
@@ -105,14 +113,19 @@ ENV PATH=/opt/venv/bin:$PATH \
     MPLCONFIGDIR=/tmp/matplotlib \
     PORT=8001
 
-# Smoke test at build time: the venv runs on this base (no missing system library), and numpy,
-# TensorFlow and cv2 import. No model is loaded, nothing needs the network. decimer_seg first: it
-# sets the OpenCV pixel limit before cv2 is imported.
+# Smoke test at build time, as the service user: the venv runs on this base (no missing system
+# library), and numpy, TensorFlow, cv2, pystow and the service's production wiring (decimer_seg.app)
+# import. weights_file() is the path the service's own start-up guard checks, resolved by pystow from
+# PYSTOW_HOME: the file must be there (this exercises pystow on the read-only /models, README.md
+# included). No model is loaded, nothing needs the network. decimer_seg.app comes first: importing
+# the package sets the OpenCV pixel limit before cv2 is imported. The last test: nothing under /models
+# may be writable for the service user.
 USER 10001:10001
-RUN python -c "import decimer_seg, decimer_service, cv2, tensorflow as tf; print('tensorflow', tf.__version__, 'cv2', cv2.__version__)" \
+RUN python -c "import decimer_seg.app, decimer_service, pystow, cv2, tensorflow as tf; from decimer_seg.model import weights_file; p = weights_file(); assert p.is_file(), p; print('tensorflow', tf.__version__, 'cv2', cv2.__version__, 'weights', p)" \
     && test -r /models/DECIMER-Segmentation_model/mask_rcnn_molecule.h5 \
     && test -r /models/README.md \
     && find /models -type f -exec head -c 1 {} + > /dev/null \
+    && [ -z "$(find /models -writable)" ] \
     && find /tmp -mindepth 1 -delete
 
 EXPOSE 8001

@@ -1,14 +1,19 @@
 seg: opencv-python-headless and pinned build backends. Apply from the repository
 root with deploy/patches/apply-pyproject-patches.sh (git apply, then `uv lock`; only the opencv entries
-and a [manifest] table change in uv.lock).
+and a [manifest] table change in uv.lock: opencv-python goes, opencv-python-headless comes).
 
 opencv: opencv-python's cv2 needs libGL.so.1, libglib2.0-0, libgthread, libX11 and libxcb at import
 time (checked with ldd on the locked wheel); the headless wheel of the same version needs only libc, libm,
 libgcc_s and libstdc++ (checked the same way). With it the runtime image has no apt packages at all,
 no X11 or mesa libraries to patch, and the wheel is 13 MB smaller. The service never opens a window.
 Both wheels provide the module cv2, so installing both would clash: the direct dependency becomes the
-headless wheel at the locked version (4.11.0.86) and an override drops every other package's
-opencv-python requirement with a marker that never matches (the trick services/cls uses for ipyplot).
+headless wheel at the locked version (4.11.0.86) and [tool.uv] exclude-dependencies removes
+opencv-python from the resolution altogether (it is not in uv.lock). The first version of this patch used
+an override with a marker that never matches (the trick services/cls uses for ipyplot); that leaves an
+sdist-only opencv-python entry in the lock, and the next `uv lock` after any manifest change (a pin, a new
+dependency) failed with "Failed to download and build opencv-python==4.11.0.86" (its build requires
+setuptools==59.2.0, which conflicts with the pinned setuptools 84.0.0). exclude-dependencies has no such
+entry: a re-lock after a changed pin works (checked in a scratch copy).
 Without this patch, build the image with --build-arg OPENCV_GUI_LIBS=1 instead.
 
 build pins: the git dependencies are built from source during `uv sync`, in an isolated build
@@ -39,19 +44,19 @@ needs the lock refreshed after the patch: apply-pyproject-patches.sh does it.
 +[tool.uv]
 +# The service imports cv2 but never opens a window. opencv-python also needs libGL.so.1 and
 +# libglib2.0-0 at import time; the headless wheel does not, so the runtime image needs no apt
-+# packages. decimer-segmentation declares opencv-python, so it is dropped with a marker that
-+# never matches (the same trick as ipyplot in services/cls), and the headless wheel, pinned to
-+# the version that was locked before (the two wheels share a version scheme), replaces it.
-+override-dependencies = [
-+    "opencv-python ; sys_platform == 'never'",
-+]
++# packages. decimer-segmentation declares opencv-python, so it is excluded from the resolution
++# (not locked at all), and the headless wheel, pinned to the version that was locked before (the
++# two wheels share a version scheme), is a direct dependency instead. Not an override with a marker
++# that never matches: that leaves an sdist-only opencv-python entry in uv.lock, which every later
++# `uv lock` has to build to read its metadata, and that build fails against the pinned setuptools.
++exclude-dependencies = ["opencv-python"]
 +# Build backends are pinned too (deploy/patches). decimer-segmentation is built from source at
 +# install time (setup.py, setuptools), in an isolated environment. Without this uv takes
-+# the newest setuptools and wheel on PyPI that day and runs it. Versions: the newest releases
++# the newest setuptools on PyPI that day and runs it (wheel is not pinned: a setup.py-only
++# project never requests it under the fallback backend). Versions: the newest releases
 +# that were two weeks old on 2026-10-22. uv-build is the project's own backend (CI uses 0.13.5).
 +build-constraint-dependencies = [
 +    "setuptools==84.0.0",
-+    "wheel==0.48.0",
 +    "uv-build==0.13.5",
 +]
 +

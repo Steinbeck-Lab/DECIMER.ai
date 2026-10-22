@@ -3,7 +3,7 @@
 # their uv.lock (network: PyPI and GitHub). Run from anywhere inside the repository; it changes the
 # working tree only (no commit). Safe to run twice: a service that already has the change is skipped.
 # Review `git diff services/*/uv.lock` before committing: only the opencv packages and a [manifest]
-# table (overrides, build-constraints) should differ.
+# table (excludes, overrides, build-constraints) should differ.
 #
 # What the patches do and why: see the header of each .patch (opencv-python-headless for seg and ocsr,
 # pinned build backends for seg, cls and chem). Run this before building the images.
