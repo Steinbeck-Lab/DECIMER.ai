@@ -44,3 +44,6 @@ hs_err_pid*.log
 # Test output
 playwright-report/
 test-results/
+
+# Local caches
+.cache/
