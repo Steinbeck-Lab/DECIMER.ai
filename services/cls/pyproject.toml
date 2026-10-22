@@ -7,7 +7,14 @@ authors = [
     { name = "Kohulan Rajan", email = "kohulan.rajan@uni-jena.de" }
 ]
 requires-python = "==3.11.*"
-dependencies = []
+dependencies = [
+    "decimer-image-classifier",
+    "decimer-service",
+    "numpy==1.26.3",
+    "pillow>=13.0.0",
+    "protobuf==4.25.1",
+    "tensorflow==2.15.1",
+]
 
 [build-system]
 requires = ["uv_build>=0.13.5,<0.14.0"]
@@ -22,18 +29,42 @@ select = ["E", "F", "I", "B", "UP", "S"]
 ignore = []
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]
+"tests/**" = ["S101", "S603"]
 
 [tool.mypy]
 strict = true
 packages = ["decimer_cls"]
 
+[[tool.mypy.overrides]]
+module = ["tensorflow", "tensorflow.*", "decimer_image_classifier", "decimer_image_classifier.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = '-m "not slow"'
+markers = [
+    "slow: runs the real EfficientNet classifier on the golden crops (CPU, TensorFlow); select with -m slow",
+]
+
+[tool.uv]
+# decimer-image-classifier 1.0.1 declares tensorflow==2.12.0 and ipyplot (a notebook-only plotting
+# helper that the library never imports). The legacy image installs it with `pip --no-deps`; this
+# is the uv equivalent: swap in our TensorFlow pin and drop ipyplot via a marker that never matches.
+override-dependencies = [
+    "tensorflow==2.15.1",
+    "ipyplot ; sys_platform == 'never'",
+]
+
+[tool.uv.sources]
+decimer-image-classifier = { git = "https://github.com/Iagea/DECIMER-Image-Classifier", rev = "146b00be2fe6f8fa6670a4255969d4747502b7f2" }
+decimer-service = { path = "../common", editable = true }
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "mypy>=2.4.0",
     "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
     "ruff>=0.17.1",
 ]
