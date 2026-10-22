@@ -224,3 +224,149 @@ Most API tests run the ingest code in a thread; `tests/test_isolation.py` runs t
 
 Exact pins in `pyproject.toml`. PDFs are read with `pypdfium2` (Apache-2.0 / BSD-3-Clause), images with
 Pillow and `pillow-heif`.
+
+## Worker
+
+The arq worker is the other half of the contract above: it takes `process_job(job_id)` from the queue
+and turns the files under `DATA_DIR/<id>/input/` into `results`. Code: `src/decimer_api/worker/`;
+the RDKit step is `src/decimer_api/chemistry.py` (shared with `/validate`, P3-06).
+
+```bash
+cd api
+# production: an arq worker, next to the API, Redis and the model services
+DATA_DIR=/data/jobs REDIS_URL=redis://redis:6379/0 \
+  SEG_URL=http://seg:8001 OCSR_URL=http://ocsr:8002 CLS_URL=http://cls:8003 CHEM_URL=http://chem:8004 \
+  uv run python -m decimer_api.worker
+
+# development: the API and the pipeline in one process (no arq worker; jobs do not survive a restart)
+DATA_DIR=/tmp/decimer-jobs REDIS_URL=redis://localhost:6379/0 MEDIA_STREAM_DIRECT=true \
+  uv run python -m decimer_api.worker.inprocess
+```
+
+`DATA_DIR` must be the same directory the API writes to. The worker needs `python -I -m
+decimer_api.worker.render` to run (a child process per PDF page), so it must run where `decimer_api`
+is installed. Several worker processes may run against one Redis; each has its own per-service
+limits. At start the worker checks that its settings agree with the API's (see `PIPELINE_TIMEOUT_SECONDS`
+below) and refuses to start otherwise.
+
+### What one job does
+
+| Stage (saved after each) | What happens |
+|---|---|
+| `render` | PDF: page `i` rendered with pypdfium2 at **exactly 300 DPI** to `page-<i>.png`, one child process per page (deadline, memory and CPU limits, no secrets in its environment; the worker never imports pdfium). Images: `input/000N.png` becomes `page-<N-1>.png` (hard link, else copy), in upload order. A page that cannot be rendered is skipped with a warning; if none can, the job fails. |
+| `segment` | seg is called once per page. A page above 25 MP or 36 MiB (seg takes 40 MP and 40 MiB; a B2 page is 49 MP) is sent as a smaller copy; the boxes seg returns are scaled back to the page and the crops are **cut from the full-resolution page** (not from seg's answer: those are the copy's pixels, white outside seg's mask). The crops of a page are written to part files as its answer arrives, only the first `MAX_STRUCTURES` of a page, and read back later, so no crop is held in memory. They are put in reading order (page by page, seg's order within a page) and cut at `MAX_STRUCTURES` (20): `structuresFound` is the total, the rest is `structuresDropped`, `truncated` is set and the warning `structures_truncated` added. **Single-image fallback:** only for a job made of exactly one uploaded image (not a PDF, not several images), and only when seg answered and found nothing: the whole image is the one structure (bbox = the page, `crop-0.png` a hard link to `page-0.png`). seg's answer is checked against what was sent: the echoed page index and image size, every box inside the image. |
+| `recognise` | Each kept crop is read, cut down for the models, and sent to ocsr and cls (together). The models look at 512 px (ocsr) and 224 px (cls), so a crop above 4 MP or 4096 px on a side is downscaled (and re-encoded until under 19 MiB); the crop file keeps its size. ocsr's SMILES goes through **legacy's fragment filter**: more than four `.`-separated fragments, or a first fragment shorter than all the others together, keeps only the first fragment (warning `fragments_trimmed`; the raw prediction is in the debug log only). |
+| `check` | RDKit (`chemistry.py`): canonical SMILES, validity, full InChIKey, V2000 molfile with 2D coordinates and wedge bonds, an SVG that starts with `<svg`. Then IUPAC names: one `POST /names` per job to chem (20 structures per request) if `CHEM_URL` is set, else `name`, `nameTier` and `nameVerified` are null. |
+
+`name`, `nameTier` and `nameVerified` come from chem's `name`, `tier` and `verified` (how the name was checked,
+e.g. `opsin`); all three are null together, and chem's `reason` is not stored (a `timeout` reason gives the
+`names_unavailable` warning, any other decline is just "no name"). `Result.name_verified` is a field added to
+`models.py`.
+
+`results` appear in the record when `check` is done (an earlier poll shows `structuresFound` but no
+results). `confidence` is ocsr's `mean_confidence`. An invalid SMILES keeps its raw text with empty
+`inchikey`, `molfile` and `svg`. CXSMILES extensions are refused, not honoured.
+
+**R groups.** DECIMER writes the R groups of a scheme as `[R]`, `[R1]`, `[R2]`, and RDKit has no element
+R, so it refuses them. Exactly `[R]` and `[R<one or two digits>]` are rewritten before RDKit reads the
+SMILES: `[R1]` becomes the labelled dummy atom `[1*]`, a bare `[R]` becomes `*`. Such a structure is
+**valid**; its canonical SMILES contains a `*` (that is what the UI looks for to show the R-group note); its
+`inchikey` is empty (InChI has no R groups) and it gets no name (chem is not asked); its molfile has `R#`
+atoms and an `M  RGP` line, which Ketcher shows as R1, R2 (a bare `*` is written as `R`). `[Rb]`, `[Rh]`,
+`[Ra]`, `[Re]`, `[Ru]` are elements and are left alone; `[R1a]`, `[R+]`, `[R123]` stay invalid.
+
+### When something goes wrong
+
+A service call is retried only where retrying can help:
+
+* **503** waits `Retry-After` (default 5 s, capped at 30 s), up to `BUSY_RETRIES` times.
+* **Could not connect** (the service is down or starting): doubling backoff, each wait at most
+  `CONNECT_BACKOFF_MAX_SECONDS` (10 s), until `CONNECT_RETRY_BUDGET_SECONDS` (90 s) of waiting have been spent.
+  ocsr needs about 50 s to load, so a worker that finds it restarting waits for it. This is done inside the
+  call rather than by re-queueing the job with arq's `Retry`: a re-queued job would redo the render and seg
+  work, show the user a restart, and use up arq's tries.
+* **The connection broke after the request went out** (reset, closed by the server): once more, then that call
+  fails. The work may have started, or this very input may crash the service; it is not waited for.
+* 422 (the service refuses this input), 500 and a **read timeout** are not retried.
+
+At most `<SERVICE>_CONCURRENCY` calls to one service are in flight, counted over all jobs of the process, and
+a call waiting to retry keeps its place. ocsr gets one call at a time (it runs one inference at a time, 3 s
+for a structure and up to 55 s for an image that is not one) and a 120 s timeout. An answer is read as a
+stream and refused above 64 MiB (seg, which sends the crops) or 1 MiB (the others).
+
+| What failed | What the job does |
+|---|---|
+| ocsr 500 / 422 / timeout, or a lost connection, on one crop | that result is `valid: false`, `smiles: ""`, `confidence: 0`; warning `recognition_failed`; the job goes on |
+| ocsr times out `OCSR_MAX_TIMEOUTS` (3) times in one job | the job fails: `service_unavailable` |
+| cls 500 / 422 on one crop | `isStructure: null` for it; warning `classification_failed` |
+| cls unreachable, busy or timing out | no more calls to cls in this job; `isStructure: null` for the crops it did not answer; one warning `classifier_unavailable` |
+| chem fails, times out, or answers nonsense | names stay null; one warning `names_unavailable`. A structure chem ran out of time on: null, the same warning. Any other decline (`UNNAMEABLE`, `NO_VERIFIED_PIN`, ...): null, no warning |
+| seg 500 / 422 / timeout, or an image that cannot be fitted to seg's limits, on one page | that page is skipped; warning `page_segmentation_failed` ("Page 3 ..."); on every page the job fails: `segmentation_failed` |
+| seg or ocsr unreachable or busy for good | the job fails: `service_unavailable` |
+| a page cannot be rendered | that page is skipped; warning `page_render_failed`; no page at all: the job fails, `render_failed` |
+| the input is missing, or the job runs longer than `PIPELINE_TIMEOUT_SECONDS` | the job fails: `input_missing`, `timeout` |
+| anything else | the job fails: `internal_error` (the traceback goes to the log) |
+
+A failed job has `status: failed`, `error` set to a fixed English message, and a warning with the same
+message and the failure's code (the record has no separate error-code field). Nothing from inside (a
+traceback, a path, what a service said) is stored. `finish()` is called exactly once, in a `finally`, and
+the saves of one job take turns (a lock), so the record written last is the one saved last.
+Cancellation is the one exception: when arq stops the worker it cancels the job and runs it again
+after the restart (`retry_jobs`, at most 3 runs), so the job is left running; a second run starts from
+the state the API created (stages, results, structure counts, `truncated` from the page limit) and keeps
+only the warnings the API added. If arq's own `job_timeout` ever cuts a run (it is the pipeline's deadline
+plus 60 s, so the pipeline's own deadline normally comes first and explains itself) the worker logs an
+error saying so; the record is then left running until it expires.
+
+`isStructure` is `bool | null` in the model (a change in `models.py`): null means the classifier gave no
+answer. The frontend must not read null as "not a structure".
+
+### Worker settings
+
+Environment variables, read by `WorkerSettings` (`worker/settings.py`); `.env.example` has the block.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `SEG_URL`, `OCSR_URL`, `CLS_URL` | `http://127.0.0.1:8001`, `:8002`, `:8003` | Base URLs of the model services. |
+| `CHEM_URL` | empty | The chem service; empty switches names off. |
+| `SEG_CONCURRENCY`, `OCSR_CONCURRENCY`, `CLS_CONCURRENCY`, `CHEM_CONCURRENCY` | `2`, `1`, `2`, `1` | Calls in flight per service, per worker process. |
+| `RENDER_CONCURRENCY` | `1` | Pages rendered at once (a 50 MP page needs about 0.4 GB). |
+| `WORKER_MAX_JOBS` | `2` | Jobs one worker process runs at once (arq `max_jobs`). |
+| `CONNECT_TIMEOUT_SECONDS` | `5` | Connect timeout of every call. |
+| `SEG_TIMEOUT_SECONDS`, `OCSR_TIMEOUT_SECONDS`, `CLS_TIMEOUT_SECONDS`, `CHEM_TIMEOUT_SECONDS` | `180`, `120`, `60`, `120` | Read timeout: the longest a call may take, queue time in the service included. ocsr needs up to 55 s for an input that is not a structure; chem's own budget for a batch is 60 s plus a restart. |
+| `OCSR_MAX_TIMEOUTS` | `3` | ocsr timeouts in one job after which the job gives up. |
+| `PIPELINE_TIMEOUT_SECONDS` | `1000` | One job, start to finish. arq's own limit is this plus 60 s. **Start-up check:** this plus 60 must be below `RUNNING_JOB_TTL_SECONDS` (1200), and `HEARTBEAT_SECONDS` at most a quarter of it; to allow longer jobs raise both. |
+| `HEARTBEAT_SECONDS` | `60` | A running record is saved at least this often. |
+| `BUSY_RETRIES`, `BUSY_RETRY_AFTER_DEFAULT_SECONDS`, `BUSY_RETRY_AFTER_MAX_SECONDS` | `3`, `5`, `30` | 503 handling. |
+| `CONNECT_RETRY_BUDGET_SECONDS`, `CONNECT_BACKOFF_SECONDS`, `CONNECT_BACKOFF_MAX_SECONDS` | `90`, `0.5`, `10` | Could-not-connect handling: doubling backoff, capped per wait, until the budget is spent. |
+| `SENT_RETRIES` | `1` | Retries after the connection broke once the request was sent. |
+| `SEG_RESPONSE_LIMIT_MB`, `SMALL_RESPONSE_LIMIT_KB` | `64`, `1024` | The most an answer may be (seg's, the others'). |
+| `RENDER_TIMEOUT_SECONDS`, `RENDER_MEMORY_MB` | `90`, `2048` | Deadline and extra address space of one render child. |
+| `MODEL_INPUT_MAX_PIXELS`, `MODEL_INPUT_MAX_SIDE`, `MODEL_INPUT_MAX_BYTES` | `4000000`, `4096`, `19922944` | Larger crops are downscaled and re-encoded before ocsr and cls (they take 17.5 MP / 8192 px / 20 MiB and 50 MP / 20 MiB). |
+| `SEG_INPUT_MAX_PIXELS`, `SEG_INPUT_MAX_BYTES` | `25000000`, `37748736` | Larger pages are sent to seg as a smaller copy (seg takes 40 MP and 40 MiB). |
+| `CHEM_BATCH_SIZE` | `20` | Structures per `POST /names` (chem takes at most 20). |
+| `SHUTDOWN_WAIT_SECONDS` | `0` | How long arq waits for running jobs when stopped (0: cancel them). A container's stop grace period must exceed it. |
+| `CDK_FALLBACK` | `false` | D4: a seam only. With it on and no CDK backend plugged into `Deps.cdk_fallback`, the worker logs a warning and RDKit decides alone. |
+
+The worker also reads the API's `REDIS_URL`, `DATA_DIR` and `MAX_STRUCTURES`. The HTTP client ignores
+`HTTP_PROXY` and friends (`trust_env=False`): the services are on the internal network. The worker
+process (and the in-process mode) makes itself non-dumpable at start, like the API, so its render children
+cannot read its environment.
+
+### Tests
+
+`uv run pytest` runs the worker tests too: fake seg, cls, ocsr and chem behind `httpx.MockTransport`,
+PDFs and PNGs built in code, fakeredis, and a real arq worker in burst mode on fakeredis. One opt-in
+test runs the real pipeline against model services you started yourself:
+
+```bash
+SEG_URL=http://127.0.0.1:8001 OCSR_URL=http://127.0.0.1:8002 CLS_URL=http://127.0.0.1:8003 \
+  uv run pytest -m slow tests/worker/test_live.py -s     # page 3 of the golden paper; LIVE_PAGES="3,4"
+```
+
+It is deselected by default (`addopts = -m "not slow"`) and skipped when the three variables are unset.
+
+### Dependencies added for the worker
+
+`httpx==0.28.1` (moved from the dev group) and `rdkit==2026.9.1` (BSD-3-Clause; the same version the
+golden-set tool uses, so both compute identical InChIKeys).

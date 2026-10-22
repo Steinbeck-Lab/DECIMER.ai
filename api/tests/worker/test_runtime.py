@@ -1,0 +1,97 @@
+"""`build_deps`: the production wiring, with fake services but the real renderer."""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import Callable
+
+import httpx
+import pytest
+from PIL import Image
+
+from decimer_api.models import JobStatus
+from decimer_api.settings import Settings
+from decimer_api.worker.pipeline import run_pipeline
+from decimer_api.worker.render import SubprocessRenderer
+from decimer_api.worker.runtime import build_deps
+from decimer_api.worker.services import make_http_client
+from decimer_api.worker.settings import WorkerSettings
+from tests.worker.conftest import Rig, SpyStore
+from tests.worker.fakes import FakeBackend, FakeSleep
+
+
+async def test_a_job_through_the_production_wiring_renders_in_a_child_process(
+    make_rig: Callable[..., Rig], settings: Settings, spy_store: SpyStore
+) -> None:
+    rig = make_rig()  # only for its job helpers; the pipeline below runs on `build_deps`
+    backend = FakeBackend(layout={0: 1, 1: 2})
+    worker = WorkerSettings(
+        seg_url="http://seg.test",
+        ocsr_url="http://ocsr.test",
+        cls_url="http://cls.test",
+        chem_url="",
+    )
+    http = httpx.AsyncClient(transport=backend.transport)
+    deps = build_deps(settings, worker, spy_store, http=http, sleep=FakeSleep())
+    try:
+        assert isinstance(deps.renderer, SubprocessRenderer)
+        job = await rig.pdf_job(2)
+        await run_pipeline(job.id, deps)
+    finally:
+        await deps.aclose()
+    stored = await spy_store.get(job.id, include_expired=True)
+    assert stored is not None and stored.status is JobStatus.DONE, stored and stored.error
+    assert len(stored.results) == 3
+    assert deps.renderer.last_pid is not None
+    with Image.open(settings.data_dir / job.id / "page-1.png") as image:
+        assert image.size == (600, 600)
+    assert http.is_closed
+
+
+def test_the_http_client_ignores_proxy_environment_variables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HTTP_PROXY", "http://proxy.campus.example:3128")
+    monkeypatch.setenv("ALL_PROXY", "http://proxy.campus.example:3128")
+    client = make_http_client(WorkerSettings())
+    assert client._trust_env is False
+    assert client.follow_redirects is False
+
+
+async def test_the_cdk_flag_without_a_backend_is_reported_and_harmless(
+    settings: Settings, spy_store: SpyStore, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.WARNING, logger="decimer_api.worker"):
+        deps = build_deps(settings, WorkerSettings(cdk_fallback=True), spy_store)
+    await deps.aclose()
+    assert "CDK_FALLBACK is on" in caplog.text
+    assert deps.cdk_fallback is None
+
+
+def test_the_cdk_fallback_is_off_by_default() -> None:
+    assert WorkerSettings().cdk_fallback is False
+
+
+@pytest.mark.parametrize(
+    ("variable", "value", "expected"),
+    [
+        ("CHEM_URL", "", None),
+        ("CHEM_URL", "  ", None),
+        ("CHEM_URL", "http://chem:8004", "http://chem:8004"),
+    ],
+)
+def test_chem_is_optional_and_an_empty_value_means_off(
+    monkeypatch: pytest.MonkeyPatch, variable: str, value: str, expected: str | None
+) -> None:
+    monkeypatch.setenv(variable, value)
+    assert WorkerSettings().chem_url == expected
+
+
+def test_the_settings_come_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SEG_URL", "http://seg:8001/")
+    monkeypatch.setenv("OCSR_CONCURRENCY", "3")
+    monkeypatch.setenv("BUSY_RETRIES", "7")
+    worker = WorkerSettings()
+    assert worker.url("seg") == "http://seg:8001"
+    assert worker.concurrency("ocsr") == 3
+    assert worker.busy_retries == 7

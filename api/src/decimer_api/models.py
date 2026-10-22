@@ -92,6 +92,10 @@ class Result(ApiModel):
     confidence: float = Field(ge=0, le=1, description="Recognition confidence.")
     name: str | None = Field(default=None, description="IUPAC name that passed the round trip.")
     name_tier: str | None = Field(default=None, description="Tier of `name`, e.g. pin_verified.")
+    name_verified: str | None = Field(
+        default=None,
+        description="How `name` was checked, as chem reports it (e.g. opsin); null without a name.",
+    )
     svg: str = Field(default="", description="RDKit depiction as an inline SVG string.")
     molfile: str = Field(default="", description="V2000 molfile with 2D coordinates.")
 
