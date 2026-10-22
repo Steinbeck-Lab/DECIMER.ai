@@ -1,13 +1,17 @@
 /**
- * PROVISIONAL API CONTRACT.
+ * The API contract the UI works with.
  *
- * Hand-written from ROADMAP §3 and §4 (Phase 3) so the frontend can be built
- * before the API exists. When TODO lands, these types are generated from
- * FastAPI's OpenAPI schema (`openapi-typescript`) and this file is replaced by
- * a thin re-export. Field names and shapes may change then; nothing outside
- * `web/src/api/` and `web/src/mocks/` should depend on anything but these
- * names.
+ * What the API serves today (jobs, results, stages, warnings) is DERIVED from the
+ * types generated from its OpenAPI schema (`generated.ts`, by `npm run gen:api`,
+ * TODO), so a change in the API shows up as a type error here and in the
+ * code that uses it. `contract.check.ts` pins what the UI assumes about those
+ * types. The validate, export and report calls are not in
+ * the schema yet and stay hand-written and PROVISIONAL: their shapes may change
+ * when the API builds them.
  */
+import type { components } from './generated';
+
+type Schemas = components['schemas'];
 
 /** Limits shown to the user (ROADMAP §3). The server enforces them. */
 export const LIMITS = {
@@ -18,99 +22,39 @@ export const LIMITS = {
   maxUploadFiles: 50,
 } as const;
 
-export type JobStatus = 'queued' | 'running' | 'done' | 'failed';
-export type StageName = 'upload' | 'render' | 'segment' | 'recognise' | 'check';
-export type StageState = 'pending' | 'active' | 'done';
-
-/** Pipeline order. The API returns every stage, in this order. */
-export const STAGE_ORDER: readonly StageName[] = [
-  'upload',
-  'render',
-  'segment',
-  'recognise',
-  'check',
-];
-
-export interface Stage {
-  name: StageName;
-  state: StageState;
-}
-
-export interface Result {
-  /** Stable key of the result inside the job (0-based). Edits and exports use it. */
-  index: number;
-  /** Display number (1-based): the compound number shown everywhere. */
-  number: number;
-  /** 0-based page of the document the structure was found on. */
-  pageIndex: number;
-  /** Bounding box on the rendered page, pixels: [x0, y0, x1, y1]. */
-  bbox: readonly [number, number, number, number];
-  /** Image of the original crop. */
-  cropUrl: string;
-  /** RDKit depiction: a URL, or an inline SVG string (starts with `<svg`). */
-  svg: string;
-  smiles: string;
-  /** Empty when the SMILES is invalid. */
-  inchikey: string;
-  /** V2000 molfile with 2D coordinates. */
-  molfile: string;
-  /** RDKit accepts the SMILES. */
-  valid: boolean;
-  /**
-   * Classifier: this image is a chemical structure. `null` when the classifier gave no answer (the worker
-   * could not reach it; a job warning says so). That is "unknown", not "not sure it is a structure".
-   */
-  isStructure: boolean | null;
-  /** Recognition confidence, 0 to 1. */
-  confidence: number;
-  /** IUPAC name that passed Orthonym's OPSIN round trip, or null ("no verified name"). */
-  name: string | null;
-  /** Orthonym tier of `name` (for example `pin_verified`), null when there is no name. */
-  nameTier: string | null;
-}
-
+export type JobStatus = Schemas['JobStatus'];
+export type StageName = Schemas['StageName'];
+export type StageState = Schemas['StageState'];
+export type Stage = Schemas['Stage'];
 /** A machine-readable code (the UI picks the wording) and an English fallback message. */
-export interface JobWarning {
-  code: string;
-  message: string;
-}
+export type JobWarning = Schemas['JobWarning'];
 
-export interface Job {
-  id: string;
-  status: JobStatus;
-  /** 1-based position while `status` is `queued`, otherwise null. */
-  queuePosition: number | null;
-  stages: Stage[];
-  /** Pages in the document (1 for a single image). */
-  pages: number;
-  /** Pages actually processed (at most LIMITS.maxPages). */
-  pagesProcessed: number;
-  /** A page or structure limit cut the job short. */
-  truncated: boolean;
-  /** Structures found before the cap. */
-  structuresFound: number;
-  /** Structures found but not returned because of the cap. */
-  structuresDropped: number;
-  results: Result[];
-  /** Things the user should know about the job (the API's `warnings`). */
-  warnings: JobWarning[];
-  /** Set when `status` is `failed`, otherwise null. */
-  error: string | null;
-  /** ISO 8601. */
-  createdAt: string;
-  /** ISO 8601: when the job and its files are deleted (one hour after the job ends). */
-  expiresAt: string;
-}
+/** Pipeline order. The API returns every stage, in this order. `contract.check.ts` fails if a stage is missing here. */
+export const STAGE_ORDER = ['upload', 'render', 'segment', 'recognise', 'check'] as const satisfies readonly StageName[];
 
+/**
+ * A result. `Required<>`: the API always sends every field (a default is sent, not left out), and `parseJob`
+ * fills the ones a server version might leave out.
+ *
+ * `nameTier` and `nameVerified` are Orthonym's own ids for what kind of name `name` is and how it was checked
+ * (decision D14). `nameVerified` is `opsin`, `opsin_split`, `opsin_constitution`, `opsin_twin`, `opsin_acids` or
+ * `identity`; null when there is no name. The UI words the ids it knows and shows an unknown tier as it is.
+ */
+export type Result = Required<Schemas['ResultView']>;
+
+export type Job = Omit<Required<Schemas['JobView']>, 'results'> & { results: Result[] };
+
+/** `POST /api/jobs` answers 202 with the whole job; the app needs its id to poll. */
 export interface CreateJobResponse {
   id: string;
 }
 
+/** PROVISIONAL. */
 export interface ValidateRequest {
   molfile: string;
 }
 
-/** `POST /jobs/{id}/results/{index}/validate`: values recomputed on the server. */
+/** PROVISIONAL. `POST /api/jobs/{id}/results/{n}/validate`: values recomputed on the server. */
 export interface ValidateResponse {
   smiles: string;
   inchikey: string;
@@ -118,10 +62,13 @@ export interface ValidateResponse {
   valid: boolean;
   name: string | null;
   nameTier: string | null;
+  /** How the name was checked; see `Result`. */
+  nameVerified: string | null;
 }
 
 export type ExportFormat = 'zip' | 'sdf' | 'csv';
 
+/** PROVISIONAL. `POST /api/jobs/{id}/export`. */
 export interface ExportRequest {
   format: ExportFormat;
   /**
@@ -168,13 +115,16 @@ export class ApiError extends Error {
   readonly code: ApiErrorCode;
   /** `detail.message` from the server, in English; null when the error did not come from the API. */
   readonly serverMessage: string | null;
+  /** The `Retry-After` header of a 429 or 503, in milliseconds; null when there was none. */
+  readonly retryAfterMs: number | null;
 
-  constructor(status: number, code: ApiErrorCode, serverMessage?: string) {
+  constructor(status: number, code: ApiErrorCode, serverMessage?: string, retryAfterMs: number | null = null) {
     super(serverMessage ?? code);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
     this.serverMessage = serverMessage ?? null;
+    this.retryAfterMs = retryAfterMs;
   }
 }
 

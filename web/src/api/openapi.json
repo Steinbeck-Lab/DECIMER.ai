@@ -1,0 +1,647 @@
+{
+  "components": {
+    "schemas": {
+      "ErrorDetail": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorDetail",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/ErrorDetail"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "JobStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "done",
+          "failed"
+        ],
+        "title": "JobStatus",
+        "type": "string"
+      },
+      "JobView": {
+        "description": "The job as the API returns it.",
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set when `status` is failed.",
+            "title": "Error"
+          },
+          "expiresAt": {
+            "description": "When the job and its files are deleted.",
+            "format": "date-time",
+            "title": "Expiresat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "pages": {
+            "description": "Pages in the upload (an image counts as one page).",
+            "title": "Pages",
+            "type": "integer"
+          },
+          "pagesProcessed": {
+            "description": "Pages that will be, or were, processed.",
+            "title": "Pagesprocessed",
+            "type": "integer"
+          },
+          "queuePosition": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "1-based place in the queue while `status` is queued.",
+            "title": "Queueposition"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ResultView"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/Stage"
+            },
+            "title": "Stages",
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "structuresDropped": {
+            "default": 0,
+            "description": "Found but not returned (the cap).",
+            "title": "Structuresdropped",
+            "type": "integer"
+          },
+          "structuresFound": {
+            "default": 0,
+            "title": "Structuresfound",
+            "type": "integer"
+          },
+          "truncated": {
+            "description": "A page or structure limit cut the job short.",
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/JobWarning"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "stages",
+          "pages",
+          "pagesProcessed",
+          "truncated",
+          "createdAt",
+          "expiresAt"
+        ],
+        "title": "JobView",
+        "type": "object"
+      },
+      "JobWarning": {
+        "description": "A machine-readable code (the UI picks the wording) and an English fallback message.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "JobWarning",
+        "type": "object"
+      },
+      "ResultView": {
+        "description": "A result as returned by the API.",
+        "properties": {
+          "bbox": {
+            "description": "[x0, y0, x1, y1] in pixels of the rendered page.",
+            "maxItems": 4,
+            "minItems": 4,
+            "prefixItems": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "integer"
+              }
+            ],
+            "title": "Bbox",
+            "type": "array"
+          },
+          "confidence": {
+            "description": "Recognition confidence.",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "cropUrl": {
+            "description": "URL of the crop image of this result.",
+            "title": "Cropurl",
+            "type": "string"
+          },
+          "inchikey": {
+            "description": "Empty when the SMILES is invalid.",
+            "title": "Inchikey",
+            "type": "string"
+          },
+          "index": {
+            "description": "0-based position in the job; edits and exports use it.",
+            "minimum": 0.0,
+            "title": "Index",
+            "type": "integer"
+          },
+          "isStructure": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The classifier believes this is a chemical structure. Null when the classifier gave no answer (the worker could not reach it).",
+            "title": "Isstructure"
+          },
+          "molfile": {
+            "default": "",
+            "description": "V2000 molfile with 2D coordinates.",
+            "title": "Molfile",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "IUPAC name that passed the round trip.",
+            "title": "Name"
+          },
+          "nameTier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tier of `name`, e.g. pin_verified.",
+            "title": "Nametier"
+          },
+          "nameVerified": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How `name` was checked, as chem reports it (e.g. opsin); null without a name.",
+            "title": "Nameverified"
+          },
+          "number": {
+            "description": "1-based compound number shown in the UI.",
+            "readOnly": true,
+            "title": "Number",
+            "type": "integer"
+          },
+          "pageIndex": {
+            "description": "0-based page the structure was found on.",
+            "minimum": 0.0,
+            "title": "Pageindex",
+            "type": "integer"
+          },
+          "smiles": {
+            "title": "Smiles",
+            "type": "string"
+          },
+          "svg": {
+            "default": "",
+            "description": "RDKit depiction as an inline SVG string.",
+            "title": "Svg",
+            "type": "string"
+          },
+          "valid": {
+            "description": "RDKit accepts the SMILES.",
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "index",
+          "pageIndex",
+          "bbox",
+          "smiles",
+          "inchikey",
+          "valid",
+          "isStructure",
+          "confidence",
+          "cropUrl",
+          "number"
+        ],
+        "title": "ResultView",
+        "type": "object"
+      },
+      "Stage": {
+        "properties": {
+          "name": {
+            "$ref": "#/components/schemas/StageName"
+          },
+          "state": {
+            "$ref": "#/components/schemas/StageState"
+          }
+        },
+        "required": [
+          "name",
+          "state"
+        ],
+        "title": "Stage",
+        "type": "object"
+      },
+      "StageName": {
+        "enum": [
+          "upload",
+          "render",
+          "segment",
+          "recognise",
+          "check"
+        ],
+        "title": "StageName",
+        "type": "string"
+      },
+      "StageState": {
+        "enum": [
+          "pending",
+          "active",
+          "done"
+        ],
+        "title": "StageState",
+        "type": "string"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "DECIMER.ai job API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/jobs": {
+      "post": {
+        "operationId": "create_job_api_jobs_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "description": "One PDF, or one or more PNG, JPEG, WebP or HEIC images. A pasted image is one part.",
+                    "items": {
+                      "format": "binary",
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Mixed PDF and images, several PDFs, a corrupt or encrypted file, or no file"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The upload, an image or a PDF page is too large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A file is not a PDF, PNG, JPEG, WebP or HEIC/HEIF image"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The client already has the maximum number of active jobs"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The queue is full, or the service is unavailable. See Retry-After"
+          }
+        },
+        "summary": "Create a job from an upload or a pasted image"
+      }
+    },
+    "/api/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_job_api_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unknown or expired job"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Status, progress and results of a job"
+      }
+    },
+    "/api/jobs/{job_id}/media/{name}": {
+      "get": {
+        "operationId": "get_media_api_jobs__job_id__media__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {}
+            },
+            "description": "The image (crop-N.png or page-N.png)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unknown job or file"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "A crop or page image of a job"
+      }
+    },
+    "/healthz": {
+      "get": {
+        "operationId": "healthz_healthz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Healthz Healthz Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness: the process answers"
+      }
+    },
+    "/readyz": {
+      "get": {
+        "operationId": "readyz_readyz_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "503": {
+            "description": "Not ready"
+          }
+        },
+        "summary": "Readiness: Redis answers and the data directory is writable"
+      }
+    }
+  }
+}

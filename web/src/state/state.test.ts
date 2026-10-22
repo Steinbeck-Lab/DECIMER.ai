@@ -60,7 +60,7 @@ test('reset brings back the original molfile, values and status', () => {
   const original = byIndex(run(), 4);
   const state = run(
     { type: 'edit', index: 4, molfile: molfileOf('x') },
-    { type: 'validated', index: 4, molfile: molfileOf('x'), derived: { smiles: 'CC', inchikey: 'AAAAAAAAAAAAAA-BBBBBBBBBB-C', svg: 'x.svg', valid: true, name: null, nameTier: null } },
+    { type: 'validated', index: 4, molfile: molfileOf('x'), derived: { smiles: 'CC', inchikey: 'AAAAAAAAAAAAAA-BBBBBBBBBB-C', svg: 'x.svg', valid: true, name: null, nameTier: null, nameVerified: null } },
     { type: 'reset', index: 4 },
   );
   expect(byIndex(state, 4)).toEqual(original);
@@ -123,7 +123,7 @@ test('after validation the new SMILES, name and validity replace the recognised 
       type: 'validated',
       index: 4,
       molfile: edited,
-      derived: { smiles: 'CCO', inchikey: 'LFQSCWFLJHTTHZ-UHFFFAOYSA-N', svg: 'new.svg', valid: true, name: 'ethanol', nameTier: 'pin_verified' },
+      derived: { smiles: 'CCO', inchikey: 'LFQSCWFLJHTTHZ-UHFFFAOYSA-N', svg: 'new.svg', valid: true, name: 'ethanol', nameTier: 'pin_verified', nameVerified: 'opsin' },
     },
   );
   const view = byIndex(state, 4);
@@ -133,7 +133,7 @@ test('after validation the new SMILES, name and validity replace the recognised 
 test('a validate answer for an older edit is dropped', () => {
   const first = molfileOf('first');
   const second = molfileOf('second');
-  const derived = (smiles: string) => ({ smiles, inchikey: '', svg: '', valid: true, name: null, nameTier: null });
+  const derived = (smiles: string) => ({ smiles, inchikey: '', svg: '', valid: true, name: null, nameTier: null, nameVerified: null });
   const state = run(
     { type: 'edit', index: 1, molfile: first },
     { type: 'edit', index: 1, molfile: second },
@@ -196,6 +196,33 @@ test('a failed job and a lost connection end in the failed phase with their reas
     message: 'boom',
   });
   expect(reducer(working, { type: 'connectionLost' }).failure).toEqual({ kind: 'connection' });
+  expect(reducer(working, { type: 'jobExpired' }).failure).toEqual({ kind: 'expired' });
+});
+
+test('a lost connection keeps the job and its id: the page can pick the same job up again', () => {
+  const running: State = { ...initialState, phase: 'working', jobId: 'job-1', startedAt: 5, job: { ...job, status: 'running', results: [] } };
+  const lost = reducer(running, { type: 'connectionLost' });
+  expect(lost).toMatchObject({ phase: 'failed', jobId: 'job-1', startedAt: 5, job: running.job });
+});
+
+test('resume goes back to working on the same job, but only from a lost connection', () => {
+  const running: State = { ...initialState, phase: 'working', jobId: 'job-1', startedAt: 5, job: { ...job, status: 'running', results: [] } };
+  const lost = reducer(running, { type: 'connectionLost' });
+  expect(reducer(lost, { type: 'resume' })).toEqual({ ...running, failure: null });
+
+  // A job the server reports as failed or gone would only fail again; so would a job that is not there.
+  const failedJob = reducer(running, { type: 'jobUpdated', job: { ...job, status: 'failed', error: 'boom' } });
+  expect(reducer(failedJob, { type: 'resume' })).toBe(failedJob);
+  const expired = reducer(running, { type: 'jobExpired' });
+  expect(reducer(expired, { type: 'resume' })).toBe(expired);
+  expect(reducer(running, { type: 'resume' })).toBe(running);
+  const noJob: State = { ...lost, jobId: null };
+  expect(reducer(noJob, { type: 'resume' })).toBe(noJob);
+});
+
+test('an answer that arrives after the connection was given up on is not shown', () => {
+  const lost = reducer({ ...initialState, phase: 'working', jobId: 'job-1' }, { type: 'connectionLost' });
+  expect(reducer(lost, { type: 'jobUpdated', job })).toBe(lost);
 });
 
 test('start over drops the job, the edits and the selection, but the editor stays mounted', () => {
@@ -264,7 +291,7 @@ test('stepping with no filter walks the whole figure, and a selection outside th
 
 test('an invalid structure after an edit is flagged whatever the status: edited, then checked', () => {
   const edited = molfileOf('empty canvas');
-  const invalid = { smiles: '', inchikey: '', svg: 'x.svg', valid: false, name: null, nameTier: null };
+  const invalid = { smiles: '', inchikey: '', svg: 'x.svg', valid: false, name: null, nameTier: null, nameVerified: null };
   const afterEdit = run(
     { type: 'edit', index: 1, molfile: edited },
     { type: 'validated', index: 1, molfile: edited, derived: invalid },
@@ -291,7 +318,7 @@ test('a result is stale from the edit until the server answers, and after a fail
     type: 'validated',
     index: 2,
     molfile,
-    derived: { smiles: 'CC', inchikey: 'LFQSCWFLJHTTHZ-UHFFFAOYSA-N', svg: 'x.svg', valid: true, name: null, nameTier: null },
+    derived: { smiles: 'CC', inchikey: 'LFQSCWFLJHTTHZ-UHFFFAOYSA-N', svg: 'x.svg', valid: true, name: null, nameTier: null, nameVerified: null },
   });
   expect(byIndex(answered, 2).stale).toBe(false);
   const failed = reducer(validating, { type: 'validationFailed', index: 2, molfile });

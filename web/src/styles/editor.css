@@ -229,6 +229,7 @@
 }
 
 .dc-fact__tier {
+  display: block;
   width: 100%;
   color: var(--dc-muted);
   font-size: 0.75rem;

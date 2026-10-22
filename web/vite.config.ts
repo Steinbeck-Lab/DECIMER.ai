@@ -24,12 +24,14 @@ export default defineConfig({
   // Ketcher's bundle still references Node's `global`, and its `util` polyfill reads `process.env.NODE_DEBUG`
   // (the dev server has no `process`; production builds never reach it).
   define: { global: 'globalThis', 'process.env.NODE_DEBUG': 'undefined' },
+  // `npm run dev` against a local API: VITE_API=http VITE_API_PROXY=http://127.0.0.1:8000 npm run dev
+  server: process.env.VITE_API_PROXY ? { proxy: { '/api': process.env.VITE_API_PROXY } } : {},
   preview: {
     headers: { 'Content-Security-Policy': CONTENT_SECURITY_POLICY },
   },
   test: {
     environment: 'jsdom',
-    include: ['src/**/*.test.{ts,tsx}'],
+    include: ['src/**/*.test.{ts,tsx}', 'scripts/*.test.ts'],
     setupFiles: ['src/test/setup.ts'],
   },
 });

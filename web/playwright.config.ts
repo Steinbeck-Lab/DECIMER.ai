@@ -3,6 +3,8 @@ import { defineConfig, devices } from '@playwright/test';
 const PORT = 4173;
 /** A second build of the same app whose edit debounce is long (VITE_EDIT_DEBOUNCE_MS), for the test that exports inside it. */
 export const SLOW_DEBOUNCE_PORT = 4174;
+/** A third build, with VITE_API=http: the app against the job API's real endpoints (answered by the tests). */
+export const HTTP_API_PORT = 4175;
 const origin = (port: number) => `http://127.0.0.1:${port}`;
 
 export default defineConfig({
@@ -16,7 +18,7 @@ export default defineConfig({
     // The tests of the animation start from an empty storage.
     storageState: {
       cookies: [],
-      origins: [PORT, SLOW_DEBOUNCE_PORT].map((port) => ({
+      origins: [PORT, SLOW_DEBOUNCE_PORT, HTTP_API_PORT].map((port) => ({
         origin: origin(port),
         localStorage: [{ name: 'decimer.visited', value: '1' }],
       })),
@@ -36,6 +38,14 @@ export default defineConfig({
         `VITE_EDIT_DEBOUNCE_MS=4000 npx vite build --outDir node_modules/.e2e-slow-debounce --emptyOutDir && ` +
         `npx vite preview --outDir node_modules/.e2e-slow-debounce --port ${SLOW_DEBOUNCE_PORT} --strictPort --host 127.0.0.1`,
       url: `${origin(SLOW_DEBOUNCE_PORT)}/`,
+      timeout: 300_000,
+      reuseExistingServer: false,
+    },
+    {
+      command:
+        `VITE_API=http npx vite build --outDir node_modules/.e2e-http-api --emptyOutDir && ` +
+        `npx vite preview --outDir node_modules/.e2e-http-api --port ${HTTP_API_PORT} --strictPort --host 127.0.0.1`,
+      url: `${origin(HTTP_API_PORT)}/`,
       timeout: 300_000,
       reuseExistingServer: false,
     },

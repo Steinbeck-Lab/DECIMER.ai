@@ -5,7 +5,11 @@ import { fixtureImage, layoutOnCanvas, waitForEditor } from './helpers';
 // WCAG 2.x A and AA rules (the Lighthouse accessibility score is built on the same axe-core rules).
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
-/** `exclude`: a selector for third-party markup (Ketcher's own toolbar, EPAM's) that is not ours to fix. */
+/** Ketcher's own markup (EPAM's toolbars, dialogs and clipboard field) is the only thing left out of an audit. Our panel
+ *  around it, the loading placeholder and the load-failure alert inside the canvas are audited. */
+const KETCHER = '.Ketcher-root';
+
+/** `exclude`: a selector for third-party markup that is not ours to fix. */
 async function audit(page: Page, context: string, exclude?: string) {
   const builder = new AxeBuilder({ page }).withTags(TAGS);
   if (exclude) builder.exclude(exclude);
@@ -49,8 +53,26 @@ test('results screen, idle and with a structure open (editor not yet loaded and 
   await page.waitForSelector('[data-testid=top-toolbar]', { state: 'attached', timeout: 90_000 });
   await page.waitForTimeout(2000);
   // Ketcher's own toolbar is third-party markup (EPAM); the page around it is ours.
-  const { violations } = await new AxeBuilder({ page }).withTags(TAGS).exclude('.dc-editor__canvas').analyze();
+  const { violations } = await new AxeBuilder({ page }).withTags(TAGS).exclude(KETCHER).analyze();
   expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(' | ')}`)).toEqual([]);
+});
+
+test('the panel when the editor could not load a structure: the alert and "Try again" are audited, with Ketcher mounted', async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.goto('./?mockStepMs=150');
+  await page.locator('input[type=file]').setInputFiles(fixtureImage('badmolfile.png'));
+  await page.getByRole('list', { name: 'Recognised structures' }).waitFor({ timeout: 40_000 });
+  await page.locator('.dc-grid[data-arriving="false"]').waitFor({ timeout: 15_000 });
+  await page.getByRole('button', { name: /^Structure 2\b/ }).click();
+  await waitForEditor(page);
+  await page.getByRole('button', { name: /^Structure 1\b/ }).click();
+  const alert = page.getByRole('alert');
+  await alert.waitFor();
+  await expect(alert.getByRole('button', { name: 'Try again' })).toBeVisible();
+  await expect(page.locator('.Ketcher-root')).toHaveCount(1); // Ketcher is there, so only its own root is excluded
+  // The alert and the button sit in the canvas element, outside Ketcher's root: they are audited.
+  expect(await alert.evaluate((el) => !el.closest('.Ketcher-root'))).toBe(true);
+  await audit(page, 'load failure', KETCHER);
 });
 
 test('static pages', async ({ page }) => {
@@ -68,7 +90,7 @@ test('phone: results and the sheet', async ({ page }) => {
   await page.getByRole('button', { name: /^Structure 6\b/ }).click();
   await page.getByRole('heading', { name: 'Editing 6' }).waitFor();
   await page.waitForTimeout(600);
-  const { violations } = await new AxeBuilder({ page }).withTags(TAGS).exclude('.dc-editor__canvas').analyze();
+  const { violations } = await new AxeBuilder({ page }).withTags(TAGS).exclude(KETCHER).analyze();
   expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(' | ')}`)).toEqual([]);
 });
 
@@ -86,7 +108,7 @@ test('the stale tile of an edit the server has not answered yet still meets the 
   await stale.waitFor({ timeout: 15_000 });
 
   // The tile is selected (sky fill) and an active button: its text needs 4.5:1 like any other.
-  const { violations } = await new AxeBuilder({ page }).withTags(TAGS).exclude('.dc-editor__canvas').analyze();
+  const { violations } = await new AxeBuilder({ page }).withTags(TAGS).exclude(KETCHER).analyze();
   expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(' | ')}`)).toEqual([]);
   await expect(stale).toHaveAttribute('data-stale', 'true'); // still stale when the audit ran
 

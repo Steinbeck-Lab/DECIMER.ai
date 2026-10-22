@@ -64,16 +64,43 @@ test('empty → upload → working → results, with no console errors or CSP vi
   expect(problems).toEqual([]);
 });
 
-test('names: a verified name shows with its tier on hover, no verified name says so', async ({ page }) => {
+test('names: the hover says what kind of name it is and how it was checked; no verified name says so', async ({ page }) => {
   await page.goto(FAST);
   await upload(page);
   await waitForResults(page);
   await expect(tile(page, 1)).toContainText('No verified name');
   await expect(tile(page, 4)).toContainText('(2R)-3,3-bis(1H-indol-3-yl)propane-1,2-diol');
-  await tile(page, 4).hover();
-  await expect(page.getByRole('tooltip')).toContainText('Orthonym: PIN verified (OPSIN round trip)');
+
+  // The mock names each compound differently: tier and way of checking (mocks/fixtures.ts NAME_CHECK).
+  const expected: [number, string, string][] = [
+    [4, 'Preferred IUPAC name', 'OPSIN reads this name back to exactly this structure'],
+    [5, 'Preferred IUPAC name', 'OPSIN reads this name back to this structure drawn without dative bonds'],
+    [6, 'Systematic name (not the preferred IUPAC name)', 'OPSIN confirms the connectivity; stereo checked by CIP labelling'],
+    [7, 'Name in preferred IUPAC form; its preferred status is not certified', 'OPSIN reads an equivalent spelling back to this structure'],
+    [11, 'Systematic name (not the preferred IUPAC name)', 'Exact match in a curated list'],
+    [12, 'Preferred IUPAC name', 'OPSIN reads each component acid; together they rebuild this structure'],
+  ];
+  for (const [n, kind, how] of expected) {
+    await tile(page, n).hover();
+    const tooltip = page.getByRole('tooltip');
+    await expect(tooltip, `structure ${n}`).toContainText(kind);
+    await expect(tooltip, `structure ${n}`).toContainText(how);
+    // The kind first, then how it was checked.
+    const lines = await tooltip.locator('.dc-hover__line').allTextContents();
+    expect(lines, `structure ${n}`).toEqual([kind, how]);
+  }
+
   await tile(page, 1).hover();
-  await expect(page.getByRole('tooltip')).toContainText('Orthonym declined');
+  await expect(page.getByRole('tooltip')).toHaveText('No verified name');
+  expect(await page.getByRole('tooltip').locator('.dc-hover__line').count()).toBe(1);
+
+  // The same two lines sit under the name in the panel.
+  await tile(page, 6).click();
+  const panel = editorPanel(page);
+  await expect(panel.locator('.dc-fact__tier')).toHaveText([
+    'Systematic name (not the preferred IUPAC name)',
+    'OPSIN confirms the connectivity; stereo checked by CIP labelling',
+  ]);
 });
 
 test('pasting an image starts the job at once; pasting text does nothing', async ({ page }) => {
@@ -332,10 +359,11 @@ test('the editor panel traps focus while open and hands it back to the tile on c
   await waitForEditor(page, 800);
   await expect(panel.getByRole('heading', { name: 'Editing 5' })).toBeFocused();
 
-  // Tab cycles inside the panel and never reaches the page behind it. Ketcher's own toolbar sometimes drops
-  // focus to the body for one press (after "Add Image" or "Extended Table", for instance: its focus handling,
-  // not the panel's). That is tolerated when it happens inside the canvas, as long as the next press is
-  // back inside the panel. Anything else outside the panel, or a drop out of our own controls, fails.
+  // Tab cycles inside the panel and never reaches the page behind it. One press can end on the body: Tab from the
+  // last button of a Ketcher toolbar group ("Add Image", "Extended Table") lands on a scroll arrow that Ketcher then
+  // removes (a Ketcher 3.18.0 behaviour, pinned by "known upstream" in editor.spec.ts, which says when to delete
+  // this tolerance). That is accepted only after a control inside the canvas, and the next press must be back inside
+  // the panel. Anything else outside the panel, or a drop out of our own controls, fails.
   const state = () =>
     panel.evaluate((el) => ({
       inside: el.contains(document.activeElement),

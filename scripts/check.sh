@@ -8,14 +8,21 @@ export PATH="$HOME/.local/opt/node/bin:$HOME/.local/bin:$PATH"
 
 step() { printf '\n== %s\n' "$*"; }
 
-for project in api services/common services/seg services/ocsr services/cls golden; do
+for project in api services/common services/seg services/ocsr services/cls services/chem golden; do
   step "python: $project"
   (cd "$project" && uv sync --locked -q && uv run -q ruff check . && uv run -q ruff format --check . \
     && uv run -q mypy && uv run -q pytest -q)
+  if [[ $project == api ]]; then
+    # The web app's types come from the API's OpenAPI schema: fails when the API changed and web/src/api/openapi.json
+    # did not (run "npm run gen:api" in web/ and commit). No Node needed.
+    step "api: OpenAPI schema matches web/src/api/openapi.json"
+    (cd api && uv run -q python ../web/scripts/export-openapi.py | diff - ../web/src/api/openapi.json)
+  fi
 done
 
 step "web: lint, types, unit tests, build"
-(cd web && npm ci --silent && npm run -s lint && npm run -s typecheck && npm test --silent && npm run -s build >/dev/null)
+(cd web && npm ci --silent && npm run -s lint && npm run -s typecheck && npm test --silent \
+  && node scripts/gen-api.mjs --check --types-only && npm run -s build >/dev/null)
 
 if [[ "${1:-}" != "--no-e2e" ]]; then
   step "web: e2e (Playwright image)"

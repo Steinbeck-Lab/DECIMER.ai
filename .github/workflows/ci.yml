@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [api, services/common, services/seg, services/ocsr, services/cls, golden]
+        project: [api, services/common, services/seg, services/ocsr, services/cls, services/chem, golden]
     defaults:
       run:
         working-directory: ${{ matrix.project }}
@@ -34,6 +34,11 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy
       - run: uv run pytest
+      # The web app's types come from the API's OpenAPI schema (web/src/api/openapi.json). Fails when the API's
+      # schema changed and the committed copy did not: run "npm run gen:api" in web/ and commit. No Node needed.
+      - if: matrix.project == 'api'
+        shell: bash # with pipefail: a failing export fails the step
+        run: uv run python ../web/scripts/export-openapi.py | diff - ../web/src/api/openapi.json
 
   web:
     runs-on: ubuntu-24.04
@@ -51,6 +56,9 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      # generated.ts against the committed schema (Node only). The schema against the API itself is checked in the
+      # python (api) job above, and by "npm run check:api" with uv and the API's environment.
+      - run: node scripts/gen-api.mjs --check --types-only
       - run: npm run build
 
   e2e:

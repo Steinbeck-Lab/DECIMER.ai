@@ -33,7 +33,7 @@ const doneJob = (id: string): Job => ({
 const runningJob = (id: string): Job => ({ ...doneJob(id), status: 'running', results: [] });
 
 const png = (name = 'a.png') => new File(['x'], name, { type: 'image/png' });
-const derived = (smiles: string): ValidateResponse => ({ smiles, inchikey: '', svg: '', valid: true, name: null, nameTier: null });
+const derived = (smiles: string): ValidateResponse => ({ smiles, inchikey: '', svg: '', valid: true, name: null, nameTier: null, nameVerified: null });
 
 type Calls = Record<'createJob' | 'getJob' | 'validate' | 'exportJob' | 'report', unknown[][]>;
 
@@ -100,7 +100,7 @@ test('429 from the API puts the user back on the empty screen with that reason',
   expect(controller.store.getState()).toMatchObject({ phase: 'empty', problem: { kind: 'api', code: 'rate_limited' } });
 });
 
-test('three failed polls in a row end the job as a lost connection; one hiccup does not', async () => {
+test('three unexpected answers end the job as a lost connection; one hiccup does not', async () => {
   let n = 0;
   const hiccup = fakeApi({
     getJob: async () => {
@@ -112,7 +112,7 @@ test('three failed polls in a row end the job as a lost connection; one hiccup d
   await a.submit([png()]);
   await vi.waitFor(() => expect(a.store.getState().phase).toBe('results'));
 
-  const dead = fakeApi({ getJob: async () => { throw new ApiError(0, 'network'); } });
+  const dead = fakeApi({ getJob: async () => { throw new ApiError(500, 'unknown'); } });
   const b = make(dead).controller;
   await b.submit([png()]);
   await vi.waitFor(() => expect(b.store.getState().phase).toBe('failed'));
@@ -422,4 +422,233 @@ test('a failed export frees the menus too', async () => {
   const { controller } = await inResults(api);
   await controller.download('zip');
   expect(controller.store.getState().exporting).toBe(false);
+});
+
+// ---- polling backs off, and honours Retry-After --------------------------------------------
+
+function pollingApi(responses: Array<Job | ApiError>, signals: AbortSignal[] = []) {
+  const times: number[] = [];
+  let n = 0;
+  const api = fakeApi({
+    pollIntervalMs: 1000,
+    getJob: async (_id, signal) => {
+      times.push(Date.now());
+      if (signal) signals.push(signal);
+      const next = responses[Math.min(n++, responses.length - 1)];
+      if (next instanceof ApiError) throw next;
+      if (!next) throw new Error('no response');
+      return next;
+    },
+  });
+  return { api, times, calls: () => times.length };
+}
+
+const unavailable = (retryAfterMs: number | null) => new ApiError(503, 'unavailable', 'Try again.', retryAfterMs);
+const offline = () => new ApiError(0, 'network');
+
+async function startPolling(api: ApiClient) {
+  vi.useFakeTimers();
+  const { controller } = make(api);
+  await controller.submit([png()]);
+  await vi.advanceTimersByTimeAsync(0);
+  return controller;
+}
+
+test('a 503 with Retry-After is not polled again before that time', async () => {
+  const { api, calls } = pollingApi([unavailable(7000), doneJob('job-1')]);
+  const controller = await startPolling(api);
+  expect(calls()).toBe(1);
+  await vi.advanceTimersByTimeAsync(6999);
+  expect(calls()).toBe(1);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(calls()).toBe(2);
+  expect(controller.store.getState().phase).toBe('results');
+});
+
+test('Retry-After is capped at 30 s and is never shorter than the poll interval', async () => {
+  const long = pollingApi([unavailable(120_000), doneJob('job-1')]);
+  await startPolling(long.api);
+  await vi.advanceTimersByTimeAsync(29_999);
+  expect(long.calls()).toBe(1);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(long.calls()).toBe(2);
+  controllers.forEach((c) => c.dispose());
+  controllers = [];
+
+  const short = pollingApi([unavailable(100), doneJob('job-1')]);
+  await startPolling(short.api);
+  await vi.advanceTimersByTimeAsync(999);
+  expect(short.calls()).toBe(1); // 100 ms asked, one poll interval kept
+  await vi.advanceTimersByTimeAsync(1);
+  expect(short.calls()).toBe(2);
+});
+
+const broken = () => new ApiError(500, 'unknown');
+
+test('without Retry-After, unexpected answers back off: 1 s, then 2 s, and the third ends the job as a lost connection', async () => {
+  const { api, times } = pollingApi([broken()]);
+  const controller = await startPolling(api);
+  await vi.advanceTimersByTimeAsync(999);
+  expect(times).toHaveLength(1);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(times).toHaveLength(2);
+  await vi.advanceTimersByTimeAsync(1999);
+  expect(times).toHaveLength(2);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(times).toHaveLength(3);
+  expect(controller.store.getState()).toMatchObject({ phase: 'failed', failure: { kind: 'connection' } });
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(times).toHaveLength(3); // and it stopped asking
+});
+
+test('no answer at all is retried like a busy server: ten failures, backing off 1 s, 2 s, 4 s, 8 s and then 16 s at most', async () => {
+  const { api, times } = pollingApi([offline()]);
+  const controller = await startPolling(api);
+  await vi.advanceTimersByTimeAsync(300_000);
+  expect(times).toHaveLength(10);
+  const gaps = times.slice(1).map((t, i) => t - times[i]!);
+  expect(gaps).toEqual([1000, 2000, 4000, 8000, 16_000, 16_000, 16_000, 16_000, 16_000]);
+  expect(controller.store.getState()).toMatchObject({ phase: 'failed', failure: { kind: 'connection' } });
+});
+
+test('a network that comes back within ten failures finishes the job', async () => {
+  const { api } = pollingApi([...Array.from({ length: 9 }, offline), doneJob('job-1')]);
+  const controller = await startPolling(api);
+  await vi.advanceTimersByTimeAsync(300_000);
+  expect(controller.store.getState().phase).toBe('results');
+});
+
+test('failures are counted per kind: busy answers and lost connections do not use up the three unexpected ones', async () => {
+  // Six with no answer, six "try again", one unexpected answer, then the job: the unexpected one is the first of its kind.
+  const mixed = pollingApi([...Array.from({ length: 6 }, offline), ...Array.from({ length: 6 }, () => unavailable(1000)), broken(), doneJob('job-1')]);
+  const ok = await startPolling(mixed.api);
+  await vi.advanceTimersByTimeAsync(600_000);
+  expect(ok.store.getState().phase).toBe('results');
+  controllers.forEach((c) => c.dispose());
+  controllers = [];
+
+  // The third unexpected answer ends it, however many other failures lie between them.
+  const three = pollingApi([broken(), unavailable(1000), broken(), offline(), broken(), doneJob('job-1')]);
+  const lost = await startPolling(three.api);
+  await vi.advanceTimersByTimeAsync(600_000);
+  expect(three.calls()).toBe(5);
+  expect(lost.store.getState()).toMatchObject({ phase: 'failed', failure: { kind: 'connection' } });
+});
+
+test('a server that keeps answering "try again" is followed through ten failures in a row, not three', async () => {
+  const nine = pollingApi([...Array.from({ length: 9 }, () => unavailable(1000)), doneJob('job-1')]);
+  const ok = await startPolling(nine.api);
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(ok.store.getState().phase).toBe('results');
+  controllers.forEach((c) => c.dispose());
+  controllers = [];
+
+  const never = pollingApi([unavailable(1000)]);
+  const lost = await startPolling(never.api);
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(never.calls()).toBe(10);
+  expect(lost.store.getState().failure).toEqual({ kind: 'connection' });
+});
+
+// One less than each kind's limit, a good answer, one less again: without the reset the second run would reach the limit.
+test.each<[string, () => ApiError, number]>([
+  ['unexpected answers (3 in a row end it)', broken, 2],
+  ['no answer at all (10 in a row end it)', offline, 9],
+  ['"try again" answers (10 in a row end it)', () => unavailable(1000), 9],
+])('one good answer clears the count of failures: %s', async (_kind, fail, below) => {
+  const running = { ...doneJob('job-1'), status: 'running' as const, results: [] };
+  const { api } = pollingApi([...Array.from({ length: below }, fail), running, ...Array.from({ length: below }, fail), doneJob('job-1')]);
+  const controller = await startPolling(api);
+  await vi.advanceTimersByTimeAsync(600_000);
+  expect(controller.store.getState().phase).toBe('results'); // never a whole run of failures in a row
+});
+
+test('a job that has expired is not polled again', async () => {
+  const { api, calls } = pollingApi([new ApiError(404, 'not_found', 'Not found. The job may have expired.')]);
+  const controller = await startPolling(api);
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(calls()).toBe(1);
+  expect(controller.store.getState().failure).toEqual({ kind: 'expired' });
+});
+
+test('after a lost connection, resume polls the same job again and finishes it; no new upload', async () => {
+  const { api, calls } = pollingApi([broken(), broken(), broken(), doneJob('job-1')]);
+  const controller = await startPolling(api);
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(controller.store.getState()).toMatchObject({ phase: 'failed', jobId: 'job-1', failure: { kind: 'connection' } });
+  expect(calls()).toBe(3);
+
+  controller.resume();
+  expect(controller.store.getState()).toMatchObject({ phase: 'working', failure: null, jobId: 'job-1' });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(calls()).toBe(4); // asked at once, not after another wait
+  expect(controller.store.getState().phase).toBe('results');
+  expect(controller.store.getState().job?.id).toBe('job-1');
+});
+
+test('a resumed job gets its failure counts afresh: ten more tries for a lost connection, not one', async () => {
+  const { api, calls } = pollingApi([offline()]);
+  const controller = await startPolling(api);
+  await vi.advanceTimersByTimeAsync(300_000);
+  expect(calls()).toBe(10);
+  expect(controller.store.getState().phase).toBe('failed');
+
+  controller.resume();
+  await vi.advanceTimersByTimeAsync(300_000);
+  expect(calls()).toBe(20);
+  expect(controller.store.getState().phase).toBe('failed');
+});
+
+test('resume does nothing unless the connection was lost: not for an expired job, not while working, not in results', async () => {
+  const expired = pollingApi([new ApiError(404, 'not_found', 'Not found. The job may have expired.')]);
+  const a = await startPolling(expired.api);
+  a.resume();
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(expired.calls()).toBe(1);
+  expect(a.store.getState().phase).toBe('failed');
+  controllers.forEach((c) => c.dispose());
+  controllers = [];
+
+  const working = pollingApi([runningJob('job-1')]);
+  const b = await startPolling(working.api);
+  b.resume(); // already polling: a second loop would double the requests
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(working.calls()).toBe(11);
+  controllers.forEach((c) => c.dispose());
+  controllers = [];
+
+  const done = pollingApi([doneJob('job-1')]);
+  const c = await startPolling(done.api);
+  c.resume();
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(done.calls()).toBe(1);
+});
+
+test('starting over after a lost connection forgets the job: resume then has nothing to resume', async () => {
+  const { api, calls } = pollingApi([broken()]);
+  const controller = await startPolling(api);
+  await vi.advanceTimersByTimeAsync(60_000);
+  controller.startOver();
+  controller.resume();
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(calls()).toBe(3);
+  expect(controller.store.getState().phase).toBe('empty');
+});
+
+test('starting over, or leaving the page, aborts the request in flight and the wait before the next one', async () => {
+  const signals: AbortSignal[] = [];
+  const { api, calls } = pollingApi([unavailable(20_000)], signals);
+  const controller = await startPolling(api);
+  expect(signals[0]?.aborted).toBe(false);
+  controller.startOver();
+  expect(signals[0]?.aborted).toBe(true);
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(calls()).toBe(1);
+
+  const second = pollingApi([unavailable(20_000)], signals);
+  const other = await startPolling(second.api);
+  other.dispose(); // the provider's cleanup when the app unmounts
+  expect(signals.at(-1)?.aborted).toBe(true);
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(second.calls()).toBe(1);
 });

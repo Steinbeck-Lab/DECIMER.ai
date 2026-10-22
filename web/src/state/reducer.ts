@@ -16,6 +16,8 @@ export type Action =
   | { type: 'rejected'; problem: Problem }
   | { type: 'jobUpdated'; job: Job }
   | { type: 'connectionLost' }
+  | { type: 'jobExpired' }
+  | { type: 'resume' }
   | { type: 'startOver' }
   | { type: 'dismissProblem' }
   | { type: 'select'; index: number | null }
@@ -67,6 +69,15 @@ export function reducer(state: State, action: Action): State {
     case 'connectionLost':
       return state.phase === 'working'
         ? { ...state, phase: 'failed', failure: { kind: 'connection' } }
+        : state;
+
+    case 'jobExpired':
+      return state.phase === 'working' ? { ...state, phase: 'failed', failure: { kind: 'expired' } } : state;
+
+    // Back to the job screen on the same job (the id and the last answer were kept), only from a lost connection.
+    case 'resume':
+      return state.phase === 'failed' && state.failure?.kind === 'connection' && state.jobId !== null
+        ? { ...state, phase: 'working', failure: null }
         : state;
 
     case 'startOver':

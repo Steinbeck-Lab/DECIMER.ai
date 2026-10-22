@@ -13,14 +13,26 @@ export function imageSrc(svg: string): string {
     : svg;
 }
 
-export function tierLabel(tier: string | null): string {
-  if (!tier) return '';
-  return strings.tiers[tier] ?? tier.replaceAll('_', ' ');
-}
-
-/** Why a name is shown or missing, for the hover text. */
-export function tierText(name: string | null, tier: string | null): string {
-  return name ? strings.tile.tier(tierLabel(tier)) : strings.tile.declined;
+/**
+ * The lines of the hover text for a name (P4-15, decision D14): what kind of name it is (Orthonym's `tier`) and
+ * how it was checked (`verified`). Both come from the server as ids and are put into words here, from a fixed
+ * list. A verification this list does not know is left out (nothing is made up); a tier it does not know is shown
+ * as Orthonym's own id. With no name, the one line states that fact and no cause.
+ */
+export function nameHover(name: string | null, tier: string | null, verified: string | null): string[] {
+  if (name === null) return [strings.tile.noNameHover];
+  const lines: string[] = [];
+  if (tier !== null) {
+    // Exact ids only: "the preferred IUPAC name" is claimed for a certified PIN and nothing else, so a tier that
+    // merely starts with pin_ is shown as Orthonym's own id.
+    if (tier === 'pin_verified') lines.push(strings.tile.tierPreferred);
+    else if (tier === 'pin_unverified') lines.push(strings.tile.tierPreferredUncertified);
+    else if (tier === 'systematic_verified') lines.push(strings.tile.tierSystematic);
+    else lines.push(strings.tile.tierUnknown(tier));
+  }
+  const how = verified === null ? undefined : strings.tile.verified[verified];
+  if (how) lines.push(how);
+  return lines;
 }
 
 export function statusLabel(status: Status): string {

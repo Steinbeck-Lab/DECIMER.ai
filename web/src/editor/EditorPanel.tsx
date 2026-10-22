@@ -6,9 +6,10 @@ import type { Status } from '../state/model';
 import { useAppState, useController, useResultViews } from '../state/react';
 import { pageNumber, stepList, type ResultView } from '../state/selectors';
 import { IconCheck, IconChevronLeft, IconChevronRight, IconFlag, IconReset, IconX } from '../ui/icons';
-import { statusLabel, tierLabel } from '../ui/format';
+import { nameHover, statusLabel } from '../ui/format';
 import { CopyButton } from './CopyButton';
 import { KetcherPanel } from './KetcherPanel';
+import { keepKetcherLabelled } from './labels';
 import { Links } from './Links';
 import { useEditorSession } from './useEditorSession';
 
@@ -17,6 +18,14 @@ const LEGEND: Status[] = ['unchecked', 'review', 'notsure', 'edited', 'checked']
 function focusTile(index: number | null): void {
   const tile = index === null ? null : document.querySelector<HTMLElement>(`[data-result-tile="${index}"]`);
   (tile ?? document.getElementById('main'))?.focus();
+}
+
+/** Names the controls of Ketcher's own markup that have none, from the moment the editor mounts and as it re-renders. */
+function useKetcherLabels(host: React.RefObject<HTMLDivElement | null>, mounted: boolean) {
+  useEffect(() => {
+    const el = host.current;
+    return el && mounted ? keepKetcherLabelled(el) : undefined;
+  }, [host, mounted]);
 }
 
 /** Tells Ketcher its canvas changed size (it only listens to the window), e.g. when the panel opens on another breakpoint. */
@@ -116,6 +125,7 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
   const open = visible && view !== undefined;
   const trapRef = useFocusTrap(open);
 
+  useKetcherLabels(canvasHost, state.editorMounted);
   useCanvasResizeKick(canvasHost, Boolean(ketcher));
 
   const inCanvas = (node: EventTarget | Element | null) =>
@@ -291,7 +301,12 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
                     <span className="dc-fact__value" data-empty={view.name === null}>
                       {view.name ?? strings.tile.noName}
                     </span>
-                    {view.name && <span className="dc-fact__tier">{strings.tile.tier(tierLabel(view.nameTier))}</span>}
+                    {view.name &&
+                      nameHover(view.name, view.nameTier, view.nameVerified).map((line) => (
+                        <span key={line} className="dc-fact__tier">
+                          {line}
+                        </span>
+                      ))}
                     {view.name && <CopyButton value={view.name} label={strings.editor.copyName} />}
                   </>
                 )}

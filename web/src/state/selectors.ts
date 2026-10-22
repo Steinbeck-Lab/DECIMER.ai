@@ -16,6 +16,7 @@ export interface ResultView {
   valid: boolean;
   name: string | null;
   nameTier: string | null;
+  nameVerified: string | null;
   /** The molfile the editor and the export use. */
   molfile: string;
   modified: boolean;
@@ -72,6 +73,7 @@ function buildView(result: Result, edit?: EditEntry): ResultView {
     valid,
     name: derived ? derived.name : result.name,
     nameTier: derived ? derived.nameTier : result.nameTier,
+    nameVerified: derived ? derived.nameVerified : result.nameVerified,
     molfile: edit?.molfile ?? result.molfile,
     modified,
     checked,

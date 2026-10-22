@@ -355,9 +355,18 @@
   }
 }
 
-/* Mantine tooltip in the palette */
+/* Mantine tooltip in the palette; the name hover has one line for the kind of name and one for how it was checked. */
 .mantine-Tooltip-tooltip {
   font-size: 0.8125rem;
+}
+
+.dc-hover__line {
+  display: block;
+}
+
+.dc-hover__line + .dc-hover__line {
+  margin-top: 4px;
+  color: var(--dc-sky-line);
 }
 
 .dc-figure__foot {

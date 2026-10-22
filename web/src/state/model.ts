@@ -11,7 +11,12 @@ export type Problem =
   | { kind: 'selection'; error: SelectionError }
   | { kind: 'api'; code: ApiErrorCode; /** `detail.message` from the server, if any. */ message: string | null };
 
-export type Failure = { kind: 'job'; message: string | null } | { kind: 'connection' };
+/**
+ * Why the job screen ended. `connection`: the page gave up asking, the job itself may be fine (it can be picked up
+ * again). `job`: the server says the job failed. `expired`: the server no longer has it. Neither of the last two
+ * can be resumed.
+ */
+export type Failure = { kind: 'job'; message: string | null } | { kind: 'connection' } | { kind: 'expired' };
 
 export interface SourceFile {
   name: string;

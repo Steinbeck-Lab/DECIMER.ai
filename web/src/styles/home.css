@@ -226,6 +226,14 @@
   margin-top: 24px;
 }
 
+/* "Try again" and "Start over" on the failed screen. */
+.dc-working__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 24px;
+}
+
 .dc-working .dc-callout {
   margin-top: 18px;
 }

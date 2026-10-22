@@ -23,8 +23,24 @@ export interface ControllerOptions {
   flushTimeoutMs?: number;
 }
 
-/** Poll failures in a row before the page gives up on the job. */
-const MAX_POLL_FAILURES = 3;
+/**
+ * What went wrong with a poll, because each kind is followed for a different time. A kind is counted on its own, so
+ * a run of "try again" answers does not use up the few tries an unexpected answer gets. All counts start again
+ * with the next good answer.
+ */
+type FailureKind = 'network' | 'busy' | 'unexpected';
+/** No answer: the network may come back. The server said "try again" (429, 502, 503, 504): it is there. */
+const MAX_FAILURES: Record<FailureKind, number> = { network: 10, busy: 10, unexpected: 3 };
+const BUSY_STATUS = new Set([429, 502, 503, 504]);
+/** The longest wait a Retry-After can ask for, and the longest backoff without one. */
+const MAX_RETRY_AFTER_MS = 30_000;
+const MAX_BACKOFF_MS = 16_000;
+
+function failureKind(error: ApiError | null): FailureKind {
+  if (error?.code === 'network') return 'network';
+  if (error && BUSY_STATUS.has(error.status)) return 'busy';
+  return 'unexpected';
+}
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
@@ -112,26 +128,54 @@ export class AppController {
     this.pollAbort?.abort();
     const abort = new AbortController();
     this.pollAbort = abort;
-    let failures = 0;
+    const failures: Record<FailureKind, number> = { network: 0, busy: 0, unexpected: 0 };
     while (!abort.signal.aborted && generation === this.generation) {
       try {
         const job = await this.api.getJob(id, abort.signal);
         if (abort.signal.aborted || generation !== this.generation) return;
-        failures = 0;
+        failures.network = failures.busy = failures.unexpected = 0;
         this.store.dispatch({ type: 'jobUpdated', job });
         if (isTerminal(job)) return;
       } catch (error) {
         if (abort.signal.aborted || generation !== this.generation) return;
-        failures++;
+        const apiError = error instanceof ApiError ? error : null;
         // An expired job will not come back; anything else may be a hiccup.
-        const gone = error instanceof ApiError && error.code === 'not_found';
-        if (gone || failures >= MAX_POLL_FAILURES) {
+        if (apiError?.code === 'not_found') {
+          this.store.dispatch({ type: 'jobExpired' });
+          return;
+        }
+        const kind = failureKind(apiError);
+        const count = ++failures[kind];
+        if (count >= MAX_FAILURES[kind]) {
           this.store.dispatch({ type: 'connectionLost' });
           return;
         }
+        await sleep(this.backoffMs(apiError, count), abort.signal);
+        continue;
       }
       await sleep(this.api.pollIntervalMs, abort.signal);
     }
+  }
+
+  /**
+   * After a lost connection: polls the same job again, at once, with fresh failure counts. Nothing is uploaded again.
+   * Only a lost connection can be resumed; a job the server reports as failed or gone cannot.
+   */
+  resume(): void {
+    const before = this.store.getState();
+    this.store.dispatch({ type: 'resume' });
+    const after = this.store.getState();
+    if (before.phase === 'failed' && after.phase === 'working' && after.jobId) void this.poll(after.jobId, this.generation);
+  }
+
+  /**
+   * How long to wait after a failed poll: what the server asked for in Retry-After (at most 30 s, and never
+   * less than the poll interval), otherwise the poll interval doubled for each failure of that kind (at most 16 s).
+   */
+  private backoffMs(error: ApiError | null, count: number): number {
+    const interval = this.api.pollIntervalMs;
+    if (error?.retryAfterMs != null) return Math.min(Math.max(error.retryAfterMs, interval), MAX_RETRY_AFTER_MS);
+    return Math.min(interval * 2 ** (count - 1), MAX_BACKOFF_MS);
   }
 
   startOver(): void {

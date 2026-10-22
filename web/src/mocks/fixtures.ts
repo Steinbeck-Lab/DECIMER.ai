@@ -7,7 +7,7 @@
  *   Segmentation for the design mock-ups, 2026-10-22.
  * - molN.svg: RDKit depictions of the label SMILES.
  * - compounds.json: SMILES, InChIKeys and IUPAC names from the checked golden
- *   labels (a name is null where Orthonym declined); 2D molfiles generated from
+ *   labels (a name is null where Orthonym gave none); 2D molfiles generated from
  *   the SMILES with RDKit (rdDepictor, MolToMolBlock). Only 8 of the 12
  *   compounds of the figure have crops here, numbered as in the paper.
  *
@@ -53,6 +53,19 @@ export const FIXTURE_COMPOUNDS: FixtureCompound[] = compounds.map((c) => ({
 }));
 
 const CONFIDENCE: Record<number, number> = { 6: 0.62 };
+
+/**
+ * How Orthonym named each compound (decision D14): the tier and the way the name was checked. Mixed on purpose,
+ * so the hover text shows each kind. Compounds 1 and 2 have no verified name.
+ */
+const NAME_CHECK: Record<number, { tier: string; verified: string }> = {
+  4: { tier: 'pin_verified', verified: 'opsin' },
+  5: { tier: 'pin_verified', verified: 'opsin_split' },
+  6: { tier: 'systematic_verified', verified: 'opsin_constitution' },
+  7: { tier: 'pin_unverified', verified: 'opsin_twin' },
+  11: { tier: 'systematic_verified', verified: 'identity' },
+  12: { tier: 'pin_verified', verified: 'opsin_acids' },
+};
 const NOT_A_STRUCTURE = new Set([12]);
 
 /** Page of the document (0-based) the figure sits on. The paper's Figure 2 is on page 3. */
@@ -88,7 +101,8 @@ export function fixtureResults(
       isStructure: classifierUnavailable ? null : !NOT_A_STRUCTURE.has(c.number),
       confidence: CONFIDENCE[c.number] ?? 0.95,
       name: c.iupac,
-      nameTier: c.iupac ? 'pin_verified' : null,
+      nameTier: c.iupac ? (NAME_CHECK[c.number]?.tier ?? 'pin_verified') : null,
+      nameVerified: c.iupac ? (NAME_CHECK[c.number]?.verified ?? 'opsin') : null,
     };
   });
 }

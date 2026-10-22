@@ -322,3 +322,73 @@ test('New upload asks before it drops edits; keeping on works, confirming clears
   await expect(panelOf(page).getByText('Same as recognised')).toBeVisible();
   await expect(page.locator('.Ketcher-root')).toHaveCount(1);
 });
+
+// P4-14, the "one-press focus dip". Not ours: it is in Ketcher 3.18.0 (ketcher-react, ArrowScroll), and this test
+// pins the diagnosis so a Ketcher upgrade that fixes it is noticed.
+//
+// A Ketcher toolbar that is taller than the panel has scroll arrows after its last button. The "forward" arrow
+// (data-testid arrow-scroll-right-button, drawn as ▼ in a vertical toolbar) is only rendered while the end of the
+// toolbar is not in view (`endInView`). Tab from the last button ("Add Image", "Extended Table") puts focus on that
+// arrow; focusing it scrolls the toolbar until its end is in view; Ketcher then stops rendering the arrow, the
+// focused element leaves the DOM, and focus falls to the body. The next Tab goes on from where the arrow was, so
+// nothing is stuck. The panel's focus trap is not involved: the arrow is inside the panel, and the trap only acts
+// at the panel's own first and last controls.
+//
+// When this test starts failing, Ketcher has fixed it: delete it, and the tolerance for a one-press dip in the
+// "traps focus" test (app.spec.ts).
+test('known upstream (Ketcher 3.18.0): Tab from the last toolbar button lands on a scroll arrow that Ketcher then removes, and focus falls to the body', async ({ page }) => {
+  test.setTimeout(240_000);
+  await openResults(page);
+  await tile(page, 4).click();
+  await waitForEditor(page, 1000);
+  await page.evaluate(() => {
+    const w = window as unknown as { __focused?: HTMLElement };
+    document.addEventListener('focusin', (e) => (w.__focused = e.target as HTMLElement), true);
+  });
+
+  for (const last of ['Add Image', 'Extended Table']) {
+    await page.locator(`[title="${last}"]:visible`).first().focus();
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(300);
+    const after = await page.evaluate(() => {
+      const focused = (window as unknown as { __focused?: HTMLElement }).__focused;
+      return {
+        landedOn: focused?.getAttribute('data-testid') ?? focused?.getAttribute('title') ?? focused?.tagName,
+        stillInThePage: focused?.isConnected,
+        activeIsBody: document.activeElement === document.body,
+      };
+    });
+    expect(after, `after ${last}`).toEqual({ landedOn: 'arrow-scroll-right-button', stillInThePage: false, activeIsBody: true });
+  }
+
+  // One more Tab goes on from there, into the panel: nothing is trapped.
+  await page.keyboard.press('Tab');
+  expect(await panelOf(page).evaluate((el) => el.contains(document.activeElement))).toBe(true);
+});
+
+// P4-13: Lighthouse flags three controls of Ketcher 3.18.0 that have no name (button-name x2, label x1). The
+// page names them (src/editor/labels.ts, text for EPAM in docs/ketcher-a11y-upstream.md). Ketcher mounts after the
+// panel does, so this fails if the labels are only applied once, at panel mount. Whether they survive Ketcher
+// replacing the nodes is shown by labels.test.ts: no interaction in the browser makes Ketcher replace them.
+test('Ketcher\'s controls without a name are named once it has loaded, and stay named when another structure is opened', async ({ page }) => {
+  test.setTimeout(240_000);
+  await openResults(page);
+  await tile(page, 2).click();
+  await waitForEditor(page, 1000);
+
+  const names = () =>
+    page.evaluate(() => ({
+      triangles: [...document.querySelectorAll('.Ketcher-root [data-testid="copy-button-dropdown-triangle"]')].map((el) => el.getAttribute('aria-label')),
+      clipboard: [...document.querySelectorAll('.Ketcher-root textarea.cliparea')].map((el) => el.getAttribute('aria-label')),
+    }));
+  const expected = {
+    triangles: ['More options for Copy', 'More options for Aromatize'],
+    clipboard: ['Clipboard for the structure editor'],
+  };
+  expect(await names()).toEqual(expected);
+
+  await tile(page, 4).click();
+  await expect(panelOf(page).getByRole('heading', { name: 'Editing 4' })).toBeVisible();
+  await page.waitForTimeout(1000);
+  expect(await names()).toEqual(expected);
+});

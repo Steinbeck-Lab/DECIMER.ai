@@ -205,7 +205,7 @@ export class MockApiClient implements ApiClient {
     // valid with the recognised SMILES. The name is recomputed after an edit and the mock's Orthonym
     // declines, like the real one often does.
     if (atomCount(molfile) === 0) {
-      return { smiles: '', inchikey: '', svg: '', valid: false, name: null, nameTier: null };
+      return { smiles: '', inchikey: '', svg: '', valid: false, name: null, nameTier: null, nameVerified: null };
     }
     return {
       smiles: result.smiles,
@@ -214,6 +214,7 @@ export class MockApiClient implements ApiClient {
       valid: true,
       name: null,
       nameTier: null,
+      nameVerified: null,
     };
   }
 

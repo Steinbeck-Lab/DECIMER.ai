@@ -3,7 +3,7 @@ import { memo } from 'react';
 import { strings } from '../strings';
 import type { ResultView } from '../state/selectors';
 import { IconAlert } from '../ui/icons';
-import { imageSrc, statusLabel, tierText } from '../ui/format';
+import { imageSrc, nameHover, statusLabel } from '../ui/format';
 
 interface Props {
   view: ResultView;
@@ -20,6 +20,8 @@ interface Props {
  */
 export const Tile = memo(function Tile({ view, selected, order, onSelect }: Props) {
   const status = statusLabel(view.status);
+  // What kind of name this is and how it was checked; while an edit is unanswered there is nothing to say yet.
+  const hover = view.stale ? [strings.editor.updating] : nameHover(view.name, view.nameTier, view.nameVerified);
   // From the edit until the server answers, the name and depiction are from before it: say so rather than
   // show them (dimming text would take it below the contrast floor on a selected tile).
   const name = view.stale
@@ -30,7 +32,12 @@ export const Tile = memo(function Tile({ view, selected, order, onSelect }: Prop
   return (
     <li className="dc-tile" style={{ '--i': order } as React.CSSProperties}>
       <Tooltip
-        label={view.stale ? strings.editor.updating : tierText(view.name, view.nameTier)}
+        label={hover.map((line) => (
+          <span key={line} className="dc-hover__line">
+            {line}
+          </span>
+        ))}
+        disabled={hover.length === 0}
         position="bottom"
         withArrow
         multiline

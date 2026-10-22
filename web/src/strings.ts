@@ -117,7 +117,9 @@ export const strings = {
     failedHeading: 'The job did not finish',
     failedGeneric: 'Something went wrong while processing your file. Please try again.',
     failedConnection:
-      'The connection to the server was lost, so this page can no longer follow your job. Please try again.',
+      'The connection to the server was lost, so this page could not follow your job. Try again to pick it up where it is, or start over with your file.',
+    failedExpired: 'The server no longer has this job; it may have expired. Please start over and upload your file again.',
+    tryAgain: 'Try again',
     startOver: 'Start over',
   },
 
@@ -176,8 +178,25 @@ export const strings = {
     },
     noName: 'No verified name',
     noDepiction: 'No depiction',
-    declined: 'Orthonym declined: no name passed the OPSIN check',
-    tier: (label: string) => `Orthonym: ${label} (OPSIN round trip)`,
+    /**
+     * States the fact, not a cause, and does not name Orthonym: names may be switched off altogether (no chemistry
+     * service configured), and where they are on it also returns none on a timeout, with the engine unavailable, for
+     * an invalid SMILES, or where the tier is not shipped.
+     */
+    noNameHover: 'No verified name',
+    /** The name's kind (Orthonym's tier) and how it was checked (`verified`), decision D14. */
+    tierPreferred: 'Preferred IUPAC name',
+    tierPreferredUncertified: 'Name in preferred IUPAC form; its preferred status is not certified',
+    tierSystematic: 'Systematic name (not the preferred IUPAC name)',
+    tierUnknown: (tier: string) => `Orthonym tier: ${tier}`,
+    verified: {
+      opsin: 'OPSIN reads this name back to exactly this structure',
+      opsin_split: 'OPSIN reads this name back to this structure drawn without dative bonds',
+      opsin_constitution: 'OPSIN confirms the connectivity; stereo checked by CIP labelling',
+      opsin_twin: 'OPSIN reads an equivalent spelling back to this structure',
+      opsin_acids: 'OPSIN reads each component acid; together they rebuild this structure',
+      identity: 'Exact match in a curated list',
+    } as Record<string, string>,
     structureAlt: (n: number) => `Recognised structure ${n}`,
     cropAlt: (n: number) => `Original crop of structure ${n}`,
     /** Read before the number, so a button is named "Structure 4 (2R)-3,3-bis… Checked". */
@@ -204,6 +223,12 @@ export const strings = {
     previous: 'Previous structure',
     next: 'Next structure',
     canvasLabel: 'Structure editor canvas',
+    /** Names for controls of Ketcher's own markup that have none (src/editor/labels.ts). */
+    ketcher: {
+      moreOptionsFor: (button: string) => `More options for ${button}`,
+      moreOptions: 'More options',
+      clipboard: 'Clipboard for the structure editor',
+    },
     original: (page: number) => `Original, page ${page}`,
     name: 'Name',
     change: 'Change',
@@ -249,10 +274,6 @@ export const strings = {
     },
     external: '(opens in a new tab)',
   },
-
-  tiers: {
-    pin_verified: 'PIN verified',
-  } as Record<string, string>,
 
   pages: {
     draftNote: 'Draft text. To be finalised in TODO.',
