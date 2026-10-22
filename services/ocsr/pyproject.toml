@@ -7,7 +7,15 @@ authors = [
     { name = "Kohulan Rajan", email = "kohulan.rajan@uni-jena.de" }
 ]
 requires-python = "==3.11.*"
-dependencies = []
+dependencies = [
+    "decimer==2.8.0",
+    "decimer-service",
+    "numpy==1.26.3",
+    "pillow>=13.0.0",
+    "protobuf==4.25.1",
+    "pystow",
+    "tensorflow==2.15.1",
+]
 
 [build-system]
 requires = ["uv_build>=0.13.5,<0.14.0"]
@@ -22,18 +30,33 @@ select = ["E", "F", "I", "B", "UP", "S"]
 ignore = []
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]
+"tests/**" = ["S101", "S603"]
 
 [tool.mypy]
 strict = true
 packages = ["decimer_ocsr"]
 
+[[tool.mypy.overrides]]
+module = ["tensorflow", "tensorflow.*", "DECIMER", "DECIMER.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = '-m "not slow"'
+markers = [
+    "slow: runs the real DECIMER Image Transformer on the golden crops (CPU, TensorFlow); select with -m slow",
+]
+
+[tool.uv.sources]
+decimer-service = { path = "../common", editable = true }
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "mypy>=2.4.0",
     "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "rdkit>=2026.9.1",
     "ruff>=0.17.1",
 ]
