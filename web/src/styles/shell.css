@@ -1,0 +1,188 @@
+.dc-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  padding: 18px var(--dc-gutter);
+}
+
+.dc-header__logo {
+  display: block;
+  line-height: 0;
+}
+
+.dc-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  /* The first link's text lines up with the page gutter when there is no logo before it. */
+  margin-left: -12px;
+  font-size: 0.9375rem;
+}
+
+.dc-header__logo + .dc-nav {
+  margin-left: 0;
+}
+
+.dc-nav__link {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 22px;
+  background: none;
+  color: var(--dc-muted);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.dc-nav__link:hover {
+  color: var(--dc-ink);
+  background: var(--dc-paper);
+}
+
+.dc-nav__link[aria-current='page'] {
+  color: var(--dc-ink);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
+}
+
+.dc-header__tools {
+  display: flex;
+  align-items: center;
+  gap: 10px 14px;
+  margin-left: auto;
+}
+
+.dc-capacity {
+  color: var(--dc-muted);
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-download__formats {
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+@media (max-width: 640px) {
+  .dc-header {
+    padding-block: 12px;
+  }
+  .dc-header__tools {
+    width: 100%;
+    margin-left: 0;
+    justify-content: space-between;
+  }
+  .dc-download__formats {
+    display: none;
+  }
+}
+
+/* Footer */
+.dc-footer {
+  margin-top: auto;
+  padding: 16px var(--dc-gutter) 20px;
+  color: var(--dc-muted);
+  font-size: 0.875rem;
+}
+
+.dc-footer p {
+  margin: 0;
+}
+
+.dc-footer__credit {
+  text-wrap: pretty;
+}
+
+.dc-footer__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 2px solid var(--dc-ink);
+}
+
+.dc-footer__coffee {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dc-footer__cup {
+  color: var(--dc-ink);
+}
+
+.dc-footer__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+}
+
+.dc-footer a {
+  color: var(--dc-ink);
+}
+
+/* One polite message at a time, above everything */
+.dc-notice-region {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 20px;
+  z-index: 600;
+  display: flex;
+  justify-content: center;
+  padding-inline: var(--dc-gutter);
+  pointer-events: none;
+}
+
+.dc-notice {
+  margin: 0;
+  max-width: 480px;
+  padding: 12px 20px;
+  border-radius: 22px;
+  background: var(--dc-ink);
+  color: var(--dc-white);
+  font-size: 0.9375rem;
+  box-shadow: 0 8px 24px rgb(27 27 36 / 0.22);
+  animation: dc-notice-in 0.3s var(--dc-ease);
+}
+
+.dc-notice[data-kind='error'] {
+  background: var(--dc-peach);
+  color: var(--dc-peach-ink);
+  box-shadow: 0 8px 24px rgb(138 53 22 / 0.2);
+}
+
+@keyframes dc-notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Mantine's modal and menu follow the palette */
+.dc-modal__title {
+  font: 800 1.25rem/1.2 var(--dc-font-display);
+  letter-spacing: -0.01em;
+}
+
+.dc-modal__body {
+  margin: 0 0 20px;
+}
+
+.dc-modal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}

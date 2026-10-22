@@ -1,4 +1,3 @@
-import { Center, Loader, Stack, Text } from '@mantine/core';
 import { lazy, Suspense } from 'react';
 import { strings } from '../strings';
 import type { KetcherEditorProps } from './KetcherEditor';
@@ -7,18 +6,29 @@ import type { KetcherEditorProps } from './KetcherEditor';
 // slow down the upload page.
 const KetcherEditor = lazy(() => import('./KetcherEditor'));
 
+/**
+ * Starts fetching the editor's JS before it is needed: the first time the
+ * pointer moves over the results or keyboard focus lands on a structure
+ * (decision D13). The WASM still loads only when the editor mounts.
+ * Safe to call any number of times.
+ */
+export function preloadEditor(): void {
+  void import('./KetcherEditor');
+}
+
+/** Own markup and styles (styles/editor.css), so the placeholder does not depend on which Mantine sheets are loaded. */
+function Loading() {
+  return (
+    <div className="dc-editor-loading" role="status">
+      <span className="dc-spinner" aria-hidden="true" />
+      <span>{strings.editorLoading}</span>
+    </div>
+  );
+}
+
 export function KetcherPanel(props: KetcherEditorProps) {
   return (
-    <Suspense
-      fallback={
-        <Center h="100%">
-          <Stack align="center">
-            <Loader />
-            <Text size="sm">{strings.editorLoading}</Text>
-          </Stack>
-        </Center>
-      }
-    >
+    <Suspense fallback={<Loading />}>
       <KetcherEditor {...props} />
     </Suspense>
   );

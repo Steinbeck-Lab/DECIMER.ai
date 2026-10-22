@@ -1,18 +1,43 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const PORT = 4173;
+/** A second build of the same app whose edit debounce is long (VITE_EDIT_DEBOUNCE_MS), for the test that exports inside it. */
+export const SLOW_DEBOUNCE_PORT = 4174;
+const origin = (port: number) => `http://127.0.0.1:${port}`;
 
 export default defineConfig({
   testDir: './e2e',
   timeout: 120_000,
   reporter: [['list']],
-  use: { baseURL: `http://127.0.0.1:${PORT}/`, trace: 'retain-on-failure' },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
-  webServer: {
-    // Built app under the production CSP, not the dev server.
-    command: `npm run build && npx vite preview --port ${PORT} --strictPort --host 127.0.0.1`,
-    url: `http://127.0.0.1:${PORT}/`,
-    timeout: 300_000,
-    reuseExistingServer: false,
+  use: {
+    baseURL: `${origin(PORT)}/`,
+    trace: 'retain-on-failure',
+    // A returning visitor by default, so the 1.9 MB first-visit animation does not play in every test.
+    // The tests of the animation start from an empty storage.
+    storageState: {
+      cookies: [],
+      origins: [PORT, SLOW_DEBOUNCE_PORT].map((port) => ({
+        origin: origin(port),
+        localStorage: [{ name: 'decimer.visited', value: '1' }],
+      })),
+    },
   },
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  webServer: [
+    {
+      // Built app under the production CSP, not the dev server.
+      command: `npm run build && npx vite preview --port ${PORT} --strictPort --host 127.0.0.1`,
+      url: `${origin(PORT)}/`,
+      timeout: 300_000,
+      reuseExistingServer: false,
+    },
+    {
+      command:
+        `VITE_EDIT_DEBOUNCE_MS=4000 npx vite build --outDir node_modules/.e2e-slow-debounce --emptyOutDir && ` +
+        `npx vite preview --outDir node_modules/.e2e-slow-debounce --port ${SLOW_DEBOUNCE_PORT} --strictPort --host 127.0.0.1`,
+      url: `${origin(SLOW_DEBOUNCE_PORT)}/`,
+      timeout: 300_000,
+      reuseExistingServer: false,
+    },
+  ],
 });

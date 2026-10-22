@@ -1,0 +1,82 @@
+/* About, Privacy, Impressum: one readable column. */
+
+.dc-page {
+  width: min(760px, 100%);
+  margin-inline: auto;
+  padding: 8px var(--dc-gutter) 56px;
+}
+
+.dc-page__head {
+  padding-bottom: 14px;
+  border-bottom: 2px solid var(--dc-ink);
+}
+
+.dc-page__title {
+  margin: 0;
+  font: 800 1.625rem/1.2 var(--dc-font-display);
+  letter-spacing: -0.01em;
+}
+
+.dc-page .dc-callout {
+  margin-top: 16px;
+}
+
+.dc-page__body {
+  max-width: 70ch;
+  padding-top: 8px;
+}
+
+.dc-page__body h2 {
+  margin: 32px 0 8px;
+  font-size: 1.1875rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.dc-page__body p {
+  margin: 0 0 12px;
+}
+
+.dc-page__lead {
+  margin-top: 20px;
+  font-size: 1.25rem;
+  line-height: 1.4;
+  color: var(--dc-ink-2);
+}
+
+.dc-page__list,
+.dc-page__citations {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.dc-page__list li,
+.dc-page__citations li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+}
+
+.dc-page__list a,
+.dc-page__body p a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+}
+
+.dc-page__list span,
+.dc-page__citations span {
+  color: var(--dc-muted);
+  font-size: 0.9375rem;
+}
+
+.dc-page__line {
+  display: block;
+}
+
+.dc-page__back {
+  margin: 36px 0 0;
+}

@@ -1,0 +1,559 @@
+/* The editor panel: sky, beside the figure on wide screens, a full-screen sheet on phones. */
+
+.dc-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+  padding: 20px 20px 0;
+  border-radius: 18px;
+  background: var(--dc-sky);
+  position: sticky;
+  top: 16px;
+  /* The panel starts under the header (about 90 px), so that is what the height leaves room for: the footer is on the first screen. */
+  max-height: calc(100dvh - 104px);
+  overflow-y: auto;
+  scrollbar-color: var(--dc-sky-line) transparent;
+}
+
+/* Nothing in the panel may shrink to fit: the panel scrolls instead (a squashed canvas hides Ketcher's toolbars). */
+.dc-editor > * {
+  flex-shrink: 0;
+}
+
+.dc-editor__idle {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--dc-ink-2);
+}
+
+.dc-editor__idle p {
+  margin: 0;
+  max-width: 44ch;
+}
+
+.dc-editor__idle-title {
+  margin: 0;
+  color: var(--dc-ink);
+  font: 800 1.5rem/1.2 var(--dc-font-display);
+  letter-spacing: -0.01em;
+}
+
+.dc-editor__legend-title {
+  margin: 12px 0 0;
+  color: var(--dc-ink);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.dc-legend {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.9375rem;
+}
+
+.dc-legend__item {
+  display: grid;
+  grid-template-columns: 10px 1fr;
+  align-items: start;
+  gap: 10px;
+}
+
+.dc-legend__item .dc-dot {
+  margin-top: 0.45em;
+}
+
+.dc-editor__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+
+.dc-editor__number {
+  margin: 0;
+  font: 800 2.125rem/1 var(--dc-font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-editor__editing {
+  color: var(--dc-ink-2);
+  font-size: 0.9375rem;
+}
+
+.dc-editor__position {
+  color: var(--dc-muted);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-editor__nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* The canvas keeps its size while closed (Ketcher only measures itself on resize), so it is moved away, not collapsed. */
+.dc-editor__canvas {
+  position: relative;
+  height: clamp(300px, 40dvh, 440px);
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--dc-white);
+}
+
+.dc-editor__canvas[data-active='false'] {
+  position: absolute;
+  top: 0;
+  left: -10000px;
+  width: 420px;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.dc-editor__body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* The decision and the way out (Mark as checked, Reset, PubChem, COCONUT, Report) stay in reach while the rest scrolls.
+   Solid sky all the way to the panel's edge, so nothing scrolls into view below it; a short fade softens its top. */
+.dc-editor__foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 -20px;
+  padding: 12px 20px 20px;
+  background: var(--dc-sky);
+}
+
+.dc-editor__foot::before {
+  content: '';
+  position: absolute;
+  inset: -14px 0 100%;
+  height: 14px;
+  background: linear-gradient(to bottom, rgb(234 242 255 / 0), var(--dc-sky));
+  pointer-events: none;
+}
+
+.dc-reasons {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dc-reasons .dc-callout {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.dc-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dc-fact {
+  margin: 0;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--dc-white);
+  font-size: 0.875rem;
+}
+
+.dc-fact--crop {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.dc-fact--crop img {
+  display: block;
+  width: 100%;
+  min-height: 60px;
+  max-height: 100px;
+  flex: 1;
+  object-fit: contain;
+}
+
+.dc-fact--crop figcaption {
+  color: var(--dc-muted);
+  font-size: 0.8125rem;
+}
+
+.dc-fact--text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dc-fact--text dt {
+  margin-top: 6px;
+  color: var(--dc-muted);
+  font-size: 0.8125rem;
+}
+
+.dc-fact--text dt:first-child {
+  margin-top: 0;
+}
+
+.dc-fact--text dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  margin: 0;
+}
+
+.dc-fact__value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.dc-fact__value[data-empty='true'] {
+  color: var(--dc-muted-italic);
+  font-style: italic;
+}
+
+.dc-fact__tier {
+  width: 100%;
+  color: var(--dc-muted);
+  font-size: 0.75rem;
+}
+
+.dc-fact .dc-icon-button {
+  width: 28px;
+  height: 28px;
+  box-shadow: none;
+  background: var(--dc-paper);
+}
+
+.dc-code {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--dc-white);
+}
+
+.dc-molfile {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--dc-paper);
+}
+
+.dc-code__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dc-code__label,
+.dc-molfile summary {
+  color: var(--dc-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.dc-code .dc-icon-button,
+.dc-molfile .dc-icon-button {
+  width: 28px;
+  height: 28px;
+  box-shadow: none;
+  background: var(--dc-paper);
+}
+
+.dc-code__text {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--dc-font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.dc-code__status {
+  min-height: 0;
+  margin: 0;
+  color: var(--dc-muted);
+  font-size: 0.8125rem;
+}
+
+.dc-code__status:not(:empty) {
+  margin-top: 4px;
+}
+
+.dc-molfile summary {
+  cursor: pointer;
+}
+
+.dc-molfile__head {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.dc-molfile__text {
+  max-height: 180px;
+  margin: 6px 0 0;
+  overflow: auto;
+  font-family: var(--dc-font-mono);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  scrollbar-color: var(--dc-sky-line) transparent;
+}
+
+.dc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dc-followups {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 18px;
+  font-size: 0.9375rem;
+}
+
+/* The links join the follow-up row: PubChem, COCONUT and Report on one line, the stereo switch below them. */
+.dc-links {
+  display: contents;
+}
+
+.dc-followups .dc-link--button,
+.dc-followups .dc-thanks {
+  order: 2;
+  margin-left: auto;
+}
+
+.dc-followups .dc-switch {
+  order: 3;
+}
+
+.dc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dc-link--button {
+  padding: 6px 0;
+  border: 0;
+  background: none;
+  color: var(--dc-ink-2);
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+  cursor: pointer;
+}
+
+.dc-link--button:hover:not(:disabled) {
+  color: var(--dc-ink);
+  text-decoration-thickness: 2px;
+}
+
+.dc-thanks {
+  margin: 0;
+  padding: 4px 12px;
+  border-radius: 12px;
+  background: var(--dc-mint);
+  color: var(--dc-mint-ink);
+  font-weight: 600;
+}
+
+/* Native checkbox as a switch: one control, keyboard and screen reader for free. */
+.dc-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-basis: 100%;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.dc-switch input {
+  position: absolute;
+  inset: 0 auto auto 0;
+  z-index: 1;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.dc-switch__track {
+  flex: none;
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--dc-sky-line);
+  transition: background-color 0.15s ease;
+}
+
+.dc-switch__track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--dc-white);
+  transition: transform 0.18s var(--dc-ease);
+}
+
+.dc-switch input:checked + .dc-switch__track {
+  background: var(--dc-ink);
+}
+
+.dc-switch input:checked + .dc-switch__track::after {
+  transform: translateX(16px);
+}
+
+.dc-switch input:focus-visible + .dc-switch__track {
+  outline: 3px solid var(--dc-ink);
+  outline-offset: 2px;
+}
+
+/* A panel that is not on screen (another page, or nothing to review) leaves the layout but keeps its canvas size. */
+.dc-editor[data-hidden='true'] {
+  position: absolute;
+  inset: 0 auto auto -10000px;
+  width: 440px;
+  max-height: none;
+  transform: none;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Phones and small tablets: a full-screen sheet, the same DOM. */
+@media (max-width: 899px) {
+  .dc-editor {
+    position: fixed;
+    inset: 0;
+    z-index: 300;
+    max-height: none;
+    padding: 14px 16px 0;
+    border-radius: 0;
+    overscroll-behavior: contain;
+    visibility: hidden;
+    transform: translateY(100%);
+    transition:
+      transform 0.32s var(--dc-ease),
+      visibility 0s linear 0.32s;
+  }
+
+  .dc-editor[data-open='true'] {
+    visibility: visible;
+    transform: none;
+    transition:
+      transform 0.32s var(--dc-ease),
+      visibility 0s;
+  }
+
+  .dc-editor[data-hidden='true'] {
+    inset: 0 auto auto -10000px;
+    position: absolute;
+  }
+
+  .dc-editor__canvas {
+    height: min(56dvh, 420px);
+  }
+
+  .dc-editor__foot {
+    margin-inline: -16px;
+    padding: 12px 16px max(16px, env(safe-area-inset-bottom));
+  }
+
+  .dc-editor__idle {
+    display: none;
+  }
+}
+
+/* The editor is still loading. */
+.dc-editor-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  color: var(--dc-muted);
+  font-size: 0.9375rem;
+}
+
+.dc-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--dc-line);
+  border-top-color: var(--dc-ink);
+  border-radius: 50%;
+  animation: dc-spin 0.8s linear infinite;
+}
+
+@keyframes dc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Ketcher could not load this structure: the canvas says so instead of showing another one. */
+.dc-editor__load-error {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  padding: 24px;
+  background: var(--dc-peach);
+  color: var(--dc-ink);
+  text-align: center;
+}
+
+.dc-editor__load-error p {
+  max-width: 34ch;
+  margin: 0;
+}
+
+.dc-editor__editing[data-failed='true'] {
+  padding: 2px 10px;
+  border-radius: 10px;
+  background: var(--dc-peach);
+  color: var(--dc-peach-ink);
+  font-weight: 600;
+}
+
+/* Values from before the last edit are never shown as current. */
+.dc-code__text[data-stale='true'] {
+  color: var(--dc-muted);
+  font-family: var(--dc-font-ui);
+  font-style: italic;
+  user-select: none;
+}
+
+.dc-link--off {
+  color: var(--dc-muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  cursor: not-allowed;
+}

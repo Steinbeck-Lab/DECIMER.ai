@@ -1,0 +1,255 @@
+/* Empty, working, failed and "no structures": one centred column, the same place every time. */
+
+.dc-body {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dc-home {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: clamp(8px, 4vh, 48px) var(--dc-gutter) 40px;
+  text-align: center;
+}
+
+.dc-hero {
+  margin: 0;
+  line-height: 0;
+}
+
+.dc-wordmark--hero {
+  display: block;
+  width: min(440px, 78vw);
+  height: auto;
+}
+
+.dc-tagline {
+  margin: 16px 0 32px;
+  max-width: 60ch;
+  color: var(--dc-muted);
+  font-size: 1.1875rem;
+  text-wrap: balance;
+}
+
+.dc-upload {
+  width: min(720px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.dc-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 32px 28px 26px;
+  border-radius: 28px;
+  background: var(--dc-sky);
+  transition: background-color 0.18s ease;
+}
+
+.dc-drop[data-active='true'] {
+  background: var(--dc-sky-deep);
+  box-shadow: inset 0 0 0 2px var(--dc-ink);
+}
+
+.dc-drop__icon {
+  color: var(--dc-ink);
+}
+
+.dc-drop__title {
+  margin: 4px 0 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.dc-drop__hint {
+  margin: 0;
+  max-width: 44ch;
+  color: var(--dc-ink-2);
+  text-wrap: balance;
+}
+
+.dc-drop__button {
+  margin-top: 10px;
+  min-height: 48px;
+  padding-inline: 28px;
+  font-size: 1rem;
+}
+
+.dc-drop__limits {
+  margin: 14px 0 0;
+  max-width: 52ch;
+  color: var(--dc-muted);
+  font-size: 0.875rem;
+  text-wrap: balance;
+}
+
+.dc-upload .dc-callout {
+  text-align: left;
+}
+
+.dc-upload__privacy {
+  margin: 14px 0 0;
+  color: var(--dc-muted);
+  font-size: 0.875rem;
+}
+
+@media (max-width: 640px) {
+  .dc-drop {
+    padding: 28px 18px 22px;
+    border-radius: 22px;
+  }
+  .dc-drop__title {
+    font-size: 1.3125rem;
+  }
+}
+
+/* Working */
+.dc-working {
+  flex: 1;
+  width: min(720px, 100%);
+  margin-inline: auto;
+  padding: clamp(16px, 6vh, 64px) var(--dc-gutter) 56px;
+}
+
+.dc-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 28px;
+  padding: 0;
+  list-style: none;
+}
+
+.dc-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 100%;
+  padding: 4px 14px 4px 4px;
+  border-radius: 22px;
+  background: var(--dc-sky);
+  font-size: 0.875rem;
+}
+
+.dc-source--more {
+  padding: 4px 14px;
+}
+
+.dc-source__thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--dc-white);
+}
+
+.dc-source__thumb--file {
+  display: inline-grid;
+  place-items: center;
+  color: var(--dc-ink);
+}
+
+.dc-source__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dc-working__title {
+  margin: 0;
+  font: 800 clamp(1.625rem, 4.4vw, 2.25rem) / 1.15 var(--dc-font-display);
+  letter-spacing: -0.01em;
+}
+
+.dc-working__detail {
+  margin: 8px 0 0;
+  color: var(--dc-ink-2);
+  font-size: 1.0625rem;
+}
+
+.dc-rule {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  margin: 28px 0 14px;
+}
+
+.dc-rule__segment {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--dc-line);
+  transition: background-color 0.4s var(--dc-ease);
+}
+
+.dc-rule__segment[data-state='done'] {
+  background: var(--dc-ink);
+}
+
+.dc-rule__segment[data-state='active'] {
+  background: var(--dc-ink);
+  animation: dc-breathe 1.6s ease-in-out infinite;
+}
+
+@keyframes dc-breathe {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.dc-working__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  color: var(--dc-muted);
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-working__note {
+  margin: 20px 0 0;
+  color: var(--dc-muted);
+  font-size: 0.9375rem;
+}
+
+.dc-working__again {
+  margin-top: 24px;
+}
+
+.dc-working .dc-callout {
+  margin-top: 18px;
+}
+
+/* The first-visit animation. The GIF is 1920 by 1080 with the logo and the tagline in the middle band (rows 32%
+   to 72%). The frame shows that band, with the logo at the width of the static wordmark: the logo is 60.6% of
+   the GIF's width, so the GIF is drawn 440 / 0.606 = 726 px wide (127vw on a phone, clipped at the sides).
+   `align-items: flex-start` keeps the picture's own proportions: a stretched flex item would squash it. */
+.dc-intro-frame {
+  --w: min(726px, 127vw);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: min(720px, calc(100vw - 2 * var(--dc-gutter)));
+  height: calc(var(--w) * 0.225);
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.dc-intro {
+  display: block;
+  flex: none;
+  width: var(--w);
+  max-width: none;
+  height: auto;
+  margin-top: calc(var(--w) * -0.18);
+}
