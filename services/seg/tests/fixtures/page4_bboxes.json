@@ -1,0 +1,16 @@
+{
+  "description": "Hand-checked bboxes [x0, y0, x1, y1] on page 4 (page_index 3) of the golden paper, rendered with PyMuPDF at 300 DPI.",
+  "checked": "2026-10-22: overlay (page + boxes) and all 4 crops inspected by eye. Figure 3: boxes 0, 2 and 3 are the NMR-annotated drawings of compounds 1, 2 and 3, each whole (all atoms and correlation arrows inside) with exactly one box; box 1 is the 3D ball-and-stick conformer of compound 1, which is not a 2D drawing (the golden labels leave it out; legacy found it too). Table 1, the ECD plot (Figure 4), the arrow legend and the text are not boxed. Crop sizes equal legacy crops 12-15 within 3 px.",
+  "produced_by": "scripts/overlay.py with decimer-segmentation 6914cac (TF 2.15.1, CPU)",
+  "pdf": "zou2024_penicillium_shentong.pdf",
+  "page_index": 3,
+  "dpi": 300,
+  "width": 2480,
+  "height": 3509,
+  "bboxes": [
+    [1301, 488, 1656, 798],
+    [1782, 493, 2193, 800],
+    [1307, 871, 1647, 1185],
+    [1812, 924, 2162, 1170]
+  ]
+}

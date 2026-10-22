@@ -1,0 +1,11 @@
+{
+  "description": "Hand-checked bboxes [x0, y0, x1, y1] on page 2 (page_index 1) of the golden paper, rendered with PyMuPDF at 300 DPI.",
+  "checked": "2026-10-22: page inspected by eye: running text plus Figure 1, an HPLC chromatogram with peak labels (no chemical structure). Nothing is boxed, matching legacy (no crops on this page).",
+  "produced_by": "scripts/overlay.py with decimer-segmentation 6914cac (TF 2.15.1, CPU)",
+  "pdf": "zou2024_penicillium_shentong.pdf",
+  "page_index": 1,
+  "dpi": 300,
+  "width": 2480,
+  "height": 3509,
+  "bboxes": []
+}

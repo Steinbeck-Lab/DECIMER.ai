@@ -3,6 +3,8 @@
 Each service supplies a Model; this module gives it /healthz (process alive), /readyz (a tiny
 real inference, cached briefly) and /infer, which runs at most `max_concurrency` inferences at
 once, lets `max_waiting` more wait, and answers 503 beyond that instead of queueing forever.
+/readyz only runs the selftest when no selftest or inference has succeeded within the last
+`ready_cache_seconds`.
 """
 
 from __future__ import annotations
@@ -118,6 +120,8 @@ def create_app(model: Model, limits: Limits | None = None) -> FastAPI:
                     return JSONResponse(
                         {"detail": "inference failed", "error_id": error_id}, status_code=500
                     )
+                # A successful inference proves the model works as well as the selftest does.
+                ready["at"] = time.monotonic()
                 log.info(
                     "inferred",
                     extra={"model": model.name, "ms": round((time.monotonic() - start) * 1000)},

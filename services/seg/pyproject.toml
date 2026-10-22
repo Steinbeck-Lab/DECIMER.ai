@@ -7,7 +7,14 @@ authors = [
     { name = "Kohulan Rajan", email = "kohulan.rajan@uni-jena.de" }
 ]
 requires-python = "==3.11.*"
-dependencies = []
+dependencies = [
+    "decimer-segmentation",
+    "decimer-service",
+    "numpy==1.26.3",
+    "opencv-python>=4.11.0.86",
+    "protobuf==4.25.1",
+    "tensorflow==2.15.1",
+]
 
 [build-system]
 requires = ["uv_build>=0.13.5,<0.14.0"]
@@ -22,18 +29,35 @@ select = ["E", "F", "I", "B", "UP", "S"]
 ignore = []
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]
+"tests/**" = ["S101", "S603"]
 
 [tool.mypy]
 strict = true
 packages = ["decimer_seg"]
 
+[[tool.mypy.overrides]]
+module = ["cv2", "cv2.*", "tensorflow", "tensorflow.*", "decimer_segmentation", "decimer_segmentation.*"]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = '-m "not slow"'
+markers = [
+    "slow: runs the real Mask R-CNN on rendered pages of the golden PDF (CPU, about 35 s); select with -m slow",
+]
+
+[tool.uv.sources]
+decimer-segmentation = { git = "https://github.com/Kohulan/DECIMER-Image-Segmentation", rev = "6914cacea266d59e4dcbdae549b0ffff39fcc604" }
+decimer-service = { path = "../common", editable = true }
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "mypy>=2.4.0",
+    "pillow>=13.0.0",
+    "pymupdf>=2.0",
     "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
     "ruff>=0.17.1",
 ]

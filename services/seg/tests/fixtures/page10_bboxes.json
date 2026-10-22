@@ -1,0 +1,11 @@
+{
+  "description": "Hand-checked bboxes [x0, y0, x1, y1] on page 10 (page_index 9) of the golden paper, rendered with PyMuPDF at 300 DPI.",
+  "checked": "2026-10-22: page inspected by eye: text only (author contributions, references, licence). Nothing is boxed, matching legacy (no crops on this page).",
+  "produced_by": "scripts/overlay.py with decimer-segmentation 6914cac (TF 2.15.1, CPU)",
+  "pdf": "zou2024_penicillium_shentong.pdf",
+  "page_index": 9,
+  "dpi": 300,
+  "width": 2480,
+  "height": 3509,
+  "bboxes": []
+}

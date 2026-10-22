@@ -17,6 +17,7 @@ class StubModel:
 
     def __init__(self) -> None:
         self.loaded = False
+        self.selftest_calls = 0
         self.selftest_error: Exception | None = None
         self.infer_error: Exception | None = None
         self.gate: threading.Event | None = None
@@ -25,6 +26,7 @@ class StubModel:
         self.loaded = True
 
     def selftest(self) -> None:
+        self.selftest_calls += 1
         if self.selftest_error:
             raise self.selftest_error
 
@@ -78,6 +80,42 @@ async def test_readyz_503_when_selftest_fails(model: StubModel) -> None:
         r = await client.get("/readyz")
         assert r.status_code == 503
         assert "weights missing" in r.json()["detail"]
+
+
+async def test_successful_infer_counts_as_a_selftest_pass(
+    model: StubModel, client: httpx.AsyncClient
+) -> None:
+    files = {"image": ("p.png", b"x", "image/png")}
+    assert (await client.post("/infer", files=files)).status_code == 200
+    model.selftest_error = RuntimeError("would fail if it ran")
+
+    r = await client.get("/readyz")
+
+    assert r.status_code == 200
+    assert model.selftest_calls == 0
+
+
+@pytest.mark.parametrize("error", [ValueError("bad input"), RuntimeError("crash")])
+async def test_failed_infer_does_not_count_as_a_selftest_pass(
+    model: StubModel, client: httpx.AsyncClient, error: Exception
+) -> None:
+    model.infer_error = error
+    files = {"image": ("p.png", b"x", "image/png")}
+    assert (await client.post("/infer", files=files)).status_code in (422, 500)
+
+    assert (await client.get("/readyz")).status_code == 200
+    assert model.selftest_calls == 1
+
+
+async def test_readyz_runs_a_real_selftest_once_the_last_success_is_older_than_the_cache(
+    model: StubModel,
+) -> None:
+    async for client in client_for(model, Limits(ready_cache_seconds=0.05)):
+        files = {"image": ("p.png", b"x", "image/png")}
+        assert (await client.post("/infer", files=files)).status_code == 200
+        await asyncio.sleep(0.1)
+        assert (await client.get("/readyz")).status_code == 200
+        assert model.selftest_calls == 1
 
 
 async def test_infer_returns_model_output_and_passes_params(client: httpx.AsyncClient) -> None:
