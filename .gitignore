@@ -1,0 +1,37 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+vendor/
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Build output
+dist/
+build/
+.cache/
+
+# Model weights / large artifacts
+*.h5
+*.pb
+*.onnx
+*.pt
+*.ckpt
+models/
+weights/
+
+# Logs & crash dumps
+*.log
+hs_err_pid*.log
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
