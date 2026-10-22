@@ -1,0 +1,125 @@
+# EXAMPLE, not used by anything: how the legacy nginx (container decimer_web-nginx-1, the one on host
+# port 8080) can put the new stack on /beta beside the legacy site during the beta. Nothing
+# here has been applied. See deploy/README.md, "Before /beta" and "Running beside legacy".
+#
+# What was read from the legacy configuration (docker/nginx/nginx.conf and default.conf, and
+# `nginx -T` of the running container, 2026-10-22), and what it means for these blocks:
+#   * http level: proxy_read_timeout, proxy_connect_timeout and proxy_send_timeout are 300 s, and the
+#     blocks below inherit them. They are overridden here (65 s: just above the edge's 60 s, so the
+#     edge's own answer for a slow request arrives first).
+#   * access_log /var/log/nginx/access.log at http and server level: it records the client address as
+#     nginx sees it (the campus proxy's) and the full URI. For /api/ that URI carries job ids, which are
+#     bearer tokens, so the new locations turn the access log off.
+#   * regex locations exist (`~ \.php$`, `~ ^/(decimer-segmentation|decimer-ocsr|file-upload)$`): a
+#     plain prefix location loses to a matching regex, so the new blocks are `^~`.
+#   * there is NO set_real_ip_from / real_ip_header: the legacy nginx sees the campus proxy's address
+#     as the client, and its per-IP limits (heavy_req, heavy_conn) count that one address. The blocks
+#     below pass the proxy's X-Forwarded-For on; they do not change how legacy counts.
+#
+# ---------------------------------------------------------------------------------------------
+# 0. Before any of this: who is the client? (TODO Q3, the campus proxy's owner)
+# ---------------------------------------------------------------------------------------------
+# The chain is: client -> campus proxy -> legacy nginx -> edge -> api. The edge takes the client from
+# X-Forwarded-For, believing only proxies it is told about (TRUSTED_PROXY_CIDR in deploy/.env: the
+# campus proxy's address(es); compose adds the public network's subnet, which is where the legacy nginx
+# will be). The legacy nginx adds what it sees as the peer (the campus proxy) to the right of what it
+# received, with $proxy_add_x_forwarded_for. Three cases, to be settled with the proxy's owner BEFORE
+# the beta:
+#   a. the proxy sends X-Forwarded-For: <client> (appending to or replacing what the client sent):
+#      the edge sees "<client>, <campus proxy>"; with the proxy listed in TRUSTED_PROXY_CIDR it strips
+#      that right-most entry and the client is <client>. This is the wanted case.
+#   b. the proxy appends to a client-supplied value without removing it: the client can put anything
+#      to the LEFT, but the edge reads from the right and stops at the first address it does not trust,
+#      so a forged value is only believed if the proxy itself put it there. Safe, if the proxy's own
+#      entry is last.
+#   c. the proxy sends no X-Forwarded-For at all: the real client is invisible, every user is the proxy,
+#      and the per-IP limits (2 active jobs, rate limits) are shared by the whole campus. Not acceptable
+#      for the beta: ask the owner to add the header (or to pass the client address another way).
+# How to check, before the first beta user: ask the owner what the proxy does, and verify through the
+# real path with a harmless request carrying a made-up header, e.g.
+#   curl -s -H 'X-Forwarded-For: 203.0.113.7' https://decimer.ai/beta/readyz
+# and look in the API's log (not the edge's, which has no addresses): with the chain working, the API
+# does not warn about an untrusted X-Forwarded-For peer, and two different test machines do not share
+# one rate limit. If the campus proxy is not yet in TRUSTED_PROXY_CIDR, every client looks like the
+# proxy; that is safe (nobody can choose an identity) but shared.
+#
+# ---------------------------------------------------------------------------------------------
+# 1. Reach the edge (an operation on the RUNNING legacy container: needs the owner's go-ahead)
+# ---------------------------------------------------------------------------------------------
+# The edge publishes only 127.0.0.1:8090, which a container cannot reach through the docker gateway.
+# Attach the legacy nginx to the `public` network of the new stack (it holds nothing but the edge; the
+# legacy nginx then cannot reach the api or anything else of the new stack):
+#     docker network connect decimer-next_public decimer_web-nginx-1
+# The edge answers to `decimer-next-edge` there. Or have the campus proxy route /beta/ and /api/ to the
+# new stack directly (TODO Q3). In both cases the proxy's address goes into TRUSTED_PROXY_CIDR.
+#
+# ---------------------------------------------------------------------------------------------
+# 2. The blocks, for the legacy server block (docker/nginx/default.conf of DECIMER_Web)
+# ---------------------------------------------------------------------------------------------
+# Why a resolver and a variable: with `proxy_pass http://decimer-next-edge:8080;` nginx resolves the
+# name when it loads its configuration, and REFUSES TO START (or to reload) with "host not found in
+# upstream" whenever the edge container is not there: stopped, being recreated, or the network
+# disconnected. That would take the legacy site down with the beta. With a variable, the name is
+# resolved per request (through docker's resolver, valid on the legacy compose's user-defined network),
+# and a missing edge is a 502 on /beta/ and /api/ only.
+
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    set $beta_edge http://decimer-next-edge:8080;
+
+    # The prefix is stripped from the RAW request line ($request_uri), so nothing is decoded on the way:
+    # no %0d%0a reaches the upstream request line. (At http level, outside the server block:)
+    #   map $request_uri $beta_path {
+    #       ~^/beta(?<rest>/.*)$  $rest;
+    #       default               $request_uri;
+    #   }
+
+    # The beta. `^~`: this prefix wins over the legacy regex locations.
+    location = /beta { return 301 /beta/; }
+    location ^~ /beta/ {
+        access_log off;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 65s;
+        proxy_read_timeout 65s;           # just above PROXY_READ_TIMEOUT_SECONDS (60); the http level says 300
+        client_max_body_size 101m;        # the edge's limit: MAX_UPLOAD_MB (100) + 1
+        proxy_pass $beta_edge$beta_path;
+    }
+
+    # The API answers with ABSOLUTE urls ("cropUrl": "/api/jobs/<id>/media/crop-0.png", header
+    # "Location: /api/jobs/<id>"), so /api/ itself has to reach the new stack, not just /beta/. The
+    # legacy site has no /api/ routes that matter (routes/api.php has only the unused /api/user).
+    location ^~ /api/ {
+        access_log off;                   # job ids in the URL are bearer tokens
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 65s;
+        proxy_read_timeout 65s;
+        client_max_body_size 101m;
+        proxy_pass $beta_edge$request_uri;
+    }
+
+# ---------------------------------------------------------------------------------------------
+# 3. Order of operations. The legacy site is the thing that must not break.
+# ---------------------------------------------------------------------------------------------
+# Apply:
+#   1. new stack up and healthy ($DC ps, curl 127.0.0.1:8090/readyz);
+#   2. docker network connect decimer-next_public decimer_web-nginx-1;
+#   3. add the blocks above to a COPY of default.conf, test it in a throwaway container
+#      (docker run --rm -v <copy>:/etc/nginx/conf.d/default.conf:ro ... nginx -t), then put it in place
+#      and `nginx -s reload` in the legacy container. A reload that fails leaves the old configuration
+#      running; a reload with the variable form cannot fail because of the edge.
+# Roll back, in THIS order (and the reverse of apply):
+#   1. restore the previous default.conf (kept) and reload the legacy nginx: /beta/ and /api/ are gone;
+#   2. docker network disconnect decimer-next_public decimer_web-nginx-1;
+#   3. only then stop the new stack ($DC down).
+# With the variable form the order does not break legacy either way; with a literal proxy_pass host it
+# would (the legacy nginx could not reload, or restart, once the edge is gone).
+#
+# Cutover is the other way round: `location /` goes to the edge (the legacy `location /` block is
+# kept, commented, as the rollback), and /beta/ can be dropped or redirected.

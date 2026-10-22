@@ -1,0 +1,16 @@
+# Build context of chem.Dockerfile: nothing but what the Dockerfile copies. The jars directory is not in
+# git but is in the context on purpose.
+*
+!services/common/pyproject.toml
+!services/common/README.md
+!services/common/src
+!services/chem/pyproject.toml
+!services/chem/uv.lock
+!services/chem/README.md
+!services/chem/src
+!deploy/healthcheck.py
+!deploy/weights/verify.sh
+!deploy/weights/SHA256SUMS
+!deploy/weights/chem
+**/__pycache__
+**/*.pyc

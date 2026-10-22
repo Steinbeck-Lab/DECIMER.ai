@@ -1,0 +1,7 @@
+# Everything in here is a build input fetched by fetch.sh (model weights, jars): never in git.
+# Only the scripts and the checksum list are tracked.
+*
+!.gitignore
+!SHA256SUMS
+!fetch.sh
+!verify.sh

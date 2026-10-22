@@ -1,0 +1,5 @@
+# The repository's root .gitignore ignores every directory called weights/ (model files), which would
+# also hide the tracked scripts and checksum list in deploy/weights/. Re-include the directory here;
+# deploy/weights/.gitignore keeps the fetched binaries out again. deploy/.env (secrets) stays ignored
+# by the root rules.
+!weights/

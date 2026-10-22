@@ -1,0 +1,32 @@
+cls: pinned build backends. Apply from the repository root with
+deploy/patches/apply-pyproject-patches.sh (git apply, then `uv lock`). cls has no OpenCV in its lock.
+
+build pins: the git dependencies are built from source during `uv sync`, in an isolated build
+environment whose backend uv resolves fresh from PyPI. That code runs at install time with network
+access, so an unpinned backend is a supply-chain hole and makes the image non-reproducible, although
+uv.lock pins every runtime package. [tool.uv] build-constraint-dependencies pins the backend and its
+own dependencies (and uv-build, the projects' own backend, to the version CI uses). Tried: the
+constraints are honored when the git dependency is built (uv -v shows setuptools>=84.0.0,<84.0.0+).
+Prebuilding and hashing wheels was the alternative; it would take the git dependencies out of
+uv.lock, which is worse. uv.lock records the constraints in its [manifest], so `uv sync --locked`
+needs the lock refreshed after the patch: apply-pyproject-patches.sh does it.
+Here: decimer-image-classifier (git, setup.py) is built with setuptools and wheel.
+
+--- a/services/cls/pyproject.toml
++++ b/services/cls/pyproject.toml
+@@ -55,6 +55,15 @@
+     "tensorflow==2.15.1",
+     "ipyplot ; sys_platform == 'never'",
+ ]
++# Build backends are pinned too (deploy/patches). decimer-image-classifier is built from source at
++# install time (setup.py, setuptools), in an isolated environment. Without this uv takes
++# the newest setuptools and wheel on PyPI that day and runs it. Versions: the newest releases
++# that were two weeks old on 2026-10-22. uv-build is the project's own backend (CI uses 0.13.5).
++build-constraint-dependencies = [
++    "setuptools==84.0.0",
++    "wheel==0.48.0",
++    "uv-build==0.13.5",
++]
+ 
+ [tool.uv.sources]
+ decimer-image-classifier = { git = "https://github.com/Iagea/DECIMER-Image-Classifier", rev = "146b00be2fe6f8fa6670a4255969d4747502b7f2" }

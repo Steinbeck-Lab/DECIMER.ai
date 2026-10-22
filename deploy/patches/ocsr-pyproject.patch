@@ -1,0 +1,43 @@
+ocsr: opencv-python-headless. Apply from the repository root with
+deploy/patches/apply-pyproject-patches.sh (git apply, then `uv lock`). If git apply refuses because
+services/ocsr/pyproject.toml has moved on, make the same two edits by hand (the added dependency line
+and the [tool.uv] table below) and run `uv lock` in services/ocsr.
+
+opencv: opencv-python's cv2 needs libGL.so.1, libglib2.0-0, libgthread, libX11 and libxcb at import
+time (checked with ldd on the locked wheel); the headless wheel of the same version needs only libc, libm,
+libgcc_s and libstdc++ (checked the same way). With it the runtime image has no apt packages at all,
+no X11 or mesa libraries to patch, and the wheel is 13 MB smaller. The service never opens a window.
+Both wheels provide the module cv2, so installing both would clash: the direct dependency becomes the
+headless wheel at the locked version (4.11.0.86) and an override drops every other package's
+opencv-python requirement with a marker that never matches (the trick services/cls uses for ipyplot).
+Without this patch, build the image with --build-arg OPENCV_GUI_LIBS=1 instead.
+decimer 2.8.0 imports cv2 and declares opencv-python, so this project had no direct opencv dependency:
+the patch adds the headless wheel as one. ocsr needs no build pins: every dependency has a wheel.
+
+--- a/services/ocsr/pyproject.toml
++++ b/services/ocsr/pyproject.toml
+@@ -11,6 +11,7 @@
+     "decimer==2.8.0",
+     "decimer-service",
+     "numpy==1.26.3",
++    "opencv-python-headless==4.11.0.86",
+     "pillow>=13.0.0",
+     "protobuf==4.25.1",
+     "pystow",
+@@ -48,6 +49,16 @@
+     "slow: runs the real DECIMER Image Transformer on the golden crops (CPU, TensorFlow); select with -m slow",
+ ]
+ 
++[tool.uv]
++# decimer imports cv2 but never opens a window. opencv-python also needs libGL.so.1 and
++# libglib2.0-0 at import time; the headless wheel does not, so the runtime image needs no apt
++# packages. decimer declares opencv-python, so it is dropped with a marker that never matches
++# (the same trick as ipyplot in services/cls) and the headless wheel, pinned to the version that
++# was locked before, provides cv2 instead.
++override-dependencies = [
++    "opencv-python ; sys_platform == 'never'",
++]
++
+ [tool.uv.sources]
+ decimer-service = { path = "../common", editable = true }
+ 

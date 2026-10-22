@@ -1,0 +1,10 @@
+# Build context of api.Dockerfile: the API project without its tests, caches and virtualenv.
+*
+!api/pyproject.toml
+!api/uv.lock
+!api/README.md
+!api/src
+!deploy/healthcheck.py
+!deploy/worker_healthcheck.py
+**/__pycache__
+**/*.pyc

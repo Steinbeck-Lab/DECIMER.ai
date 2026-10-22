@@ -1,0 +1,16 @@
+# Build context of ocsr.Dockerfile: nothing but what the Dockerfile copies. The weights directory is
+# not in git but is in the context on purpose.
+*
+!services/common/pyproject.toml
+!services/common/README.md
+!services/common/src
+!services/ocsr/pyproject.toml
+!services/ocsr/uv.lock
+!services/ocsr/README.md
+!services/ocsr/src
+!deploy/healthcheck.py
+!deploy/weights/verify.sh
+!deploy/weights/SHA256SUMS
+!deploy/weights/ocsr
+**/__pycache__
+**/*.pyc

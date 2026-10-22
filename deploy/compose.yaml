@@ -1,0 +1,410 @@
+# decimer.ai, new stack. Runs BESIDE the legacy stack on the production VM:
+# a separate Compose project, so nothing here touches decimer_web-*.
+#
+#   DC="docker compose -p decimer-next -f deploy/compose.yaml --env-file deploy/.env"
+#   $DC build && $DC up -d            # see deploy/README.md for the whole procedure
+#
+# Always pass the project name (-p decimer-next): it names the networks and volumes
+# (decimer-next_public, decimer-next_jobs, ...) and keeps the project apart from the legacy one.
+#
+# Written for the Compose that `docker compose` runs on the VM: v2.3.3 (2022), from
+# ~/.docker/cli-plugins, which shadows the system's v2.39.2 (/usr/libexec/docker/cli-plugins). So: no
+# `name:`, no `!reset`, no `required: false`, no healthcheck start_interval here. The file parses with
+# both (checked); deploy/README.md says how to run the newer one.
+#
+# Configuration: deploy/.env (copy deploy/.env.example; never committed; holds IP_HASH_SECRET and
+# REDIS_PASSWORD). It is read twice: for ${VAR} below and, as env_file, into the api, worker and
+# sweep containers, so every setting listed in api/README.md and .env.example can be set there without
+# editing this file. Values given under `environment:` win over env_file.
+#
+# Networks (who can reach what)
+#   public   the edge alone, with a pinned subnet and the only published port (127.0.0.1:8090 on the
+#            host). Docker cannot publish a port from an internal network, so this is the one network
+#            with a route out, and nothing but nginx is on it. The legacy nginx can be attached to it
+#            for the beta (nginx/beta-front-door.conf.example); the edge trusts this subnet's
+#            X-Forwarded-For (see TRUSTED_PROXY_CIDR below).
+#   app      internal: edge + api, with a pinned subnet. The api sees the edge's address here, so this
+#            subnet is the API's TRUSTED_PROXY_CIDR (derived from APP_SUBNET: one variable, no copy).
+#   backend  internal: redis, api, worker, sweep.
+#   models   internal: the worker and seg, cls, ocsr, chem. Only the worker calls them. The api is NOT
+#            on it: it calls no model service yet. When POST /validate lands it needs chem and nothing
+#            else: see the commented chem-api network at the end.
+#   There is no network with egress for the api or worker: nothing needs it until error reporting
+#   (Sentry or GlitchTip, TODO) exists. Then add a plain bridge network, `egress`, to api and
+#   worker only.
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+# No `init: true` for the api: it must be PID 1 itself (see api.Dockerfile). The sweep has it (below).
+# oom_score_adj 300: if the VM ever runs out of memory, the kernel takes the new stack before legacy.
+# That is the container; the ingest and render CHILDREN would need to lower their own score in code
+# (TODO, API side: write 1000 to /proc/self/oom_score_adj; compose cannot set it per process).
+x-service: &service
+  restart: unless-stopped
+  logging: *logging
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  oom_score_adj: 300
+
+# The TensorFlow services and chem: no network but `models`, read-only root file system with a
+# RAM-backed /tmp (TensorFlow and Keras write small files there; HOME is /tmp). Not read_only-proof
+# yet: if one of them stops with "Read-only file system", add the path to tmpfs rather than dropping
+# read_only; if it cannot be fixed that way, drop read_only for that service and write down why.
+x-model-service: &model-service
+  <<: *service
+  read_only: true
+  tmpfs:
+    - /tmp:size=256m,mode=1777
+  networks:
+    - models
+  oom_score_adj: 500
+
+# api, worker, sweep: one image (api.Dockerfile), three commands. Only the api has a build section.
+# pull_policy: never on every image this project builds, and a localhost/ name: nothing here is ever
+# pulled, and there is no Docker Hub namespace (decimer-next/...) that somebody else could own and that
+# a missing image would be fetched from. Build first ($DC build), then up. (`pull_policy: build` would
+# rebuild on every `up`, which also overwrites the tag a rollback is about to go back to.)
+x-api-image: &api-image
+  image: localhost/decimer-next/api:${DECIMER_TAG:-local}
+  pull_policy: never
+
+services:
+  # --- state ------------------------------------------------------------------------------------
+  # Job records, per-client counters and the arq queue. Nothing is persisted, on purpose: every key has
+  # a TTL of at most 6 h (a queued job; a finished job 1 h), the job FILES live on a volume and are swept
+  # by their own TTL, and a Redis that never writes job data to disk keeps the 1-hour retention promise.
+  # The price: a Redis restart drops the queue and every job record. Waiting and running jobs are lost
+  # (the client sees 404 and uploads again); their folders on the job volume are swept after
+  # SWEEP_GRACE_SECONDS. Redis restarts only with a deploy or a host reboot, which interrupt running
+  # jobs anyway. noeviction: when full, writes fail (the API answers 503) rather than losing records.
+  # 256 MB holds thousands of job records (about 300 KB each with SVGs and molfiles).
+  #
+  # Password: REDIS_PASSWORD from deploy/.env, which is also in REDIS_URL of api, worker and sweep. The
+  # ingest and render children get a minimal environment without it, so the one thing that stops a
+  # parser exploit from talking to Redis is that password (the ingest sidecar in deploy/README.md is
+  # the other half). It is handed to Redis on stdin, not in the command line (argv is readable by every
+  # user of the VM in the host's process table), and to redis-cli through REDISCLI_AUTH for the
+  # healthcheck. Use a hex password (`openssl rand -hex 24`): it goes into a URL and a config line.
+  # The image's entrypoint (which starts as root) is replaced, so the container runs as the `redis`
+  # user from the start and needs no capabilities.
+  redis:
+    <<: *service
+    image: redis:8.10.2-alpine3.23@sha256:0bf6577d7774e592b29d093e3ac9390eb91e13d72c21e506afce736de5e0eeb0
+    user: redis
+    entrypoint:
+      - sh
+      - -c
+      - |
+        exec redis-server - <<EOF
+        requirepass $$REDIS_PASSWORD
+        save ""
+        appendonly no
+        maxmemory 256mb
+        maxmemory-policy noeviction
+        tcp-keepalive 60
+        EOF
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env (openssl rand -hex 24)}
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    read_only: true
+    tmpfs:
+      - /data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    mem_limit: 384m
+    memswap_limit: 384m
+    cpus: 1
+    pids_limit: 64
+
+  # --- model services (no route to the internet) --------------------------------------------------
+  # Weights and jars are inside the images (SHA-256 checked at build time); no network is needed to
+  # start. Healthchecks come from the images (/readyz, which runs a real inference).
+  seg:
+    <<: *model-service
+    image: localhost/decimer-next/seg:${DECIMER_TAG:-local}
+    pull_policy: never
+    build:
+      context: ..
+      dockerfile: deploy/seg.Dockerfile
+      args:
+        # 1 until deploy/patches/apply-pyproject-patches.sh has been applied to services/seg and ocsr.
+        OPENCV_GUI_LIBS: ${OPENCV_GUI_LIBS:-0}
+    environment:
+      TF_NUM_INTRAOP_THREADS: ${SEG_TF_INTRAOP_THREADS:-4}
+      TF_NUM_INTEROP_THREADS: ${SEG_TF_INTEROP_THREADS:-1}
+      # Pages above this many pixels get a 422 from seg. Do not raise it: the API admits up to 50 MP, so
+      # the worker is to downscale pages for seg (TODO; deploy/README.md, "Dependencies").
+      OPENCV_IO_MAX_IMAGE_PIXELS: ${SEG_MAX_IMAGE_PIXELS:-40000000}
+    # About 2 GB resident, 3.5 s a page (services/seg/README.md). Mask memory grows with the page size
+    # and the number of detections; 3 GB covers A3 pages at 300 DPI with room to spare.
+    mem_limit: 3g
+    memswap_limit: 3g
+    cpus: 4
+    pids_limit: 512
+
+  cls:
+    <<: *model-service
+    image: localhost/decimer-next/cls:${DECIMER_TAG:-local}
+    pull_policy: never
+    build:
+      context: ..
+      dockerfile: deploy/cls.Dockerfile
+    environment:
+      TF_NUM_INTRAOP_THREADS: ${CLS_TF_INTRAOP_THREADS:-2}
+      TF_NUM_INTEROP_THREADS: ${CLS_TF_INTEROP_THREADS:-1}
+      MALLOC_ARENA_MAX: "2"
+    # One replica. About 1 GB resident, 1.9 GB worst case, and RSS grows 57-100 KB per request
+    # (services/cls/README.md): the restart policy turns an OOM kill into a short outage.
+    # TODO: soak test of a few thousand requests, then confirm or change this limit.
+    mem_limit: 2560m
+    memswap_limit: 2560m
+    cpus: 2
+    pids_limit: 256
+
+  # Both DECIMER models are in the image (owner decision D15: the printed one that the service uses and the
+  # hand-drawn one that `import DECIMER` loads anyway). services/ocsr/README.md: about 4.8 GB resident,
+  # about 0.4 GB for one worst-case request, about 0.3 GB of request bodies: 6 GB. Start-up is about 50 s.
+  ocsr:
+    <<: *model-service
+    image: localhost/decimer-next/ocsr:${DECIMER_TAG:-local}
+    pull_policy: never
+    build:
+      context: ..
+      dockerfile: deploy/ocsr.Dockerfile
+      args:
+        OPENCV_GUI_LIBS: ${OPENCV_GUI_LIBS:-0}
+    environment:
+      TF_NUM_INTRAOP_THREADS: ${OCSR_TF_INTRAOP_THREADS:-4}
+      TF_NUM_INTEROP_THREADS: ${OCSR_TF_INTEROP_THREADS:-1}
+    mem_limit: 6g
+    memswap_limit: 6g
+    cpus: 4
+    pids_limit: 512
+
+  # Orthonym names (JVM inside). Python 3.12 and a JRE; no network. The service refuses to start if
+  # ORTHONYM_ALLOW_REDUCED, ORTHONYM_OPSIN_JAR, ORTHONYM_CENTRES_JAR or ORTHONYM_DISABLE_JPYPE is set,
+  # so none is set here. services/chem/README.md: about 360 MB for the naming process (JVM included)
+  # and 50 MB for the web process, flat over 1000 names; the heap cap is ORTHONYM_JVM_XMX (512m, in the
+  # image). The valid tier is a setting of the service's code, not of the image.
+  chem:
+    <<: *model-service
+    image: localhost/decimer-next/chem:${DECIMER_TAG:-local}
+    pull_policy: never
+    build:
+      context: ..
+      dockerfile: deploy/chem.Dockerfile
+    mem_limit: 1536m
+    memswap_limit: 1536m
+    cpus: 2
+    pids_limit: 256
+
+  # --- the application ----------------------------------------------------------------------------
+  # ONE api container running ONE process: the ingest gate and the queue throttle are per process
+  # (api/README.md). Never `deploy.replicas`, `--scale api=2` or uvicorn --workers.
+  # The command is the exec form, so python is PID 1 and holds the only copy of the environment (it
+  # makes itself non-dumpable so its ingest children, same user, cannot read it).
+  # The api spawns its ingest children (python -I -m decimer_api.ingest_worker) inside this container:
+  # up to INGEST_CONCURRENCY (2), each allowed INGEST_MEMORY_MB (1536) of address space beyond its
+  # start-up size, so 2 x 1.5 GB + the API itself and the request bodies it spools = 3.5 GB. Raise it
+  # with INGEST_CONCURRENCY or INGEST_MEMORY_MB.
+  # This is NOT the final design: the ingest sidecar (deploy/README.md) is required before cutover.
+  # Writable root file system on purpose: starlette spools uploads over 1 MB to a temp file under
+  # /tmp, and a RAM-backed /tmp would count those 100 MB against the memory limit.
+  api:
+    <<: [*service, *api-image]
+    build:
+      context: ..
+      dockerfile: deploy/api.Dockerfile
+    command: ["python", "-m", "decimer_api"]
+    env_file: .env
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env (openssl rand -hex 24)}@redis:6379/0
+      DATA_DIR: /data/jobs
+      HOST: 0.0.0.0
+      PORT: "8000"
+      MEDIA_STREAM_DIRECT: "false"
+      MEDIA_ACCEL_PREFIX: /_protected/jobs
+      # The API's peer is the edge, on the app network: that subnet is all it trusts (it believes the
+      # one X-Forwarded-For entry the edge sets). The campus proxies are the EDGE's business, not the API's.
+      TRUSTED_PROXY_CIDR: ${APP_SUBNET:-172.29.80.16/28}
+      # The same two values the edge uses (edge-entrypoint.sh): proxy_read_timeout and the upload limit.
+      PROXY_READ_TIMEOUT_SECONDS: ${PROXY_READ_TIMEOUT_SECONDS:-60}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-100}
+      # Required: without it counters reset at every restart. `openssl rand -hex 32`. Lives in deploy/.env.
+      # Only the api gets it (the worker and the sweep have it blanked below).
+      IP_HASH_SECRET: ${IP_HASH_SECRET:?set IP_HASH_SECRET in deploy/.env (openssl rand -hex 32)}
+      # TODO: the variable name of the problem-report directory is a guess until that lands.
+      REPORTS_DIR: /data/reports
+    volumes:
+      - jobs:/data/jobs
+      - reports:/data/reports
+    networks:
+      - app
+      - backend
+    depends_on:
+      redis:
+        condition: service_healthy
+    # An upload in flight can take INGEST_WAIT_SECONDS (20) + INGEST_TIMEOUT_SECONDS (30) + the
+    # request's own time: 70 s lets running requests finish on `docker stop`.
+    stop_grace_period: 70s
+    mem_limit: 3584m
+    memswap_limit: 3584m
+    cpus: 2
+    pids_limit: 256
+
+  worker:
+    <<: [*service, *api-image]
+    command: ["python", "-m", "decimer_api.worker"]
+    env_file: .env
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env (openssl rand -hex 24)}@redis:6379/0
+      DATA_DIR: /data/jobs
+      SEG_URL: http://seg:8001
+      OCSR_URL: http://ocsr:8002
+      CLS_URL: http://cls:8003
+      CHEM_URL: ${CHEM_URL:-http://chem:8004}
+      # The hashing key belongs to the api alone (env_file would hand it to every container).
+      IP_HASH_SECRET: ""
+      # arq waits this long for running jobs when it is stopped (0 would cancel them; they rerun after
+      # the restart). stop_grace_period below must be longer.
+      SHUTDOWN_WAIT_SECONDS: ${SHUTDOWN_WAIT_SECONDS:-100}
+    volumes:
+      - jobs:/data/jobs
+    networks:
+      - backend
+      - models
+    # Wait for the models to answer a real inference, so the first jobs after a start do not fail. chem
+    # is optional for the worker (names off without CHEM_URL), but it is part of the stack now.
+    depends_on:
+      redis:
+        condition: service_healthy
+      seg:
+        condition: service_healthy
+      cls:
+        condition: service_healthy
+      ocsr:
+        condition: service_healthy
+      chem:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "/usr/local/bin/worker_healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    stop_grace_period: 120s
+    # Up to WORKER_MAX_JOBS (2) jobs; a PDF page is rendered in a child process of about 0.5 GB (a 50 MP
+    # page) and up to RENDER_MEMORY_MB (2 GB) of address space. TODO: measure on the golden paper.
+    mem_limit: 2g
+    memswap_limit: 2g
+    cpus: 2
+    pids_limit: 256
+
+  # Deletes the folders of expired jobs (the records expire by themselves in Redis). init: python as
+  # PID 1 would ignore SIGTERM (no handler), so `docker stop` would wait for the kill; tini passes it on.
+  sweep:
+    <<: [*service, *api-image]
+    init: true
+    command: ["python", "-m", "decimer_api.sweep", "--every", "300"]
+    env_file: .env
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env (openssl rand -hex 24)}@redis:6379/0
+      DATA_DIR: /data/jobs
+      IP_HASH_SECRET: ""
+    volumes:
+      - jobs:/data/jobs
+    networks:
+      - backend
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    mem_limit: 192m
+    memswap_limit: 192m
+    cpus: 0.5
+    pids_limit: 64
+
+  # nginx: the app, /api/ to the api, job media from the job volume (read-only here), rate limits.
+  # The only published port, on the loopback interface only (8080 is the legacy site's).
+  # /var/cache/nginx is a disk-backed volume because the edge buffers uploads (up to 100 MB each) there
+  # (proxy_request_buffering stays on); /tmp is RAM and holds only the pid file and a generated include.
+  # The edge reaches the api over `app`; clients and the legacy nginx reach the edge over `public`.
+  edge:
+    <<: *service
+    image: localhost/decimer-next/edge:${DECIMER_TAG:-local}
+    pull_policy: never
+    build:
+      context: ..
+      dockerfile: deploy/web.Dockerfile
+      args:
+        # `http` is the real client, still TODO; `mock` gives a UI demo on canned data.
+        VITE_API: ${VITE_API:-http}
+    environment:
+      # The proxies whose X-Forwarded-For the edge believes: the public network (the host side of the
+      # published port, and the legacy nginx if it is attached) plus the campus proxies from deploy/.env
+      # (TODO Q3: empty until their addresses are known; the trailing comma is harmless).
+      # PROXY ADDRESSES, NOT CLIENT NETWORKS.
+      TRUSTED_PROXY_CIDR: ${PUBLIC_SUBNET:-172.29.80.0/28},${TRUSTED_PROXY_CIDR:-}
+      PROXY_READ_TIMEOUT_SECONDS: ${PROXY_READ_TIMEOUT_SECONDS:-60}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-100}
+    ports:
+      - "127.0.0.1:${EDGE_PORT:-8090}:8080"
+    volumes:
+      - jobs:/data/jobs:ro
+      - edge-cache:/var/cache/nginx
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    networks:
+      public:
+        # The name other containers (the legacy nginx, see nginx/beta-front-door.conf.example) use.
+        aliases:
+          - decimer-next-edge
+      app: {}
+    depends_on:
+      api:
+        condition: service_healthy
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 1
+    pids_limit: 128
+
+networks:
+  public:
+    ipam:
+      config:
+        - subnet: ${PUBLIC_SUBNET:-172.29.80.0/28}
+  app:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${APP_SUBNET:-172.29.80.16/28}
+  backend:
+    internal: true
+  models:
+    internal: true
+  # TODO: when POST /api/jobs/{id}/results/{n}/validate calls chem from the api, add this network
+  # (uncomment it) and put it in the `networks:` of both api and chem. Nothing else of the models.
+  #chem-api:
+  #  internal: true
+
+volumes:
+  # Job files: written by api, worker (and swept by sweep), read by edge (X-Accel-Redirect). Lives
+  # until the sweep deletes a job's folder (1 h after the job ends).
+  jobs: {}
+  # Problem reports: private, mounted into the api only, never into the edge. Kept until
+  # analysed, then deleted by hand. Back this volume up (TODO, see deploy/README.md).
+  reports: {}
+  edge-cache: {}

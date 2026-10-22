@@ -1,0 +1,14 @@
+# Build context of cls.Dockerfile: nothing but what the Dockerfile copies.
+*
+!services/common/pyproject.toml
+!services/common/README.md
+!services/common/src
+!services/cls/pyproject.toml
+!services/cls/uv.lock
+!services/cls/README.md
+!services/cls/src
+!deploy/healthcheck.py
+!deploy/weights/verify.sh
+!deploy/weights/SHA256SUMS
+**/__pycache__
+**/*.pyc

@@ -1,0 +1,16 @@
+# Build context of seg.Dockerfile (BuildKit reads <Dockerfile name>.dockerignore): nothing but what
+# the Dockerfile copies. The weights directory is not in git but is in the context on purpose.
+*
+!services/common/pyproject.toml
+!services/common/README.md
+!services/common/src
+!services/seg/pyproject.toml
+!services/seg/uv.lock
+!services/seg/README.md
+!services/seg/src
+!deploy/healthcheck.py
+!deploy/weights/verify.sh
+!deploy/weights/SHA256SUMS
+!deploy/weights/seg
+**/__pycache__
+**/*.pyc

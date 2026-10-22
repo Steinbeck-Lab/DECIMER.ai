@@ -1,0 +1,21 @@
+# Build context of web.Dockerfile: the web app's sources (not node_modules, dist, tests' output) and
+# the nginx files.
+*
+!web/package.json
+!web/package-lock.json
+!web/.npmrc
+!web/index.html
+!web/vite.config.ts
+!web/tsconfig.json
+!web/tsconfig.app.json
+!web/tsconfig.node.json
+# tsc -b type-checks these through tsconfig.node.json
+!web/playwright.config.ts
+!web/e2e
+!web/src
+!web/public
+!deploy/nginx/nginx.conf
+!deploy/nginx/edge.conf
+!deploy/nginx/security-headers.conf
+!deploy/nginx/edge-entrypoint.sh
+**/node_modules
