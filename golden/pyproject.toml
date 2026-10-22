@@ -1,0 +1,47 @@
+[project]
+name = "decimer-golden"
+version = "0.1.0"
+description = "Golden-set check: runs the reference paper through a DECIMER stack and scores it against labels"
+authors = [
+    { name = "Kohulan Rajan", email = "kohulan.rajan@uni-jena.de" }
+]
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "httpx>=0.28.1",
+    "rdkit>=2026.9.1",
+]
+
+[project.scripts]
+decimer-golden = "decimer_golden:main"
+
+[build-system]
+requires = ["uv_build>=0.13.5,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.mypy]
+strict = true
+packages = ["decimer_golden"]
+
+[[tool.mypy.overrides]]
+module = ["rdkit", "rdkit.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "mypy>=2.4.0",
+    "pytest>=9.1.1",
+    "ruff>=0.17.1",
+]

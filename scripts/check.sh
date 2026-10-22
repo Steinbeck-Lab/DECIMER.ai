@@ -8,7 +8,7 @@ export PATH="$HOME/.local/opt/node/bin:$HOME/.local/bin:$PATH"
 
 step() { printf '\n== %s\n' "$*"; }
 
-for project in api services/seg services/ocsr services/cls; do
+for project in api services/seg services/ocsr services/cls golden; do
   step "python: $project"
   (cd "$project" && uv sync --locked -q && uv run -q ruff check . && uv run -q ruff format --check . \
     && uv run -q mypy && uv run -q pytest -q)

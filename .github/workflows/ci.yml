@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        project: [api, services/seg, services/ocsr, services/cls]
+        project: [api, services/seg, services/ocsr, services/cls, golden]
     defaults:
       run:
         working-directory: ${{ matrix.project }}

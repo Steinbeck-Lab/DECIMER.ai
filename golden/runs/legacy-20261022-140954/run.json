@@ -1,0 +1,11 @@
+{
+  "stack": "legacy",
+  "base_url": "http://127.0.0.1:8080",
+  "seconds": {
+    "file-upload": 4.47,
+    "decimer-segmentation": 38.85,
+    "decimer-ocsr": 52.0
+  },
+  "page_images": 10,
+  "segments": 32
+}
