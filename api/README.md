@@ -56,6 +56,10 @@ All come from environment variables of the same name (case-insensitive); `.env.e
 | `MAX_ACTIVE_JOBS_PER_IP` | `2` | Queued plus running jobs (plus uploads in progress) per client. A further job gets 429. |
 | `QUEUE_MAX` | `50` | Jobs allowed to wait. At or above it, 503 with `Retry-After`. |
 | `QUEUE_RETRY_AFTER_SECONDS` | `30` | `Retry-After` of the 503 for a full queue or a busy service. |
+| `WORKER_QUEUE_NAME` | `arq:queue` | The arq queue jobs go on (arq's own default name). **A worker serves the queue this names**, so the fast worker is started with the fast queue's name here (compose does it). |
+| `WORKER_FAST_QUEUE_NAME` | `decimer:fast` | The queue small jobs go on, while a fast worker is alive (see "Replicas, fair dispatching and the fast lane"). The same name as `WORKER_QUEUE_NAME` means one queue. |
+| `SMALL_JOB_MAX_PAGES` | `1` | A job of at most this many processed pages is small (an image counts as a page: a pasted image, one image, a one-page PDF). `0`: no job is small. Used by the api (queue) and the worker (who goes first). |
+| `FAST_LANE_CHECK_SECONDS` | `5` | How long the api keeps its answer to "is a fast worker alive?". |
 | `TRUSTED_PROXY_CIDR` | empty | Proxies whose `X-Forwarded-For` is believed. Comma or space separated; IPv6 allowed. Empty trusts nobody. `/0` is refused. |
 | `IP_HASH_SECRET` | empty | Key for hashing client addresses. Set it in production. When empty a random key is made at start, and per-IP counters reset on restart. |
 | `MEDIA_STREAM_DIRECT` | `false` | `true`: stream media files from the API (development). `false`: `X-Accel-Redirect`. |
@@ -245,8 +249,8 @@ DATA_DIR=/tmp/decimer-jobs REDIS_URL=redis://localhost:6379/0 MEDIA_STREAM_DIREC
 
 `DATA_DIR` must be the same directory the API writes to. The worker needs `python -I -m
 decimer_api.worker.render` to run (a child process per PDF page), so it must run where `decimer_api`
-is installed. Several worker processes may run against one Redis; each has its own per-service
-limits. At start the worker checks that its settings agree with the API's (see `PIPELINE_TIMEOUT_SECONDS`
+is installed. Several worker processes may run against one Redis; each has its own per-replica limits
+and its own fair dispatcher (the worker of the fast lane is one more process, see below). At start the worker checks that its settings agree with the API's (see `PIPELINE_TIMEOUT_SECONDS`
 below) and refuses to start otherwise.
 
 ### What one job does
@@ -289,10 +293,11 @@ A service call is retried only where retrying can help:
   fails. The work may have started, or this very input may crash the service; it is not waited for.
 * 422 (the service refuses this input), 500 and a **read timeout** are not retried.
 
-At most `<SERVICE>_CONCURRENCY` calls to one service are in flight, counted over all jobs of the process, and
-a call waiting to retry keeps its place. ocsr gets one call at a time (it runs one inference at a time, 3 s
-for a structure and up to 55 s for an image that is not one) and a 120 s timeout. An answer is read as a
-stream and refused above 64 MiB (seg, which sends the crops) or 1 MiB (the others).
+At most `<SERVICE>_CONCURRENCY` calls to one **replica** of a service are in flight (see the next section),
+counted over all jobs of the process, and a call waiting out a 503 keeps its slot. ocsr gets one call per replica
+at a time (it runs one inference at a time, 3 s for a structure and up to 55 s for an image that is not one)
+and a 120 s timeout. An answer is read as a stream and refused above 64 MiB (seg, which sends the crops) or
+1 MiB (the others).
 
 | What failed | What the job does |
 |---|---|
@@ -321,6 +326,85 @@ error saying so; the record is then left running until it expires.
 `isStructure` is `bool | null` in the model (a change in `models.py`): null means the classifier gave no
 answer. The frontend must not read null as "not a structure".
 
+### Replicas, fair dispatching and the fast lane
+
+Code: `worker/replicas.py` (the pool), `worker/services.py` (the calls), `queue.py` (the lanes).
+
+**Replicas.** A model service is one host name and port (`SEG_URL=http://seg:8001`); in the Compose stack
+Docker's DNS answers with the address of every running replica (`deploy/compose.yaml`). The worker keeps one
+pool per service: it resolves the name (all A records; AAAA only when there are none), sends each call to
+`http://<address>:<port><path>`, looks the name up again every `REPLICA_REFRESH_SECONDS` (10 s) and at once after
+a call could not connect, drops an address that has left DNS once it is idle, and uses a new one at once. If the
+lookup fails the replicas already known are kept. A URL whose host is an IP address or `localhost`, and a
+name that does not resolve at all, is **one replica** reached under the URL as given, so development (and
+the in-process mode) with `http://127.0.0.1:8001` is unchanged. `*_CONCURRENCY` is **per replica** (default 1).
+
+**Least-busy routing.** A free slot goes to the healthy replica with the fewest calls in flight; among equals, the
+one that went longest without a call. A replica that refused the connection or dropped it is skipped for
+`REPLICA_COOLDOWN_SECONDS` (10 s) and the call goes to another healthy replica at once, without waiting and
+without spending the connect-retry budget; an answer from it ends the skipping early. A read timeout does not
+count against a replica (slow is not dead). When every replica is skipped they are all tried again, and the call's
+own retry rules decide (doubling backoff within `CONNECT_RETRY_BUDGET_SECONDS`, then `service_unavailable`). The
+rules of the previous section hold per call over all replicas: the busy-503 count, the connect budget and the
+one retry after a broken connection (which goes to another replica when one is healthy) are the call's own; a
+503 is waited out on the same replica, holding the slot. Because that retry is the only time a request is sent
+again after a replica may have started on it, an input that crashes the service it reaches takes down **at most
+`1 + SENT_RETRIES` (2) replicas per call**, however many replicas there are.
+
+**No blocking, no starvation.** Several jobs run at once (`WORKER_MAX_JOBS`) and share the replicas. A job asks
+for as many calls at once as its service takes in all (replicas x `*_CONCURRENCY`; so a lone job fills every
+replica and keeps the lone-job timing of the deploy README). When a slot frees, the waiting calls of that service
+are served in this order: calls of a **small job** first (`Settings.is_small_job`: at most `SMALL_JOB_MAX_PAGES`
+processed pages, the same rule in the api and the worker, so nothing about size is stored on the record);
+among the jobs of one size class the one served longest ago, so the crops of two big jobs interleave; and after
+`SMALL_FIRST_BURST` (4) small calls in a row, while a large call is waiting, the next slot goes to a large call
+(the count restarts when no large call waits). So a small job does not queue behind the calls of big PDFs, but it
+can still wait for: the call already running on a replica (no call is interrupted; ocsr takes 3 s, up to 55 s
+for an image that is not a structure), including a call of the other worker process (a replica serves one call at
+a time for both); the calls of other small jobs ahead of it in the turn order; and the one slot in
+`SMALL_FIRST_BURST + 1` that goes to a large call while one is waiting. A large job gets at least one slot in
+`SMALL_FIRST_BURST + 1`. Rendering is one page at a time per job through a shared semaphore, which already takes
+turns between jobs.
+
+**Memory.** A page is read, decoded and held as a PNG (up to 36 MiB for a 50 MP page) only once the job has a seg
+slot, and a crop only once it has an ocsr slot (`ServiceCaller.slot`, then `post(lease=...)`), so what a worker
+holds, and how many threads decode images, is bounded by the slots of the services, not by the number of jobs
+waiting for them. A lookup of the replicas never holds up a call: after the first one it runs in a background
+task, and only a call that has just failed to connect waits for a fresh one. The HTTP client has no connection
+cap (the pools bound what is in flight) and lets go of an idle connection after 2 s, before uvicorn's 5 s, so a
+reused connection is not reset under a call.
+
+**The fast lane.** `Settings.is_small_job(job.pages_processed)` is decided when the job is created; the api
+puts a small job on `WORKER_FAST_QUEUE_NAME` and every other job on `WORKER_QUEUE_NAME`. The fast queue is
+served by a second worker (`worker-fast`, part of the default Compose start): the same program with
+`WORKER_QUEUE_NAME` set to the fast queue's name, which gives it its own `WORKER_MAX_JOBS`, so a small job does not
+wait for a place behind big PDFs either. The fast worker may not be running (stopped, starting, a development
+setup), and a queue nobody serves would hold a job forever, so:
+
+* the api sends a small job to the fast queue **only while a fast worker is alive**: arq's worker keeps
+  `<queue name>:health-check` (set every minute, 61 s lifetime, deleted on a clean stop), and the api checks that
+  key (at most every `FAST_LANE_CHECK_SECONDS`). No fast worker: the small job goes on the default queue and
+  the default worker runs it, its calls still going first. If Redis cannot answer, the default queue is used.
+  There is no setting to keep in step with the container.
+* a job on the fast queue whose worker has died is **moved** to the default queue by the default worker
+  (`queue.requeue_stranded`, every `FAST_LANE_RESCUE_SECONDS`, 30 s, only when the fast queue has entries and no
+  fast worker is alive). Each move is one Lua script: it happens only if the job is still on the fast queue (a
+  fast worker that is starting may have taken it since the list was read), the score is kept (so the job keeps
+  its turn) and a job already on the default queue keeps its place (`ZADD NX`); a job in both queues runs once,
+  because arq's in-progress key is per job id. A job still **waiting** on the dead worker's queue waits at most
+  about 90 s (the key's 61 s plus the 30 s). A job that was **running** on it is moved too, but it is started
+  again only when arq's in-progress key expires, `job_timeout + 10 s` after the run began, about 18 minutes with
+  the defaults, and its record (20 minutes after its last save) may be gone by then.
+* the container health check (`deploy/worker_healthcheck.py`) reads `WORKER_QUEUE_NAME` and looks for the same
+  key arq's worker of that queue keeps (a test compares the two).
+
+`queuePosition` is the job's place in the arrival order over both lanes (it is kept in the store's own
+sorted set, not in an arq queue), so a small job on the fast lane can be shown a position behind jobs it does
+not wait for.
+
+The in-process development mode has no lanes: `InProcessEnqueuer` runs every job in the process, at most
+`WORKER_MAX_JOBS` at once, and only the dispatching of the calls to the services is fair.
+
 ### Worker settings
 
 Environment variables, read by `WorkerSettings` (`worker/settings.py`); `.env.example` has the block.
@@ -329,9 +413,13 @@ Environment variables, read by `WorkerSettings` (`worker/settings.py`); `.env.ex
 |---|---|---|
 | `SEG_URL`, `OCSR_URL`, `CLS_URL` | `http://127.0.0.1:8001`, `:8002`, `:8003` | Base URLs of the model services. |
 | `CHEM_URL` | empty | The chem service; empty switches names off. |
-| `SEG_CONCURRENCY`, `OCSR_CONCURRENCY`, `CLS_CONCURRENCY`, `CHEM_CONCURRENCY` | `2`, `1`, `2`, `1` | Calls in flight per service, per worker process. |
+| `SEG_CONCURRENCY`, `OCSR_CONCURRENCY`, `CLS_CONCURRENCY`, `CHEM_CONCURRENCY` | `1`, `1`, `1`, `1` | Calls in flight **per replica** of the service, per worker process (before P3-04b: service totals, `2`, `1`, `2`, `1`). |
 | `RENDER_CONCURRENCY` | `1` | Pages rendered at once (a 50 MP page needs about 0.4 GB). |
-| `WORKER_MAX_JOBS` | `2` | Jobs one worker process runs at once (arq `max_jobs`). |
+| `WORKER_MAX_JOBS` | `4` | Jobs one worker process runs at once (arq `max_jobs`); they share the replicas. About twice the ocsr slots: `4` beside legacy (2 replicas), `8` after cutover (3). |
+| `REPLICA_REFRESH_SECONDS` | `10` | How often a service's name is looked up again for replicas (and at once after a connection failed). |
+| `REPLICA_COOLDOWN_SECONDS` | `10` | How long a replica that refused or dropped a connection is skipped. Above 0. |
+| `SMALL_FIRST_BURST` | `4` | Small calls in a row after which a waiting large call gets the next slot. At least 1. |
+| `FAST_LANE_RESCUE_SECONDS` | `30` | How often the default worker looks for jobs stranded on the fast queue (0 = never). |
 | `CONNECT_TIMEOUT_SECONDS` | `5` | Connect timeout of every call. |
 | `SEG_TIMEOUT_SECONDS`, `OCSR_TIMEOUT_SECONDS`, `CLS_TIMEOUT_SECONDS`, `CHEM_TIMEOUT_SECONDS` | `180`, `120`, `60`, `120` | Read timeout: the longest a call may take, queue time in the service included. ocsr needs up to 55 s for an input that is not a structure; chem's own budget for a batch is 60 s plus a restart. |
 | `OCSR_MAX_TIMEOUTS` | `3` | ocsr timeouts in one job after which the job gives up. |

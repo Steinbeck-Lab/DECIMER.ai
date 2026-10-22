@@ -15,9 +15,9 @@ from decimer_api.worker.errors import (
     ServiceTimedOut,
     ServiceUnavailable,
 )
-from decimer_api.worker.services import Services, make_gates, make_services
+from decimer_api.worker.services import Services, make_services
 from decimer_api.worker.settings import WorkerSettings
-from tests.worker.fakes import FakeBackend, FakeSleep, json_response, make_crop
+from tests.worker.fakes import FakeBackend, FakeSleep, json_response, make_crop, no_dns
 
 PNG = make_crop(0, 0)
 
@@ -54,7 +54,7 @@ async def build(sleep: FakeSleep) -> AsyncIterator[Build]:
         settings = WorkerSettings(**{**values, **overrides})  # type: ignore[arg-type]
         client = httpx.AsyncClient(transport=backend.transport)
         clients.append(client)
-        return make_services(client, make_gates(settings), settings, sleep=sleep)
+        return make_services(client, settings, sleep=sleep, resolver=no_dns)
 
     yield factory
     for client in clients:

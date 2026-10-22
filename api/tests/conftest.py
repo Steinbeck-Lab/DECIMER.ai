@@ -29,16 +29,18 @@ class FakeClock:
 
 
 class FakeEnqueue:
-    """Records enqueued job ids; can be made to fail."""
+    """Records enqueued job ids and their size class; can be made to fail."""
 
     def __init__(self) -> None:
         self.job_ids: list[str] = []
+        self.small: dict[str, bool] = {}
         self.error: Exception | None = None
 
-    async def __call__(self, job_id: str) -> None:
+    async def __call__(self, job_id: str, *, small: bool = False) -> None:
         if self.error is not None:
             raise self.error
         self.job_ids.append(job_id)
+        self.small[job_id] = small
 
 
 @pytest.fixture

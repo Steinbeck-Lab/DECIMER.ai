@@ -7,7 +7,8 @@
 
 It is the production pipeline (`run_pipeline`) started from the API's enqueue seam instead of
 from arq, so a job takes the same path. A job that is waiting for one of the `WORKER_MAX_JOBS`
-places stays queued (and shows its queue position). Jobs do not survive a restart of this
+places stays queued (and shows its queue position), small or not: there are no lanes here, only
+the fair dispatching of the calls to the model services. Jobs do not survive a restart of this
 process, which is the difference that matters: use the arq worker anywhere else.
 """
 
@@ -40,7 +41,9 @@ class InProcessEnqueuer:
         self._slots = asyncio.Semaphore(max_jobs or deps.worker.worker_max_jobs)
         self._tasks: set[asyncio.Task[None]] = set()
 
-    async def __call__(self, job_id: str) -> None:
+    async def __call__(self, job_id: str, *, small: bool = False) -> None:
+        # There is one process and no queues here, so the size class only matters inside the
+        # pipeline, where it decides whose calls to the replicas go first.
         task = asyncio.create_task(self._run(job_id), name=f"job-{job_id}")
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)

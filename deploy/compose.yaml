@@ -22,14 +22,16 @@
 # (the default), 6/3/3 after cutover (legacy's own layout). `deploy.replicas` is how: Compose creates N
 # containers (decimer-next-seg-1 ... -N) and the SERVICE NAME resolves, on the `models` network, to the
 # addresses of all of them (Docker's embedded DNS answers with every replica's A record, in rotating
-# order). That is the whole discovery contract for the worker, and nothing else is promised:
+# order). That is the whole discovery contract for the worker (TODO, done), and nothing else is promised:
 #     SEG_URL=http://seg:8001   OCSR_URL=http://ocsr:8002   CLS_URL=http://cls:8003   CHEM_URL=http://chem:8004
 # one hostname per service, one fixed port per service, all replicas answer on that port; the worker
-# resolves all A records of the name, refreshes them periodically (replicas restart and get new addresses)
-# and balances itself. Do not use per-replica names or addresses (the container names are not part of
-# the contract), and no service that is scaled has a container_name or a published port (it would make
-# a second replica impossible). Everything per replica (memory, cpus, pids, threads) is the same for all
-# replicas of a service. Scaling by hand: `$DC up -d --scale seg=3` overrides the file for that run.
+# resolves all A records of the name (api/src/decimer_api/worker/replicas.py), looks again every 10 s and
+# right after a connection failed (replicas restart and get new addresses), sends every call to the
+# least-busy healthy replica and skips one that refuses connections for 10 s. Do not use per-replica
+# names or addresses (the container names are not part of the contract), and no service that is scaled
+# has a container_name or a published port (it would make a second replica impossible). Everything per
+# replica (memory, cpus, pids, threads) is the same for all replicas of a service. Scaling by hand:
+# `$DC up -d --scale seg=3` overrides the file for that run; the worker finds the third replica by itself.
 #
 # Networks (who can reach what)
 #   public   the edge alone, with a pinned subnet and the only published port (127.0.0.1:8090 on the
@@ -93,14 +95,12 @@ x-api-image: &api-image
   image: localhost/decimer-next/api:${DECIMER_TAG:-local}
   pull_policy: never
 
-# What the two workers (worker, worker-fast) have in common. TODAY the worker reads SEG/OCSR/CLS_CONCURRENCY
-# as the TOTAL of calls in flight to the service (one semaphore, one URL), so the defaults are the replica
-# counts of the beside-legacy layout, 2/2/2: with 1 the second replica would sit idle (a lone 10-page job
-# would take about 130 s, legacy 95.3 s). Set them to the replica counts if you change those (6/3/3 after
-# cutover). When TODO lands they become PER REPLICA: the worker multiplies them by the number
-# of replicas it discovers, and the defaults here and in .env.example change to 1 (deploy/README.md).
-# Settings the worker does not know yet (the queue names) are ignored by it (extra="ignore"), so naming
-# them here costs nothing today.
+# What the two workers (worker, worker-fast) have in common. SEG/OCSR/CLS_CONCURRENCY are PER REPLICA:
+# the worker finds the replicas of a service by itself (see the header) and multiplies, so 1 keeps every
+# replica busy with one inference at a time and does not fill its queue, whether the layout is 2/2/2
+# or 6/3/3. They do NOT follow the replica counts any more; leave them at 1 unless a replica is shown to
+# have idle time with one call (the services queue a few more, ocsr 16, seg 8). A lone 10-page job then
+# takes about 70 s beside legacy and 46 s after cutover (deploy/README.md), legacy 95.3 s.
 x-worker-env: &worker-env
   REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env (openssl rand -hex 24)}@redis:6379/0
   DATA_DIR: /data/jobs
@@ -112,9 +112,9 @@ x-worker-env: &worker-env
   # `-` and not `:-`: the default applies only when CHEM_URL is unset, so `CHEM_URL=` in .env really is
   # empty, which switches names off.
   CHEM_URL: ${CHEM_URL-http://chem:8004}
-  SEG_CONCURRENCY: ${SEG_CONCURRENCY:-2}
-  OCSR_CONCURRENCY: ${OCSR_CONCURRENCY:-2}
-  CLS_CONCURRENCY: ${CLS_CONCURRENCY:-2}
+  SEG_CONCURRENCY: ${SEG_CONCURRENCY:-1}
+  OCSR_CONCURRENCY: ${OCSR_CONCURRENCY:-1}
+  CLS_CONCURRENCY: ${CLS_CONCURRENCY:-1}
   CHEM_CONCURRENCY: ${CHEM_CONCURRENCY:-1}
   RENDER_CONCURRENCY: ${RENDER_CONCURRENCY:-1}
   # The hashing key belongs to the api alone (env_file would hand it to every container).
@@ -122,8 +122,10 @@ x-worker-env: &worker-env
   # arq waits this long for running jobs when it is stopped (0 would cancel them; they rerun after
   # the restart). stop_grace_period must be longer.
   SHUTDOWN_WAIT_SECONDS: ${SHUTDOWN_WAIT_SECONDS:-100}
-  # Two queues (TODO; the names are provisional): the api puts small jobs (a pasted image, one
-  # page) on the fast queue and everything else on the default one; worker-fast serves the fast queue.
+  # Two queues: the api puts a small job (a pasted image, one page: SMALL_JOB_MAX_PAGES) on the fast
+  # queue while a fast worker is alive and every other job on the default one. A worker serves the queue
+  # named by WORKER_QUEUE_NAME (worker-fast overrides it below); the worker of the default queue also moves
+  # jobs stranded on the fast queue back when no fast worker is alive.
   WORKER_QUEUE_NAME: ${WORKER_QUEUE_NAME:-arq:queue}
   WORKER_FAST_QUEUE_NAME: ${WORKER_FAST_QUEUE_NAME:-decimer:fast}
 
@@ -327,7 +329,10 @@ services:
       IP_HASH_SECRET: ${IP_HASH_SECRET:?set IP_HASH_SECRET in deploy/.env (openssl rand -hex 32)}
       # TODO: the variable name of the problem-report directory is a guess until that lands.
       REPORTS_DIR: /data/reports
-      # The two arq queues (TODO; names provisional, ignored until the api and worker read them).
+      # The two arq queues: the api sends a small job to the fast queue only while a fast worker's
+      # health-check key (<WORKER_FAST_QUEUE_NAME>:health-check) exists in Redis, so while worker-fast is
+      # not running (stopped, starting, scaled to 0) every job goes to the default queue and the default
+      # worker runs it.
       WORKER_QUEUE_NAME: ${WORKER_QUEUE_NAME:-arq:queue}
       WORKER_FAST_QUEUE_NAME: ${WORKER_FAST_QUEUE_NAME:-decimer:fast}
     volumes:
@@ -353,8 +358,10 @@ services:
     env_file: .env
     environment:
       <<: *worker-env
-      # Jobs this process runs at once, so that several jobs' crops interleave on the replicas
-      # (D18: a small job must not wait behind a big one). 4 beside legacy, 8 after cutover.
+      # Jobs this process runs at once, so that several jobs' crops interleave on the replicas (D18; a small
+      # job's calls go first and jobs take turns, see api/src/decimer_api/worker/replicas.py). About twice
+      # the ocsr slots: 4 beside legacy (2 replicas), 8 after cutover (3 replicas). With the fast lane off
+      # this is also how many big PDFs can be running before a small job has to wait for a place.
       WORKER_MAX_JOBS: ${WORKER_MAX_JOBS:-4}
     volumes:
       - jobs:/data/jobs
@@ -389,23 +396,25 @@ services:
     cpus: ${WORKER_CPUS:-2}
     pids_limit: 256
 
-  # The fast lane (TODO, NOT YET USEFUL): a second worker on its own arq queue for small jobs (one
-  # pasted image or a single small upload, at most one page), so that they never wait behind a 10-page PDF
-  # in the default queue. It exists only when the profile is on: COMPOSE_PROFILES=fast-lane in
-  # deploy/.env (or `--profile fast-lane`). It needs two changes first: the worker must read
-  # WORKER_QUEUE_NAME (today it ignores it) and the api must choose the queue by the size of the job.
-  # Until both land, enabling it only adds a second ordinary worker on the same queue (harmless, and it
-  # reports unhealthy because the health-check key of its queue name is never written). It shares the
-  # model services with the default worker; its own limits are small because it only takes small jobs.
+  # The fast lane (TODO, D18): a second worker on its own arq queue for small jobs (one pasted image
+  # or a single small upload, at most one page: SMALL_JOB_MAX_PAGES), so that a small job never waits for a
+  # worker place (WORKER_MAX_JOBS) behind 10-page PDFs in the default queue. It is part of the default start
+  # (1 GB limit, deploy/README.md "Memory"); to run without it: `$DC up -d --scale worker-fast=0` or
+  # `$DC stop worker-fast`. Either is safe: the api sends a job to the fast queue only while this worker is
+  # alive (its health-check key is in Redis), so without it small jobs take the default queue and the
+  # default worker; a job still WAITING on its queue when it dies is moved to the default queue by the default
+  # worker within about 90 s (arq's key lives 61 s; FAST_LANE_RESCUE_SECONDS, 30, is how often it looks), but a
+  # job that was RUNNING on it is started again only when arq's in-progress key has expired, job_timeout + 10 s
+  # (about 18 minutes with the defaults). It shares the model services with the default worker (a replica
+  # serves one call at a time for both); its own limits are small because it only takes small jobs.
   worker-fast:
     <<: [*service, *api-image]
-    profiles:
-      - fast-lane
     command: ["python", "-m", "decimer_api.worker"]
     env_file: .env
     environment:
       <<: *worker-env
-      # The queue this worker serves, and the variable worker_healthcheck.py builds its key from.
+      # The queue this worker serves (the worker reads it), and the variable worker_healthcheck.py builds
+      # its health-check key from: <queue name>:health-check, the key arq's worker keeps for its queue.
       WORKER_QUEUE_NAME: ${WORKER_FAST_QUEUE_NAME:-decimer:fast}
       WORKER_MAX_JOBS: ${WORKER_FAST_MAX_JOBS:-2}
     volumes:

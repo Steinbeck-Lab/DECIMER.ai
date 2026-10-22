@@ -36,6 +36,7 @@ REQUIRED = ("SEG_URL", "CLS_URL", "OCSR_URL")
 
 pytestmark = [
     pytest.mark.slow,
+    pytest.mark.timeout(1800),  # real models: the default of 60 s is for the fast suite
     pytest.mark.skipif(
         any(not os.environ.get(name) for name in REQUIRED),
         reason=f"set {', '.join(REQUIRED)} to run against real services",

@@ -84,3 +84,53 @@ def test_response_limits_are_per_service() -> None:
     worker = WorkerSettings()
     assert worker.max_response_bytes("seg") > worker.max_response_bytes("ocsr")
     assert worker.max_response_bytes("ocsr") == worker.max_response_bytes("cls")
+
+
+# --- replicas and fair dispatching ---------------------------------------------------------
+
+
+def test_the_concurrency_defaults_are_per_replica_and_one() -> None:
+    """The worker multiplies them by the replicas it finds, so one keeps each replica fed
+    without filling its queue. (Before P3-04b seg and cls were 2, as service totals.)"""
+    worker = WorkerSettings()
+    assert [worker.concurrency(s) for s in ("seg", "ocsr", "cls", "chem")] == [1, 1, 1, 1]
+
+
+def test_the_dispatching_defaults() -> None:
+    worker = WorkerSettings()
+    assert worker.replica_refresh_seconds == 10
+    assert worker.replica_cooldown_seconds == 10
+    assert worker.small_first_burst == 4
+    assert worker.fast_lane_rescue_seconds == 30
+    assert worker.worker_max_jobs == 4  # the beside-legacy layout (compose: 8 after cutover)
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"seg_concurrency": 0},
+        {"replica_refresh_seconds": 0},
+        {"replica_cooldown_seconds": 0},  # a cooldown of 0 would make "skipped" mean nothing
+        {"small_first_burst": 0},  # 0 would put large calls before small ones
+        {"fast_lane_rescue_seconds": -1},
+    ],
+)
+def test_dispatching_settings_out_of_range_are_refused(bad: dict[str, float]) -> None:
+    with pytest.raises(ValueError):
+        WorkerSettings(**bad)  # type: ignore[arg-type]
+
+
+def test_the_rescue_can_be_switched_off() -> None:
+    assert WorkerSettings(fast_lane_rescue_seconds=0).fast_lane_rescue_seconds == 0
+
+
+def test_the_dispatching_settings_come_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("REPLICA_REFRESH_SECONDS", "3")
+    monkeypatch.setenv("REPLICA_COOLDOWN_SECONDS", "20")
+    monkeypatch.setenv("SMALL_FIRST_BURST", "7")
+    monkeypatch.setenv("FAST_LANE_RESCUE_SECONDS", "0")
+    worker = WorkerSettings()
+    assert (worker.replica_refresh_seconds, worker.replica_cooldown_seconds) == (3, 20)
+    assert (worker.small_first_burst, worker.fast_lane_rescue_seconds) == (7, 0)

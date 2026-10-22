@@ -31,21 +31,39 @@ class WorkerSettings(BaseSettings):
     # Optional. Without it IUPAC names are null ("no verified name").
     chem_url: str | None = None
 
-    # --- concurrency, per worker process ---
-    # Calls in flight at once to one service, summed over all jobs of this process. The model
-    # services run one inference at a time and queue a few more (ocsr: 16, seg: 8), so a call
-    # that goes in beside another one only waits for it. ocsr is the slow one (3 s for a
-    # structure, up to 55 s for an image that is not one), so it gets one call at a time and a
-    # timeout that does not have to cover a queue.
-    seg_concurrency: int = Field(default=2, gt=0)
+    # --- concurrency ---
+    # Calls in flight at once to ONE REPLICA of a service, counted over all jobs of this process
+    #. The worker finds the replicas through DNS and multiplies: a service with 3 replicas
+    # takes 3 x this many calls. The model services run one inference at a time and queue a few
+    # more (ocsr: 16, seg: 8), so 1 keeps a replica fed without filling its queue. ocsr is the
+    # slow one (3 s for a structure, up to 55 s for an image that is not one), and its timeout
+    # does not have to cover a queue.
+    seg_concurrency: int = Field(default=1, gt=0)
     ocsr_concurrency: int = Field(default=1, gt=0)
-    cls_concurrency: int = Field(default=2, gt=0)
+    cls_concurrency: int = Field(default=1, gt=0)
     # chem names one structure at a time; a job sends one batch, so one call is enough.
     chem_concurrency: int = Field(default=1, gt=0)
-    # Pages rendered at once. A 50 MP page needs about 0.5 GB while it is rendered.
+    # Pages rendered at once, in this process. A 50 MP page needs about 0.5 GB while rendered.
     render_concurrency: int = Field(default=1, gt=0)
-    # Jobs this process runs at once.
-    worker_max_jobs: int = Field(default=2, gt=0)
+    # Jobs this process runs at once (arq max_jobs). Their calls share the replicas; a job needs
+    # little memory beyond the page it renders. 4 beside legacy (2 replicas of each service), 8
+    # after cutover (6/3/3).
+    worker_max_jobs: int = Field(default=4, gt=0)
+
+    # --- replicas and fair dispatching ---
+    # The replicas of a service are looked up again this often, and at once after a call could not
+    # connect.
+    replica_refresh_seconds: float = Field(default=10.0, gt=0)
+    # A replica that refused or dropped a connection is skipped this long (a call that finds it
+    # dead goes to another replica at once). An answer from it ends the wait.
+    replica_cooldown_seconds: float = Field(default=10.0, gt=0)
+    # Calls of small jobs (a pasted image, one page) go before those of large jobs, but after this
+    # many small calls in a row a waiting large call gets the next slot, so that a stream of small
+    # jobs cannot starve a large one.
+    small_first_burst: int = Field(default=4, ge=1)
+    # The worker of the default queue looks this often for jobs stranded on the fast queue when no
+    # fast worker is alive, and moves them to its own queue (0 switches it off).
+    fast_lane_rescue_seconds: float = Field(default=30.0, ge=0)
 
     # --- timeouts (seconds) ---
     connect_timeout_seconds: float = Field(default=5.0, gt=0)
@@ -171,6 +189,7 @@ class WorkerSettings(BaseSettings):
         }[service]
 
     def concurrency(self, service: str) -> int:
+        """Calls in flight at once to one replica of `service` (to the process for render)."""
         return {
             "seg": self.seg_concurrency,
             "ocsr": self.ocsr_concurrency,

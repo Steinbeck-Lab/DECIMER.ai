@@ -76,6 +76,21 @@ class Settings(BaseSettings):
     max_active_jobs_per_ip: int = Field(default=2, gt=0)
     queue_max: int = Field(default=50, gt=0)
     queue_retry_after_seconds: int = Field(default=30, gt=0)
+    # --- queues and the fast lane ---
+    # The arq queue a worker serves (WORKER_QUEUE_NAME; arq's own default name) and the one the
+    # api puts small jobs on (WORKER_FAST_QUEUE_NAME). A worker reads the first, so the fast
+    # worker (`worker-fast`) is started with WORKER_QUEUE_NAME set to the fast queue's name.
+    worker_queue_name: str = "arq:queue"
+    worker_fast_queue_name: str = "decimer:fast"
+    # A job of at most this many processed pages is small: it goes on the fast queue (when a
+    # fast worker is alive) and its calls to the model services go before those of larger jobs.
+    # An image counts as one page, so 1 means a pasted image, a single image upload or a one-page
+    # PDF. 0 means no job is small.
+    small_job_max_pages: int = Field(default=1, ge=0)
+    # The api sends a small job to the fast queue only while a fast worker is alive (its
+    # health-check key exists in Redis); the answer is kept this long.
+    fast_lane_check_seconds: float = Field(default=5.0, gt=0)
+
     # CIDRs of the reverse proxies; X-Forwarded-For is honoured only from these peers.
     # Comma or space separated. Empty means no proxy is trusted.
     trusted_proxy_cidr: Annotated[list[Network], NoDecode] = Field(default_factory=list)
@@ -101,6 +116,13 @@ class Settings(BaseSettings):
                 return [ip_network(item, strict=False) for item in items]
             except ValueError as error:
                 raise ValueError(f"TRUSTED_PROXY_CIDR: {error}") from error
+        return value
+
+    @field_validator("worker_queue_name", "worker_fast_queue_name")
+    @classmethod
+    def _queue_name_is_a_plain_key(cls, value: str) -> str:
+        if not value or value != value.strip() or any(c.isspace() or ord(c) < 32 for c in value):
+            raise ValueError("a queue name must be a non-empty Redis key without whitespace")
         return value
 
     @field_validator("ingest_concurrency")
@@ -146,6 +168,11 @@ class Settings(BaseSettings):
                     broad,
                 )
         return networks
+
+    def is_small_job(self, pages_processed: int) -> bool:
+        """The size class of a job, from what the api knows when it creates it. The worker uses
+        the same rule on the stored job, so both sides agree."""
+        return pages_processed <= self.small_job_max_pages
 
     @property
     def max_upload_bytes(self) -> int:
