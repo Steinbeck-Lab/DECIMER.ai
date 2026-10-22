@@ -1,9 +1,11 @@
 """Healthcheck of the arq worker container: is its health-check key in Redis?
 
-arq's worker sets the key `arq:queue:health-check` (queue name + ":health-check") every
-`health_check_interval` seconds (60, decimer_api/worker/arq_app.py) with a lifetime of that plus one
-second, so the key exists exactly while the worker's loop is alive and turning. Exit 0 if it exists,
-1 otherwise (also when Redis does not answer). REDIS_URL comes from the container's environment.
+arq's worker sets the key `<queue name>:health-check` every `health_check_interval` seconds (60,
+decimer_api/worker/arq_app.py) with a lifetime of that plus one second, so the key exists exactly
+while the worker's loop is alive and turning. The default queue is `arq:queue`; a worker that serves
+another queue (the fast lane, TODO) names it in WORKER_QUEUE_NAME, which this script reads.
+Exit 0 if the key exists, 1 otherwise (also when Redis does not answer). REDIS_URL and
+WORKER_QUEUE_NAME come from the container's environment.
 """
 
 import os
@@ -11,7 +13,7 @@ import sys
 
 import redis
 
-KEY = "arq:queue:health-check"
+KEY = f"{os.environ.get('WORKER_QUEUE_NAME') or 'arq:queue'}:health-check"
 
 
 def main() -> int:

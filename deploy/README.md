@@ -12,7 +12,7 @@ with its own networks and volumes, and publishes one port: `127.0.0.1:8090`.
 
 | Path | What |
 |---|---|
-| `compose.yaml` | The project: redis, seg, cls, ocsr, chem, api, worker, sweep, edge |
+| `compose.yaml` | The project: redis, seg, cls, ocsr (replicated), chem, api, worker, sweep, edge, and `worker-fast` behind the `fast-lane` profile |
 | `.env.example` | Every setting a deployment sets (copy to `deploy/.env`, which is never committed) |
 | `seg.Dockerfile`, `cls.Dockerfile`, `ocsr.Dockerfile` | TensorFlow 2.15.1 model services, Python 3.11, weights baked in and checked |
 | `chem.Dockerfile` | Python 3.12 + Temurin 21 JRE + Orthonym and its two jars, baked in and checked |
@@ -98,10 +98,11 @@ are never pulled (`pull_policy: never`): there is no registry namespace somebody
   applies to directories too and once made them unenterable for nginx) and read as uid 101.
 * **pystow needs a README in its home directory.** `import pystow` writes `$PYSTOW_HOME/README.md` when it
   is missing, which fails on a read-only `/models`; the seg and ocsr images put the file there.
-* **Environment:** `PYSTOW_HOME=/models` (seg, ocsr); `TF_NUM_INTRAOP_THREADS`/`TF_NUM_INTEROP_THREADS`
-  4/1 for seg and ocsr (the containers get 4 CPUs) and 2/1 for cls (measured in its README), all
-  overridable from `.env`; `MALLOC_ARENA_MAX=2` for cls (the RSS growth soak note);
-  `OPENCV_IO_MAX_IMAGE_PIXELS=40000000` for seg and ocsr (seg's own default, written out; do not raise it).
+* **Environment:** `PYSTOW_HOME=/models` (seg, ocsr); the thread counts per replica come from `.env` and are
+  set by compose (see "Replicas, threads and memory"; the Dockerfiles carry standalone defaults of 4/1 for
+  seg and ocsr and 2/1 for cls, which compose overrides); `MALLOC_ARENA_MAX=2` for cls (the RSS growth soak
+  note); `OPENCV_IO_MAX_IMAGE_PIXELS=40000000` for seg and ocsr (seg's own default, written out; do not
+  raise it).
 * **Healthchecks** hit `/readyz` (which runs a real inference) for the model services and the API,
   `/healthz` for the edge, the arq health-check key in Redis for the worker, and nothing for the sweep.
   seg and ocsr probe every 120 s once running (an idle service pays its selftest on each probe) and every
@@ -221,30 +222,170 @@ hash routes. HSTS is left to the TLS terminator (commented line in the snippet).
 * **Leftover uploads:** the edge empties `/var/cache/nginx` when it starts, so the buffered body of a request
   that was cut off by a crash does not outlive the process.
 
-## Memory budget
+## Replicas, threads and memory
 
-The VM: 62 GB RAM, 8 CPUs, 395 GB free disk (checked 2026-10-22). The legacy stack uses about 22 GB.
-`free -g` at that moment: 28 used, 32 buff/cache, 34 available.
+Legacy runs 6 segmentation, 3 OCSR and 3 classifier socket servers in one container (about 22 GB). The new
+stack must never be slower or more blocking than that, so the model services are **replicated** (counts
+from `deploy/.env`, chem always 1), each replica with a **fixed thread count**, so that all replicas together
+match the 8 cores of the VM. Two layouts; the counts are configuration only.
 
-| Service | Limit | Expected resident | Basis |
+| | seg | ocsr | cls | chem |
+|---|---|---|---|---|
+| **Beside legacy** (default: local testing, the beta) | 2 | 2 | 2 | 1 |
+| **After cutover** (legacy removed; legacy's own layout) | 6 | 3 | 3 | 1 |
+
+### How replicas are made, and what the worker may rely on
+
+`compose.yaml` uses `deploy.replicas: ${SEG_REPLICAS:-2}` (and `OCSR_`, `CLS_`). Checked: `config` renders it
+identically with Compose v2.3.3 and v2.39.2 (including the 6/3/3 values from an env file), and the v2.3.3 binary
+carries the message "`scale` is deprecated. Use the `deploy.replicas` element", i.e. `deploy.replicas` is the form
+it honours. **`up` itself was not run** (rules for this task): on the first start, check that `$DC ps` shows the
+configured number of containers per service (`decimer-next-seg-1` ... ) and run the DNS check below. A one-off
+override is `$DC up -d --scale seg=3`. Scaled services have no `container_name` (a second replica would be
+impossible) and no published port.
+
+**The contract for the worker, and nothing more:**
+
+```
+SEG_URL=http://seg:8001    OCSR_URL=http://ocsr:8002    CLS_URL=http://cls:8003    CHEM_URL=http://chem:8004
+```
+
+* One host name per service and one fixed port per service; **all replicas answer on that port**. On the
+  `models` network Docker's embedded DNS answers a lookup of `seg` with the address of every running replica
+  (the order rotates), so the worker resolves **all A records** of the name, refreshes them periodically (a
+  replica that restarts comes back with another address; one that is down drops out of the answer or fails
+  its health check) and balances itself: least-busy healthy replica, per-replica concurrency equal to the
+  replica's own limit (seg, ocsr, cls and chem each run one inference at a time and queue a few more).
+* **No per-replica names or addresses**: container names (`decimer-next-seg-3`) and IPs are not part of the
+  contract.
+* `depends_on: condition: service_healthy` makes the worker wait for **every** replica of seg, cls, ocsr and chem
+  (after a replica is recreated later, only the worker's own retry logic covers the gap).
+* Check on the VM: `$DC exec worker python -c "import socket; print(sorted({a[4][0] for a in
+  socket.getaddrinfo('seg', 8001, proto=socket.IPPROTO_TCP)}))"` lists one address per seg replica (the
+  same for `ocsr` 8002 and `cls` 8003).
+
+### Threads and CPU: the calculation
+
+Per replica (compose passes them; `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS` and, for seg,
+`NUMBA_NUM_THREADS` are held to the same count, so that numpy and OpenCV's bundled BLAS do not start one thread
+per core in every replica; TensorFlow inter-op is 1 everywhere):
+
+| | seg | ocsr | cls |
 |---|---|---|---|
-| seg | 3 GB | about 2 GB | seg README (RSS about 2 GB, 3.5 s a page); mask memory grows with page size and detections |
-| cls | 2.5 GB | about 1 GB, 1.9 GB worst | cls README; RSS grows 57-100 KB per request: soak test TODO |
-| ocsr | 6 GB | about 4.8 GB | ocsr README: 4.8 GB resident with both models, +0.4 GB worst request, +0.3 GB bodies |
-| chem | 1.5 GB | about 0.4 GB | chem README: 360 MB naming process + 50 MB web process, flat over 1000 names |
-| api | 3.5 GB | 0.3 GB + up to 2 x 1.5 GB while uploads are parsed | INGEST_CONCURRENCY x INGEST_MEMORY_MB (1536) + base |
-| worker | 2 GB | 0.5 GB idle | a 50 MP page render child is about 0.5 GB; TODO measure |
-| redis | 384 MB | tens of MB | `maxmemory 256mb` |
-| sweep | 192 MB | about 100 MB | a Python process with the redis client |
-| edge | 256 MB | about 20 MB | buffered uploads go to disk |
-| **Sum of limits** | **19.3 GB (17.8 GB without chem)** | about 9.5 GB | |
+| TF intra-op threads, **beside legacy** | 2 | 2 | 1 |
+| TF intra-op threads, **after cutover** | 1 | 2 | 1 |
+| `cpus` limit per replica (cap + half a core for TensorFlow's other threads; ocsr: the cap) | 2.5 / 1.5 | 2 | 1.5 |
 
-Worst case with every limit reached: 22 + 19.3 = 41 GB of 62 GB. The limits are ceilings: a container
-over its limit is OOM-killed and restarted, never swapped (`memswap_limit` equals `mem_limit`). CPU limits
-add up to more than the 8 cores (seg 4, ocsr 4, cls 2, chem 2, api 2, worker 2, redis 1, edge 1, sweep 0.5) on
-purpose: a job runs its stages one after the other. If the legacy site slows down during the beta,
-lower seg and ocsr first (and their `TF_NUM_*` threads). Images are several GB each for the three
-TensorFlow services (estimate, not built); disk is no concern.
+**Inputs (measured, from the service READMEs and D17/F-07):** seg 3.6 s per page at all cores and 6 s at 2+1
+threads (8-core dev box); ocsr median 3.1-3.5 s per crop at 2+1 threads on the shared dev box, and legacy 2.6 s per
+crop on average at full CPU (52 s for 20 golden crops); cls about 0.1 s per crop at 2+1; the golden paper (10
+pages) took legacy 95.3 s.
+
+**Model (an estimate, not a measurement):** two points per service fit Amdahl's law, T(t) = serial + parallel/t:
+seg serial 2.8 s + parallel 6.4 s, so T(1) 9.2 s, T(2) 6.0 s, T(4) 4.4 s, T(8) 3.6 s; ocsr serial 2.4 s + parallel
+1.9 s, so T(1) 4.2 s, T(2) 3.3 s, T(8) 2.6 s (rough: the two points come from different machines' conditions; ocsr
+decodes token by token, so extra threads buy little); cls insensitive. CPU work of one maximum job (10 pages, 20
+structures): seg 92 core-seconds, ocsr 85, cls 2, render + RDKit + chem + api about 12: **191 core-seconds, 48% seg,
+44% ocsr**. On 8 cores that is at best 24 s per job, about 150 maximum jobs an hour, whatever the layout.
+
+| Layout | caps (replicas x threads) | sum of caps | bottleneck | cores busy at saturation | lone 10-page job (stages in sequence) |
+|---|---|---|---|---|---|
+| Beside legacy 2/2/2 | seg 2x2, ocsr 2x2, cls 2x1 | 10 | ocsr, 109 jobs/h | seg 2.8 + ocsr 2.6 + other 0.5 = **5.8** | about 70 s |
+| After cutover 6/3/3 | seg 6x1, ocsr 3x2, cls 3x1 | 15 | ocsr, 164 jobs/h | seg 4.2 + ocsr 3.8 + other 0.6 = **8.7** | about 46 s |
+
+The lone-job column adds the stages up, because the pipeline runs render, segment, recognise and check one after
+the other (the stages of one job do not overlap), and spreads a stage's items over the replicas in rounds. Render
+about 0.5 s a page (an estimate; one at a time beside legacy, two after cutover), seg 10 pages, ocsr 20 crops (cls
+runs beside ocsr and takes 0.1 s a crop), check (RDKit and chem) about 2 s:
+beside legacy 5 + 5 rounds x T(2) 6.0 s = 30 + 10 rounds x T(2) 3.3 s = 33 + 2 = **70 s**; after cutover 2.5 + 2
+rounds x T(1) 9.2 s = 18.4 + 7 rounds x T(2) 3.3 s = 23.1 + 2 = **46 s**; beside legacy with 3 threads each for seg
+and ocsr: 5 + 5 x 4.9 + 10 x 3.0 + 2 = **62 s**. These need P3-04b (the worker then uses every replica of a stage)
+or the concurrency set to the replica counts (the defaults, see "The worker's settings"); with 1 each the second
+replica is idle and a lone job takes about 130 s beside legacy.
+
+How to read it:
+
+* **After cutover the stack fills the 8 cores** (8.7 asked for, so it is CPU-bound and the ocsr stage runs a little
+  below its 164 jobs/h). The sum of caps cannot be 8 there: 12 replicas at one thread each already make 12. What
+  matches the cores is the *busy* sum, because the stages of a job run one after the other and the replicas of
+  different stages are busy in proportion to their share of the work. seg with 2 threads instead of 1 would not
+  raise throughput (ocsr is the bottleneck; 12 s vs 18 s for the seg stage of a lone job, 6 more core-slots held);
+  ocsr with 1 thread would drop to 128 jobs/h and about 52 s per lone job (7 rounds x T(1) 4.2 s).
+* **Beside legacy the stack takes about 6 of the 8 cores on purpose**: the legacy site is still serving users and
+  keeps the other 2 (its own socket servers are idle most of the time, and then the new stack may use more). For a
+  test while legacy is idle, `SEG_TF_INTRAOP_THREADS=3`, `OCSR_TF_INTRAOP_THREADS=3` (and `SEG_CPUS=3.5`,
+  `OCSR_CPUS=3`) take it to about 6.4 busy cores and about 62 s for a lone job.
+  **When both want the CPU, legacy gets the larger share:** every container of the new stack has `cpu_shares: 512`
+  (the `x-service` anchor in `compose.yaml`), half of the default 1024 that legacy's container has. The weight is
+  per container, so it shifts the split and does not reserve anything: with k new containers busy at once, legacy
+  gets 1024 / (1024 + 512 k) of what they fight over (50% at k = 2, against 33% with equal weights). The thread
+  counts and `cpus` caps are what bound the new stack.
+* **Against legacy:** a lone 10-page document is estimated at about 70 s beside legacy and about 46 s after
+  cutover, against the 95.3 s legacy needed for the golden paper (which also includes legacy's per-call JVM and
+  PHP time), provided P3-04b has landed or the concurrency is set to the replica counts (see the table above).
+  Several jobs at once keep every replica fed, which is what the worker change is for.
+* `cpus` is a ceiling per replica (CFS quota), not a reservation: the model services' limits sum to 14 beside
+  legacy (chem included; 21.5 after cutover), and the api (2) and worker (2) come on top, so they exceed the 8
+  cores by design. If the legacy site slows down during the beta, lower `SEG_TF_INTRAOP_THREADS`/`SEG_CPUS` and
+  the ocsr pair first.
+* **To verify**: run the golden paper and a stress case with these settings and record per-stage time
+  and `docker stats`; the two ocsr points are the weakest part of the model.
+
+### Memory
+
+Per replica (limits are per container; resident from the READMEs): seg 3 GB / about 2 GB, ocsr 6 GB / about 4.8 GB
+(both DECIMER models, D15), cls 2.5 GB / about 1 GB, chem 1.5 GB / about 0.4 GB. Everything in GiB, whole stack:
+
+| Service | Beside legacy 2/2/2: limit / resident | After cutover 6/3/3: limit / resident |
+|---|---|---|
+| seg | 2 x 3 = 6.0 / 4.0 | 6 x 3 = 18.0 / 12.0 |
+| ocsr | 2 x 6 = 12.0 / 9.6 | 3 x 6 = 18.0 / 14.4 |
+| cls | 2 x 2.5 = 5.0 / 2.0 | 3 x 2.5 = 7.5 / 3.0 |
+| chem | 1.5 / 0.4 | 1.5 / 0.4 |
+| **models** | **24.5 / 16.0** | **45.0 / 29.8** |
+| api (INGEST_CONCURRENCY x INGEST_MEMORY_MB + base) | 3.5 / 0.4 | 3.5 / 0.4 |
+| worker (`WORKER_MEM_LIMIT`: 2 g, after cutover 3 g with 8 jobs and 2 renders) | 2.0 / 0.5 | 3.0 / 1.0 |
+| redis, sweep, edge | 0.8 / 0.2 | 0.8 / 0.2 |
+| **whole stack** | **30.8 / 17.1** | **52.3 / 31.4** |
+| plus what the VM already uses (legacy about 22.2 until cutover, the rest of the host about 2.6) | 55.8 / 42.1 of 62.8 | legacy gone: 54.9 / 34.0 of 62.8 |
+
+* **Beside legacy the new stack is about 17 GB resident**: the models alone 16.0 (seg 4.0, ocsr 9.6, cls 2.0, chem
+  0.4), the whole stack 17.1. D18 first said "about 17 GB of models", about 1 GB above the models' 16.0; D18 now
+  says 16. The resident figures come from the service READMEs; the api, worker and redis rows are estimates. **The ceilings are higher** (30.8 GB: ocsr's 6 GB limit
+  x 2 is most of it). The 62.8 GiB VM already uses about 25 GiB besides the new stack (legacy about 22.2, the
+  rest of the host about 2.6), so the ceilings together make 30.8 + 25.0 = 55.8 GiB: about 7 GiB of headroom for
+  the kernel and page cache, about 6 with `worker-fast`. If memory gets tight, `OCSR_REPLICAS=1` takes 6 GB off
+  the ceiling and 4.8 GB off the resident total.
+* **After cutover** about 31 GB resident (29.8 GB of it models, D18's "about 30 GB") and
+  a 52.3 GB ceiling; with the host's 2.6 GiB that is 54.9 of 62.8 GiB, since legacy is gone. The limits are
+  ceilings: a container over its limit is OOM-killed and restarted, never swapped (`memswap_limit` equals
+  `mem_limit`).
+* The fast lane (`worker-fast`, below) adds 1 GB of limit and about 0.3 GB resident when enabled.
+* Images are several GB each for the three TensorFlow services (estimate, not built), shared by all replicas of
+  a service; disk is no concern. 12 replicas starting at once after a reboot load their models together (ocsr
+  about 50 s, CPU-heavy): expect a couple of minutes until `$DC ps` shows everything healthy.
+
+### The worker's settings (.env)
+
+| Variable | Beside legacy | After cutover | Meaning |
+|---|---|---|---|
+| `SEG_CONCURRENCY`, `OCSR_CONCURRENCY`, `CLS_CONCURRENCY` | 2 each | 6, 3, 3 | **Today: the total** of calls in flight to the service (one semaphore, one URL, no balancing: each new connection re-resolves the name and Docker rotates the order of the addresses), so they equal the replica counts; with 1 the second replica idles. **After P3-04b: per replica** (each replica runs one inference at a time; the worker multiplies by the replicas it finds), 1 each in both layouts; change the defaults then |
+| `CHEM_CONCURRENCY` | 1 | 1 | chem has one replica |
+| `WORKER_MAX_JOBS` | 4 | 8 | Jobs running at once, so that several jobs' crops interleave on the replicas and a small job is not stuck behind a big one |
+| `RENDER_CONCURRENCY` | 1 | 2 | PDF pages rendered at once (a 50 MP page is about 0.5 GB while it renders) |
+| `WORKER_MEM_LIMIT`, `WORKER_CPUS` | 2g, 2 | 3g, 2 | The container's limits |
+
+### Two queues, so that small jobs never wait
+
+`worker-fast` is a second worker service on its own arq queue, for small jobs (a pasted image, a single small
+upload, at most one page): they would otherwise queue behind 10-page PDFs. It is **behind a profile**:
+`COMPOSE_PROFILES=fast-lane` in `deploy/.env` (or `--profile fast-lane`). The queue names are variables
+(provisional): `WORKER_QUEUE_NAME` (default `arq:queue`, arq's own) and `WORKER_FAST_QUEUE_NAME` (default
+`decimer:fast`); the api gets both, `worker` serves the first, `worker-fast` the second (`WORKER_FAST_MAX_JOBS`
+2, 1 GB, 1 CPU), and `worker_healthcheck.py` checks `<queue name>:health-check`. **Pending the worker change
+P3-04b**: the worker must read `WORKER_QUEUE_NAME` and the api must choose the queue by the size of a job; today
+both ignore the names, so enabling the profile only adds a second ordinary worker on the same queue, and it
+reports unhealthy (its queue's health key is never written). Do not enable it before that lands.
 
 ## Docker Compose on the VM: two versions
 
@@ -332,8 +473,9 @@ docker run --rm --entrypoint sh localhost/decimer-next/chem:local -c \
 **5. Start:**
 
 ```bash
-$DC up -d                 # redis, seg, cls, ocsr, chem, api, worker, sweep, edge
-$DC ps                    # everything "healthy" after about a minute; ocsr takes longest
+$DC up -d                 # redis, seg, cls, ocsr (replicas), chem, api, worker, sweep, edge
+$DC ps                    # everything "healthy" after a minute or two; ocsr takes longest; N containers
+                          # per seg/ocsr/cls (SEG_REPLICAS ... in .env: 2/2/2 by default)
 ```
 
 **6. Check:**
@@ -343,6 +485,8 @@ curl -fsS http://127.0.0.1:8090/healthz            # the edge: ok
 curl -fsS http://127.0.0.1:8090/readyz             # through to the API: {"status":"ready"}
 curl -sI http://127.0.0.1:8090/ | grep -i -E 'content-security|cache-control'
 $DC logs --tail 50 worker api edge
+# every replica is behind the service name (one address per replica; 2 each beside legacy):
+$DC exec worker python -c "import socket; print({n: sorted({a[4][0] for a in socket.getaddrinfo(n, p, proto=socket.IPPROTO_TCP)}) for n, p in (('seg', 8001), ('ocsr', 8002), ('cls', 8003))})"
 # no egress from a model service (must fail):
 $DC exec seg python -c "import urllib.request; urllib.request.urlopen('https://example.org', timeout=5)"
 # the api has no route to the models (must fail):
@@ -361,6 +505,11 @@ docker run --rm --network none -d --name seg-offline localhost/decimer-next/seg:
 set `DECIMER_TAG` in `.env` to the earlier tag and `$DC up -d` (nothing is rebuilt: `pull_policy: never`).
 The cutover rollback is the legacy nginx configuration kept from before the switch; it is not part
 of this directory.
+
+**Switching layout** (beside legacy to after cutover, or back): edit the replica, thread, CPU and worker lines in
+`.env` (the block in `.env.example` says which), then `$DC up -d`. Compose creates or removes replicas and
+recreates the services whose settings changed (ocsr takes about 50 s to load); do it when the site is quiet.
+Cutover itself (legacy removed) is what frees the memory for 6/3/3.
 
 **Updating** one service: build it with a new tag, set `DECIMER_TAG`, `$DC up -d`. After the `api`
 container is recreated nothing else needs a restart (the edge re-resolves it). The legacy nginx, if it
@@ -431,13 +580,17 @@ door that does not strip the prefix.
 | pyproject patches | `patches/` | Apply `apply-pyproject-patches.sh` and commit the services' lock files; check seg, ocsr, cls and chem still pass `uv run pytest` and the slow tests |
 | ingest sidecar | `compose.yaml`, API | Required before cutover (see above); needs an API change (an `IngestRunner` that calls the sidecar, per-request scratch) |
 | seg page downscaling | worker | P3-04: downscale pages above 40 MP for seg; seg's cap stays |
+| replica discovery and balancing | worker | P3-04b: resolve all A records of seg/ocsr/cls, refresh them, least-busy healthy replica, per-replica concurrency from `.env`, several jobs at once; until then it uses one URL (no balancing) and reads the concurrency as a total |
+| fast lane | worker, api, `worker-fast` | P3-04b: read `WORKER_QUEUE_NAME`, route small jobs to `WORKER_FAST_QUEUE_NAME`; then enable the `fast-lane` profile |
+| replica and thread numbers | `.env`, compose | Verify the model's estimates (P3-13: golden paper and a stress case at 2/2/2 and 6/3/3, `docker stats`); the ocsr thread sensitivity is the weakest input |
+| first `up` with replicas | the VM | `up` was not run: confirm N containers per service and the DNS check; Compose v2.3.3 and v2.39.2 both parse the file |
 | child oom_score_adj | API, worker | Ingest and render children lower their own `oom_score_adj` (1000); compose cannot do it per process |
 | `TRUSTED_PROXY_CIDR` | `.env` | The campus proxy's address(es) and what it does to `X-Forwarded-For` (Q3) |
 | campus proxy hostname | front door | Can it route `/beta/` and `/api/`, or provide `beta.decimer.ai` (Q3) |
 | chem in the api | `compose.yaml` | When `/validate` lands: the `chem-api` network for api and chem |
 | reports volume | `compose.yaml` | The real variable name for the report directory (P3-08; `REPORTS_DIR` is a guess) and the backup |
 | cls soak | `compose.yaml` | A few thousand requests, watch RSS, confirm 2.5 GB |
-| TF threads and CPU caps | `.env` | Tune with the golden-paper measurement; ocsr's 6 GB from its README, measure on the VM |
+| memory limits per replica | `compose.yaml` | seg 3 GB, ocsr 6 GB, cls 2.5 GB come from the READMEs; measure on the VM |
 | Sentry or GlitchTip | `.env`, compose | Decide which; then an `egress` network for api and worker, and the SPA's CSP `connect-src` |
 | SPA API client | `web.Dockerfile` | `VITE_API=http` builds, but the client is TODO: the app errors at start-up until then |
 | privacy review | `nginx/edge.conf` | The log content: no addresses in the access log, addresses in the error log |

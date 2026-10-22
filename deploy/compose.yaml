@@ -17,6 +17,20 @@
 # sweep containers, so every setting listed in api/README.md and .env.example can be set there without
 # editing this file. Values given under `environment:` win over env_file.
 #
+# Model-service replicas. seg, ocsr and cls run as N identical containers each, N from deploy/.env
+# (SEG_REPLICAS, OCSR_REPLICAS, CLS_REPLICAS; chem is always 1): 2/2/2 while legacy runs on the same VM
+# (the default), 6/3/3 after cutover (legacy's own layout). `deploy.replicas` is how: Compose creates N
+# containers (decimer-next-seg-1 ... -N) and the SERVICE NAME resolves, on the `models` network, to the
+# addresses of all of them (Docker's embedded DNS answers with every replica's A record, in rotating
+# order). That is the whole discovery contract for the worker, and nothing else is promised:
+#     SEG_URL=http://seg:8001   OCSR_URL=http://ocsr:8002   CLS_URL=http://cls:8003   CHEM_URL=http://chem:8004
+# one hostname per service, one fixed port per service, all replicas answer on that port; the worker
+# resolves all A records of the name, refreshes them periodically (replicas restart and get new addresses)
+# and balances itself. Do not use per-replica names or addresses (the container names are not part of
+# the contract), and no service that is scaled has a container_name or a published port (it would make
+# a second replica impossible). Everything per replica (memory, cpus, pids, threads) is the same for all
+# replicas of a service. Scaling by hand: `$DC up -d --scale seg=3` overrides the file for that run.
+#
 # Networks (who can reach what)
 #   public   the edge alone, with a pinned subnet and the only published port (127.0.0.1:8090 on the
 #            host). Docker cannot publish a port from an internal network, so this is the one network
@@ -43,6 +57,10 @@ x-logging: &logging
 # oom_score_adj 300: if the VM ever runs out of memory, the kernel takes the new stack before legacy.
 # That is the container; the ingest and render CHILDREN would need to lower their own score in code
 # (TODO, API side: write 1000 to /proc/self/oom_score_adj; compose cannot set it per process).
+# cpu_shares 512: half the default weight (1024) of the legacy container. The `cpus` limits below cap each
+# container but are not reservations, and they sum to more than the 8 cores (deploy/README.md, "Threads and
+# CPU"); the weight decides who gets the CPU when both stacks want it at once, in legacy's favour. It is
+# per container, so it shifts the split, it does not make legacy win against every new container together.
 x-service: &service
   restart: unless-stopped
   logging: *logging
@@ -51,6 +69,7 @@ x-service: &service
   cap_drop:
     - ALL
   oom_score_adj: 300
+  cpu_shares: 512
 
 # The TensorFlow services and chem: no network but `models`, read-only root file system with a
 # RAM-backed /tmp (TensorFlow and Keras write small files there; HOME is /tmp). Not read_only-proof
@@ -73,6 +92,40 @@ x-model-service: &model-service
 x-api-image: &api-image
   image: localhost/decimer-next/api:${DECIMER_TAG:-local}
   pull_policy: never
+
+# What the two workers (worker, worker-fast) have in common. TODAY the worker reads SEG/OCSR/CLS_CONCURRENCY
+# as the TOTAL of calls in flight to the service (one semaphore, one URL), so the defaults are the replica
+# counts of the beside-legacy layout, 2/2/2: with 1 the second replica would sit idle (a lone 10-page job
+# would take about 130 s, legacy 95.3 s). Set them to the replica counts if you change those (6/3/3 after
+# cutover). When TODO lands they become PER REPLICA: the worker multiplies them by the number
+# of replicas it discovers, and the defaults here and in .env.example change to 1 (deploy/README.md).
+# Settings the worker does not know yet (the queue names) are ignored by it (extra="ignore"), so naming
+# them here costs nothing today.
+x-worker-env: &worker-env
+  REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env (openssl rand -hex 24)}@redis:6379/0
+  DATA_DIR: /data/jobs
+  # The discovery contract (see the header): hostname + fixed port, one name per service; the worker
+  # resolves every A record of the name.
+  SEG_URL: http://seg:8001
+  OCSR_URL: http://ocsr:8002
+  CLS_URL: http://cls:8003
+  # `-` and not `:-`: the default applies only when CHEM_URL is unset, so `CHEM_URL=` in .env really is
+  # empty, which switches names off.
+  CHEM_URL: ${CHEM_URL-http://chem:8004}
+  SEG_CONCURRENCY: ${SEG_CONCURRENCY:-2}
+  OCSR_CONCURRENCY: ${OCSR_CONCURRENCY:-2}
+  CLS_CONCURRENCY: ${CLS_CONCURRENCY:-2}
+  CHEM_CONCURRENCY: ${CHEM_CONCURRENCY:-1}
+  RENDER_CONCURRENCY: ${RENDER_CONCURRENCY:-1}
+  # The hashing key belongs to the api alone (env_file would hand it to every container).
+  IP_HASH_SECRET: ""
+  # arq waits this long for running jobs when it is stopped (0 would cancel them; they rerun after
+  # the restart). stop_grace_period must be longer.
+  SHUTDOWN_WAIT_SECONDS: ${SHUTDOWN_WAIT_SECONDS:-100}
+  # Two queues (TODO; the names are provisional): the api puts small jobs (a pasted image, one
+  # page) on the fast queue and everything else on the default one; worker-fast serves the fast queue.
+  WORKER_QUEUE_NAME: ${WORKER_QUEUE_NAME:-arq:queue}
+  WORKER_FAST_QUEUE_NAME: ${WORKER_FAST_QUEUE_NAME:-decimer:fast}
 
 services:
   # --- state ------------------------------------------------------------------------------------
@@ -140,17 +193,30 @@ services:
       args:
         # 1 until deploy/patches/apply-pyproject-patches.sh has been applied to services/seg and ocsr.
         OPENCV_GUI_LIBS: ${OPENCV_GUI_LIBS:-0}
+    deploy:
+      replicas: ${SEG_REPLICAS:-2}
     environment:
-      TF_NUM_INTRAOP_THREADS: ${SEG_TF_INTRAOP_THREADS:-4}
+      # Per replica: the compute threads of one replica. The numbers across all replicas are balanced in
+      # deploy/README.md ("Replicas, threads and memory"); OMP, OpenBLAS, MKL and numba are held to the same
+      # count so the libraries under TensorFlow (numpy, OpenCV's bundled BLAS) do not start one thread
+      # per core in every replica.
+      TF_NUM_INTRAOP_THREADS: ${SEG_TF_INTRAOP_THREADS:-2}
       TF_NUM_INTEROP_THREADS: ${SEG_TF_INTEROP_THREADS:-1}
+      OMP_NUM_THREADS: ${SEG_TF_INTRAOP_THREADS:-2}
+      OPENBLAS_NUM_THREADS: ${SEG_TF_INTRAOP_THREADS:-2}
+      MKL_NUM_THREADS: ${SEG_TF_INTRAOP_THREADS:-2}
+      NUMBA_NUM_THREADS: ${SEG_TF_INTRAOP_THREADS:-2}
       # Pages above this many pixels get a 422 from seg. Do not raise it: the API admits up to 50 MP, so
       # the worker is to downscale pages for seg (TODO; deploy/README.md, "Dependencies").
       OPENCV_IO_MAX_IMAGE_PIXELS: ${SEG_MAX_IMAGE_PIXELS:-40000000}
-    # About 2 GB resident, 3.5 s a page (services/seg/README.md). Mask memory grows with the page size
-    # and the number of detections; 3 GB covers A3 pages at 300 DPI with room to spare.
+    # PER REPLICA. About 2 GB resident, 3.5 s a page at all cores (services/seg/README.md). Mask memory grows
+    # with the page size and the number of detections; 3 GB covers A3 pages at 300 DPI with room to spare.
+    # cpus = the thread cap plus half a core for TensorFlow's other threads and the mask-expansion pool
+    # (up to 4 short-lived threads). SEG_CPUS does not follow SEG_TF_INTRAOP_THREADS by itself: change
+    # both by hand, together (threads + 0.5).
     mem_limit: 3g
     memswap_limit: 3g
-    cpus: 4
+    cpus: ${SEG_CPUS:-2.5}
     pids_limit: 512
 
   cls:
@@ -160,21 +226,28 @@ services:
     build:
       context: ..
       dockerfile: deploy/cls.Dockerfile
+    deploy:
+      replicas: ${CLS_REPLICAS:-2}
     environment:
-      TF_NUM_INTRAOP_THREADS: ${CLS_TF_INTRAOP_THREADS:-2}
+      TF_NUM_INTRAOP_THREADS: ${CLS_TF_INTRAOP_THREADS:-1}
       TF_NUM_INTEROP_THREADS: ${CLS_TF_INTEROP_THREADS:-1}
+      OMP_NUM_THREADS: ${CLS_TF_INTRAOP_THREADS:-1}
+      OPENBLAS_NUM_THREADS: ${CLS_TF_INTRAOP_THREADS:-1}
+      MKL_NUM_THREADS: ${CLS_TF_INTRAOP_THREADS:-1}
       MALLOC_ARENA_MAX: "2"
-    # One replica. About 1 GB resident, 1.9 GB worst case, and RSS grows 57-100 KB per request
-    # (services/cls/README.md): the restart policy turns an OOM kill into a short outage.
+    # PER REPLICA. About 1 GB resident, 1.9 GB worst case, and RSS grows 57-100 KB per request
+    # (services/cls/README.md): the restart policy turns an OOM kill into a short outage. A crop takes
+    # about 0.1 s, so one thread is plenty and a replica is idle almost all the time.
     # TODO: soak test of a few thousand requests, then confirm or change this limit.
     mem_limit: 2560m
     memswap_limit: 2560m
-    cpus: 2
+    cpus: ${CLS_CPUS:-1.5}
     pids_limit: 256
 
   # Both DECIMER models are in the image (owner decision D15: the printed one that the service uses and the
   # hand-drawn one that `import DECIMER` loads anyway). services/ocsr/README.md: about 4.8 GB resident,
-  # about 0.4 GB for one worst-case request, about 0.3 GB of request bodies: 6 GB. Start-up is about 50 s.
+  # about 0.4 GB for one worst-case request, about 0.3 GB of request bodies: 6 GB PER REPLICA, and every
+  # replica carries both models (D18 keeps D15). Start-up is about 50 s.
   ocsr:
     <<: *model-service
     image: localhost/decimer-next/ocsr:${DECIMER_TAG:-local}
@@ -184,19 +257,27 @@ services:
       dockerfile: deploy/ocsr.Dockerfile
       args:
         OPENCV_GUI_LIBS: ${OPENCV_GUI_LIBS:-0}
+    deploy:
+      replicas: ${OCSR_REPLICAS:-2}
     environment:
-      TF_NUM_INTRAOP_THREADS: ${OCSR_TF_INTRAOP_THREADS:-4}
+      TF_NUM_INTRAOP_THREADS: ${OCSR_TF_INTRAOP_THREADS:-2}
       TF_NUM_INTEROP_THREADS: ${OCSR_TF_INTEROP_THREADS:-1}
+      OMP_NUM_THREADS: ${OCSR_TF_INTRAOP_THREADS:-2}
+      OPENBLAS_NUM_THREADS: ${OCSR_TF_INTRAOP_THREADS:-2}
+      MKL_NUM_THREADS: ${OCSR_TF_INTRAOP_THREADS:-2}
+    # PER REPLICA. The transformer decodes token by token, so more threads help little: every replica
+    # uses about the cap (deploy/README.md, "Replicas, threads and memory"). cpus follows the cap.
     mem_limit: 6g
     memswap_limit: 6g
-    cpus: 4
+    cpus: ${OCSR_CPUS:-2}
     pids_limit: 512
 
   # Orthonym names (JVM inside). Python 3.12 and a JRE; no network. The service refuses to start if
   # ORTHONYM_ALLOW_REDUCED, ORTHONYM_OPSIN_JAR, ORTHONYM_CENTRES_JAR or ORTHONYM_DISABLE_JPYPE is set,
   # so none is set here. services/chem/README.md: about 360 MB for the naming process (JVM included)
   # and 50 MB for the web process, flat over 1000 names; the heap cap is ORTHONYM_JVM_XMX (512m, in the
-  # image). The valid tier is a setting of the service's code, not of the image.
+  # image). The valid tier is a setting of the service's code, not of the image. One replica: it names
+  # about 20 structures per job in tens of milliseconds each.
   chem:
     <<: *model-service
     image: localhost/decimer-next/chem:${DECIMER_TAG:-local}
@@ -246,6 +327,9 @@ services:
       IP_HASH_SECRET: ${IP_HASH_SECRET:?set IP_HASH_SECRET in deploy/.env (openssl rand -hex 32)}
       # TODO: the variable name of the problem-report directory is a guess until that lands.
       REPORTS_DIR: /data/reports
+      # The two arq queues (TODO; names provisional, ignored until the api and worker read them).
+      WORKER_QUEUE_NAME: ${WORKER_QUEUE_NAME:-arq:queue}
+      WORKER_FAST_QUEUE_NAME: ${WORKER_FAST_QUEUE_NAME:-decimer:fast}
     volumes:
       - jobs:/data/jobs
       - reports:/data/reports
@@ -268,24 +352,17 @@ services:
     command: ["python", "-m", "decimer_api.worker"]
     env_file: .env
     environment:
-      REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env (openssl rand -hex 24)}@redis:6379/0
-      DATA_DIR: /data/jobs
-      SEG_URL: http://seg:8001
-      OCSR_URL: http://ocsr:8002
-      CLS_URL: http://cls:8003
-      CHEM_URL: ${CHEM_URL:-http://chem:8004}
-      # The hashing key belongs to the api alone (env_file would hand it to every container).
-      IP_HASH_SECRET: ""
-      # arq waits this long for running jobs when it is stopped (0 would cancel them; they rerun after
-      # the restart). stop_grace_period below must be longer.
-      SHUTDOWN_WAIT_SECONDS: ${SHUTDOWN_WAIT_SECONDS:-100}
+      <<: *worker-env
+      # Jobs this process runs at once, so that several jobs' crops interleave on the replicas
+      # (D18: a small job must not wait behind a big one). 4 beside legacy, 8 after cutover.
+      WORKER_MAX_JOBS: ${WORKER_MAX_JOBS:-4}
     volumes:
       - jobs:/data/jobs
     networks:
       - backend
       - models
-    # Wait for the models to answer a real inference, so the first jobs after a start do not fail. chem
-    # is optional for the worker (names off without CHEM_URL), but it is part of the stack now.
+    # Wait for every replica of the models to answer a real inference, so the first jobs after a start do
+    # not fail. chem is optional for the worker (names off without CHEM_URL), but it is part of the stack.
     depends_on:
       redis:
         condition: service_healthy
@@ -304,12 +381,60 @@ services:
       start_period: 60s
       retries: 3
     stop_grace_period: 120s
-    # Up to WORKER_MAX_JOBS (2) jobs; a PDF page is rendered in a child process of about 0.5 GB (a 50 MP
-    # page) and up to RENDER_MEMORY_MB (2 GB) of address space. TODO: measure on the golden paper.
-    mem_limit: 2g
-    memswap_limit: 2g
-    cpus: 2
+    # Up to WORKER_MAX_JOBS jobs; a PDF page is rendered in a child process of about 0.5 GB (a 50 MP page)
+    # and up to RENDER_MEMORY_MB (2 GB) of address space, RENDER_CONCURRENCY of them at once. 2 GB beside
+    # legacy, 3 GB after cutover (more jobs, two renders at once). TODO: measure on the golden paper.
+    mem_limit: ${WORKER_MEM_LIMIT:-2g}
+    memswap_limit: ${WORKER_MEM_LIMIT:-2g}
+    cpus: ${WORKER_CPUS:-2}
     pids_limit: 256
+
+  # The fast lane (TODO, NOT YET USEFUL): a second worker on its own arq queue for small jobs (one
+  # pasted image or a single small upload, at most one page), so that they never wait behind a 10-page PDF
+  # in the default queue. It exists only when the profile is on: COMPOSE_PROFILES=fast-lane in
+  # deploy/.env (or `--profile fast-lane`). It needs two changes first: the worker must read
+  # WORKER_QUEUE_NAME (today it ignores it) and the api must choose the queue by the size of the job.
+  # Until both land, enabling it only adds a second ordinary worker on the same queue (harmless, and it
+  # reports unhealthy because the health-check key of its queue name is never written). It shares the
+  # model services with the default worker; its own limits are small because it only takes small jobs.
+  worker-fast:
+    <<: [*service, *api-image]
+    profiles:
+      - fast-lane
+    command: ["python", "-m", "decimer_api.worker"]
+    env_file: .env
+    environment:
+      <<: *worker-env
+      # The queue this worker serves, and the variable worker_healthcheck.py builds its key from.
+      WORKER_QUEUE_NAME: ${WORKER_FAST_QUEUE_NAME:-decimer:fast}
+      WORKER_MAX_JOBS: ${WORKER_FAST_MAX_JOBS:-2}
+    volumes:
+      - jobs:/data/jobs
+    networks:
+      - backend
+      - models
+    depends_on:
+      redis:
+        condition: service_healthy
+      seg:
+        condition: service_healthy
+      cls:
+        condition: service_healthy
+      ocsr:
+        condition: service_healthy
+      chem:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "/usr/local/bin/worker_healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    stop_grace_period: 120s
+    mem_limit: ${WORKER_FAST_MEM_LIMIT:-1g}
+    memswap_limit: ${WORKER_FAST_MEM_LIMIT:-1g}
+    cpus: ${WORKER_FAST_CPUS:-1}
+    pids_limit: 128
 
   # Deletes the folders of expired jobs (the records expire by themselves in Redis). init: python as
   # PID 1 would ignore SIGTERM (no handler), so `docker stop` would wait for the kill; tini passes it on.
