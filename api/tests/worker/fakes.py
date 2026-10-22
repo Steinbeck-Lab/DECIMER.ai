@@ -13,7 +13,7 @@ import base64
 import io
 import struct
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from email import policy
 from email.parser import BytesParser
@@ -22,6 +22,7 @@ import httpx
 from PIL import Image
 
 Hook = Callable[[httpx.Request, dict[str, bytes]], httpx.Response | None]
+Pause = Callable[[dict[str, bytes]], Awaitable[None]]
 
 
 def parse_multipart(request: httpx.Request) -> dict[str, bytes]:
@@ -105,9 +106,22 @@ class FakeBackend:
     service_delays: dict[str, float] = field(default_factory=dict)  # on top of `delay`
     page_delays: dict[int, float] = field(default_factory=dict)  # seg only, by page index
     hooks: dict[str, Hook] = field(default_factory=dict)
+    # An async hook per service, awaited after the request is counted and before it is answered:
+    # a test holds calls here (and sees them in `active`) until it lets them go.
+    pauses: dict[str, Pause] = field(default_factory=dict)
     calls: list[tuple[str, dict[str, bytes]]] = field(default_factory=list)
     active: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     peak: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    # Replicas: the host a request went to. `hosts` maps an address to its service when
+    # the host is not `<service>.test`; `down` makes a host refuse the connection, `reset` makes it
+    # drop the connection after the request, `broken` makes it answer 500.
+    hosts: dict[str, str] = field(default_factory=dict)
+    down: set[str] = field(default_factory=set)
+    reset: set[str] = field(default_factory=set)
+    broken: set[str] = field(default_factory=set)
+    host_calls: list[str] = field(default_factory=list)  # the host of every request, in order
+    host_active: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    host_peak: dict[str, int] = field(default_factory=lambda: defaultdict(int))
 
     @property
     def transport(self) -> httpx.MockTransport:
@@ -119,16 +133,31 @@ class FakeBackend:
     def parts_of(self, service: str) -> list[dict[str, bytes]]:
         return [parts for name, parts in self.calls if name == service]
 
+    def calls_to(self, host: str) -> int:
+        return self.host_calls.count(host)
+
     async def handle(self, request: httpx.Request) -> httpx.Response:
-        service = request.url.host.split(".")[0]  # seg.test, ocsr.test, ...
+        host = request.url.host
+        if host in self.down:
+            raise httpx.ConnectError(f"{host} refused the connection", request=request)
+        service = self.hosts.get(host) or host.split(".")[0]  # seg.test, ocsr.test, ...
         if request.headers.get("content-type", "").startswith("multipart/"):
             parts = parse_multipart(request)
         else:
             parts = {"json": request.content}
         self.calls.append((service, parts))
+        self.host_calls.append(host)
         self.active[service] += 1
         self.peak[service] = max(self.peak[service], self.active[service])
+        self.host_active[host] += 1
+        self.host_peak[host] = max(self.host_peak[host], self.host_active[host])
         try:
+            if host in self.reset:
+                raise httpx.RemoteProtocolError("server disconnected", request=request)
+            if host in self.broken:
+                return httpx.Response(500, text="boom")
+            if pause := self.pauses.get(service):
+                await pause(parts)
             if self.delay:
                 await asyncio.sleep(self.delay)
             if pause := self.service_delays.get(service, 0):
@@ -141,6 +170,7 @@ class FakeBackend:
             return self.answer(service, request, parts)
         finally:
             self.active[service] -= 1
+            self.host_active[host] -= 1
 
     def answer(
         self, service: str, request: httpx.Request, parts: dict[str, bytes]
@@ -190,6 +220,39 @@ class FakeBackend:
         return json_response(
             {"page_index": page, "width": width, "height": height, "segments": segments}
         )
+
+
+class FakeResolver:
+    """A `Resolver` with a settable answer per host name; counts its lookups."""
+
+    def __init__(self, answers: dict[str, list[str]] | None = None) -> None:
+        self.answers: dict[str, list[str]] = dict(answers or {})
+        self.lookups: list[tuple[str, int]] = []
+        self.error: OSError | None = None
+
+    async def __call__(self, host: str, port: int) -> list[str]:
+        self.lookups.append((host, port))
+        if self.error is not None:
+            raise self.error
+        return list(self.answers.get(host, []))
+
+
+def fleet(**counts: int) -> tuple[dict[str, str], FakeResolver]:
+    """`fleet(seg=2, ocsr=3)`: the hosts map for `FakeBackend.hosts` (address -> service) and a
+    resolver that answers `seg.test` with two addresses and `ocsr.test` with three."""
+    hosts: dict[str, str] = {}
+    answers: dict[str, list[str]] = {}
+    for number, (service, count) in enumerate(counts.items(), start=1):
+        addresses = [f"10.0.{number}.{index}" for index in range(1, count + 1)]
+        answers[f"{service}.test"] = addresses
+        hosts.update({address: service for address in addresses})
+    return hosts, FakeResolver(answers)
+
+
+async def no_dns(_host: str, _port: int) -> list[str]:
+    """A resolver that finds nothing: every service is then one replica, reached under its host
+    name (`seg.test`), which is what the fake backend answers to."""
+    return []
 
 
 class FakeSleep:

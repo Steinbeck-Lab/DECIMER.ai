@@ -35,6 +35,12 @@ What goes wrong, and what the user gets:
   `fragments_trimmed`;
 * anything unexpected: the job fails, `internal_error`; it runs too long: `timeout`.
 
+Several jobs run at once in one worker process and share the replicas of the model services.
+Each job asks for as many calls at once as its service takes in all (`Services.capacity`); when
+the replicas are busy the calls wait in the fair dispatcher of `replicas.py`, which serves small
+jobs first and lets jobs take turns. The size class of a job is a rule over what the API stored
+(`Settings.is_small_job(job.pages_processed)`).
+
 Memory: the crops of a page are written to part files as the page's answer arrives and only the
 first `MAX_STRUCTURES` of a page are kept; a crop is read back when it is recognised. Pages that
 exceed seg's limits are sent as a smaller copy and cut from the full page (`crops.py`).
@@ -98,6 +104,7 @@ from .errors import (
 from .files import Fitted, fit_png, link_or_copy, png_file_size
 from .fragments import trim_fragments
 from .render import Renderer
+from .replicas import Lease
 from .services import OcsrAnswer, Services
 from .settings import WorkerSettings
 
@@ -149,6 +156,7 @@ class Deps:
     http: httpx.AsyncClient | None = None
 
     async def aclose(self) -> None:
+        await self.services.aclose()
         if self.http is not None:
             await self.http.aclose()
 
@@ -257,7 +265,10 @@ class _Run:
         self.job = job
         self.deps = deps
         self.worker = deps.worker
-        self.services = deps.services
+        # The calls of this job are tagged with its id and size class: when the replicas are
+        # busy, small jobs go first and jobs take turns (`replicas.py`, D18).
+        self.small = deps.settings.is_small_job(job.pages_processed)
+        self.services = deps.services.for_job(job.id, self.small)
         self.folder = deps.settings.data_dir / job.id
         self.down: set[str] = set()  # optional services found dead or stuck during this job
         self.ocsr_timeouts = 0
@@ -373,7 +384,10 @@ class _Run:
 
     async def _segment(self) -> None:
         await asyncio.to_thread(_remove_parts, self.folder)  # left by a run that was cancelled
-        outcomes = await _map(self.pages, self._segment_page, limit=self.worker.seg_concurrency)
+        # As many pages at once as seg takes (all its replicas), no more: a page waiting for a
+        # slot holds its image in memory, and the rest of the queue belongs to other jobs.
+        limit = await self.services.capacity("seg")
+        outcomes = await _map(self.pages, self._segment_page, limit=limit)
         if all(outcome is None for outcome in outcomes):
             raise PipelineFailure(SEGMENTATION_FAILED)
 
@@ -413,26 +427,31 @@ class _Run:
                 max_bytes=settings.seg_input_max_bytes,
             )
 
-        try:
-            fitted = await asyncio.to_thread(prepare)
-        except (OSError, ValueError) as error:  # ImageTooLarge is a ValueError
-            self._page_not_searched(page, error)
-            return None
-        try:
-            answer = await self.services.segment(fitted.data, page.index)
-        except ServiceUnavailable as error:
-            log.warning("job %s: %s", self.job.id, error)
-            raise PipelineFailure(SERVICE_UNAVAILABLE) from error
-        except ServiceError as error:
-            self._page_not_searched(page, error)
-            return None
-        # What seg found goes to disk now, a page at a time. When seg was sent a smaller copy
-        # its boxes are scaled to the page and the crops are cut from the page itself.
-        scaling = (
-            Scaling(page.path, (fitted.width, fitted.height), (page.width, page.height))
-            if fitted.scaled
-            else None
-        )
+        # The slot first, the page after: a page is read, decoded and held as a PNG of up to
+        # 36 MiB only while it has a seg replica to go to, so the pages in memory (and the threads
+        # decoding them) are at most the slots of seg, whatever the number of waiting jobs.
+        async with self.services.slot("seg") as lease:
+            try:
+                fitted = await asyncio.to_thread(prepare)
+            except (OSError, ValueError) as error:  # ImageTooLarge is a ValueError
+                self._page_not_searched(page, error)
+                return None
+            try:
+                answer = await self.services.segment(fitted.data, page.index, lease=lease)
+            except ServiceUnavailable as error:
+                log.warning("job %s: %s", self.job.id, error)
+                raise PipelineFailure(SERVICE_UNAVAILABLE) from error
+            except ServiceError as error:
+                self._page_not_searched(page, error)
+                return None
+            # What seg found goes to disk now, a page at a time. When seg was sent a smaller copy
+            # its boxes are scaled to the page and the crops are cut from the page itself.
+            scaling = (
+                Scaling(page.path, (fitted.width, fitted.height), (page.width, page.height))
+                if fitted.scaled
+                else None
+            )
+            del fitted  # the image that was sent is not needed any more
         segments = sorted(answer.segments, key=lambda segment: segment.index)
         return await asyncio.to_thread(
             write_parts,
@@ -453,7 +472,7 @@ class _Run:
     # --- recognise ---
 
     async def _recognise(self) -> None:
-        limit = max(self.worker.ocsr_concurrency, self.worker.cls_concurrency)
+        limit = max(await self.services.capacity("ocsr"), await self.services.capacity("cls"))
         self.recognitions = await _map(self.crops, self._recognise_crop, limit=limit)
 
     async def _recognise_crop(self, crop: Crop) -> Recognition:
@@ -468,13 +487,18 @@ class _Run:
                 max_bytes=settings.model_input_max_bytes,
             ).data
 
-        try:
-            png = await asyncio.to_thread(prepare)
-        except (OSError, ValueError) as error:
-            log.warning("job %s: structure %d: %s", self.job.id, number, error)
-            self.warn("recognition_failed", f"Structure {number} could not be recognised.")
-            return Recognition(smiles=None, confidence=0.0, is_structure=None)
-        ocsr, is_structure = await _both(self._ocsr(crop, png), self._classify(crop, png))
+        # The ocsr slot first, the crop after (as for seg pages): the crops in memory are at most
+        # the slots of ocsr. cls takes its own slot for the same image, a moment later.
+        async with self.services.slot("ocsr") as lease:
+            try:
+                png = await asyncio.to_thread(prepare)
+            except (OSError, ValueError) as error:
+                log.warning("job %s: structure %d: %s", self.job.id, number, error)
+                self.warn("recognition_failed", f"Structure {number} could not be recognised.")
+                return Recognition(smiles=None, confidence=0.0, is_structure=None)
+            ocsr, is_structure = await _both(
+                self._ocsr(crop, png, lease), self._classify(crop, png)
+            )
         if ocsr is None:
             return Recognition(smiles=None, confidence=0.0, is_structure=is_structure)
         return Recognition(
@@ -497,10 +521,10 @@ class _Run:
             )
         return trimmed
 
-    async def _ocsr(self, crop: Crop, png: bytes) -> OcsrAnswer | None:
+    async def _ocsr(self, crop: Crop, png: bytes, lease: Lease) -> OcsrAnswer | None:
         number = crop.index + 1
         try:
-            return await self.services.recognise(png)
+            return await self.services.recognise(png, lease=lease)
         except ServiceUnavailable as error:
             log.warning("job %s: %s", self.job.id, error)
             raise PipelineFailure(SERVICE_UNAVAILABLE) from error

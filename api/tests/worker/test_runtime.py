@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from typing import Any
 
 import httpx
 import pytest
@@ -17,7 +18,7 @@ from decimer_api.worker.runtime import build_deps
 from decimer_api.worker.services import make_http_client
 from decimer_api.worker.settings import WorkerSettings
 from tests.worker.conftest import Rig, SpyStore
-from tests.worker.fakes import FakeBackend, FakeSleep
+from tests.worker.fakes import FakeBackend, FakeSleep, no_dns
 
 
 async def test_a_job_through_the_production_wiring_renders_in_a_child_process(
@@ -32,7 +33,7 @@ async def test_a_job_through_the_production_wiring_renders_in_a_child_process(
         chem_url="",
     )
     http = httpx.AsyncClient(transport=backend.transport)
-    deps = build_deps(settings, worker, spy_store, http=http, sleep=FakeSleep())
+    deps = build_deps(settings, worker, spy_store, http=http, sleep=FakeSleep(), resolver=no_dns)
     try:
         assert isinstance(deps.renderer, SubprocessRenderer)
         job = await rig.pdf_job(2)
@@ -56,6 +57,21 @@ def test_the_http_client_ignores_proxy_environment_variables(
     client = make_http_client(WorkerSettings())
     assert client._trust_env is False
     assert client.follow_redirects is False
+
+
+def test_the_client_lets_go_of_an_idle_connection_before_a_uvicorn_server_does() -> None:
+    """The services are uvicorn servers, which close an idle connection after 5 s. A client that
+    keeps one for 5 s too can reuse it just as it is closed and get a reset, which the worker takes
+    for a dead replica (and cools it). Two seconds leaves the client the first to let go."""
+    transport: Any = make_http_client(WorkerSettings())._transport
+    assert transport._pool._keepalive_expiry < 5
+
+
+def test_the_client_has_no_connection_cap_below_what_the_replica_pools_allow() -> None:
+    """The replica pools bound what is in flight, exactly: replicas x concurrency per service. A
+    fixed cap of 32 under that sum would turn a wait into a PoolTimeout (read as a slow service)."""
+    transport: Any = make_http_client(WorkerSettings())._transport
+    assert transport._pool._max_connections >= 100_000
 
 
 async def test_the_cdk_flag_without_a_backend_is_reported_and_harmless(

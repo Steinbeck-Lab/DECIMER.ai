@@ -12,7 +12,7 @@ with its own networks and volumes, and publishes one port: `127.0.0.1:8090`.
 
 | Path | What |
 |---|---|
-| `compose.yaml` | The project: redis, seg, cls, ocsr (replicated), chem, api, worker, sweep, edge, and `worker-fast` behind the `fast-lane` profile |
+| `compose.yaml` | The project: redis, seg, cls, ocsr (replicated), chem, api, worker, sweep, edge, and `worker-fast` (the fast lane, part of the default start) |
 | `.env.example` | Every setting a deployment sets (copy to `deploy/.env`, which is never committed) |
 | `seg.Dockerfile`, `cls.Dockerfile`, `ocsr.Dockerfile` | TensorFlow 2.15.1 model services, Python 3.11, weights baked in and checked |
 | `chem.Dockerfile` | Python 3.12 + Temurin 21 JRE + Orthonym and its two jars, baked in and checked |
@@ -244,7 +244,8 @@ configured number of containers per service (`decimer-next-seg-1` ... ) and run 
 override is `$DC up -d --scale seg=3`. Scaled services have no `container_name` (a second replica would be
 impossible) and no published port.
 
-**The contract for the worker, and nothing more:**
+**The contract for the worker (TODO, implemented in `api/src/decimer_api/worker/replicas.py`), and nothing
+more:**
 
 ```
 SEG_URL=http://seg:8001    OCSR_URL=http://ocsr:8002    CLS_URL=http://cls:8003    CHEM_URL=http://chem:8004
@@ -252,17 +253,24 @@ SEG_URL=http://seg:8001    OCSR_URL=http://ocsr:8002    CLS_URL=http://cls:8003 
 
 * One host name per service and one fixed port per service; **all replicas answer on that port**. On the
   `models` network Docker's embedded DNS answers a lookup of `seg` with the address of every running replica
-  (the order rotates), so the worker resolves **all A records** of the name, refreshes them periodically (a
-  replica that restarts comes back with another address; one that is down drops out of the answer or fails
-  its health check) and balances itself: least-busy healthy replica, per-replica concurrency equal to the
-  replica's own limit (seg, ocsr, cls and chem each run one inference at a time and queue a few more).
+  (the order rotates), so the worker resolves **all A records** of the name (AAAA only if there are no A
+  records, so a dual-stack network does not count a replica twice), looks again every `REPLICA_REFRESH_SECONDS`
+  (10 s) and at once after a connection failed (a replica that restarts comes back with another address; one
+  that is down drops out of the answer or refuses connections), and balances itself: each call goes to the
+  **least-busy healthy replica** (ties in turns), at most `<SERVICE>_CONCURRENCY` (1) calls per replica at a
+  time (seg, ocsr, cls and chem each run one inference at a time and queue a few more). A replica that
+  refuses or drops a connection is skipped for `REPLICA_COOLDOWN_SECONDS` (10 s) and the call goes to another
+  one at once; a replica that leaves DNS is dropped when it is idle; a name that does not resolve, an IP
+  address and `localhost` are one replica (development). The existing retry rules (busy 503, connect budget,
+  one retry after a broken connection) hold per call, over all replicas.
 * **No per-replica names or addresses**: container names (`decimer-next-seg-3`) and IPs are not part of the
   contract.
 * `depends_on: condition: service_healthy` makes the worker wait for **every** replica of seg, cls, ocsr and chem
   (after a replica is recreated later, only the worker's own retry logic covers the gap).
 * Check on the VM: `$DC exec worker python -c "import socket; print(sorted({a[4][0] for a in
   socket.getaddrinfo('seg', 8001, proto=socket.IPPROTO_TCP)}))"` lists one address per seg replica (the
-  same for `ocsr` 8002 and `cls` 8003).
+  same for `ocsr` 8002 and `cls` 8003). The worker logs `replica <address> joined` for each address it
+  finds (`docker logs`, level INFO), and `replica <address> left DNS` when one goes.
 
 ### Threads and CPU: the calculation
 
@@ -299,9 +307,10 @@ about 0.5 s a page (an estimate; one at a time beside legacy, two after cutover)
 runs beside ocsr and takes 0.1 s a crop), check (RDKit and chem) about 2 s:
 beside legacy 5 + 5 rounds x T(2) 6.0 s = 30 + 10 rounds x T(2) 3.3 s = 33 + 2 = **70 s**; after cutover 2.5 + 2
 rounds x T(1) 9.2 s = 18.4 + 7 rounds x T(2) 3.3 s = 23.1 + 2 = **46 s**; beside legacy with 3 threads each for seg
-and ocsr: 5 + 5 x 4.9 + 10 x 3.0 + 2 = **62 s**. These need P3-04b (the worker then uses every replica of a stage)
-or the concurrency set to the replica counts (the defaults, see "The worker's settings"); with 1 each the second
-replica is idle and a lone job takes about 130 s beside legacy.
+and ocsr: 5 + 5 x 4.9 + 10 x 3.0 + 2 = **62 s**. The worker asks for as many calls at once as a stage has slots
+(replicas x `<SERVICE>_CONCURRENCY`), so a lone job fills every replica of a stage; the stages still run one
+after the other, so these figures stand (before P3-04b the concurrency had to be set to the replica counts
+to get them, and with 1 a lone job would have taken about 130 s beside legacy).
 
 How to read it:
 
@@ -322,8 +331,8 @@ How to read it:
   counts and `cpus` caps are what bound the new stack.
 * **Against legacy:** a lone 10-page document is estimated at about 70 s beside legacy and about 46 s after
   cutover, against the 95.3 s legacy needed for the golden paper (which also includes legacy's per-call JVM and
-  PHP time), provided P3-04b has landed or the concurrency is set to the replica counts (see the table above).
-  Several jobs at once keep every replica fed, which is what the worker change is for.
+  PHP time). Several jobs at once keep every replica fed and interleave their crops: a lone job
+  fills the replicas, and when more jobs run, small ones go first.
 * `cpus` is a ceiling per replica (CFS quota), not a reservation: the model services' limits sum to 14 beside
   legacy (chem included; 21.5 after cutover), and the api (2) and worker (2) come on top, so they exceed the 8
   cores by design. If the legacy site slows down during the beta, lower `SEG_TF_INTRAOP_THREADS`/`SEG_CPUS` and
@@ -345,22 +354,28 @@ Per replica (limits are per container; resident from the READMEs): seg 3 GB / ab
 | **models** | **24.5 / 16.0** | **45.0 / 29.8** |
 | api (INGEST_CONCURRENCY x INGEST_MEMORY_MB + base) | 3.5 / 0.4 | 3.5 / 0.4 |
 | worker (`WORKER_MEM_LIMIT`: 2 g, after cutover 3 g with 8 jobs and 2 renders) | 2.0 / 0.5 | 3.0 / 1.0 |
+| worker-fast (`WORKER_FAST_MEM_LIMIT`: 1 g; only small jobs, 2 at a time) | 1.0 / 0.3 | 1.0 / 0.3 |
 | redis, sweep, edge | 0.8 / 0.2 | 0.8 / 0.2 |
-| **whole stack** | **30.8 / 17.1** | **52.3 / 31.4** |
-| plus what the VM already uses (legacy about 22.2 until cutover, the rest of the host about 2.6) | 55.8 / 42.1 of 62.8 | legacy gone: 54.9 / 34.0 of 62.8 |
+| **whole stack** | **31.8 / 17.4** | **53.3 / 31.7** |
+| plus what the VM already uses (legacy about 22.2 until cutover, the rest of the host about 2.6) | 56.8 / 42.4 of 62.8 | legacy gone: 55.9 / 34.3 of 62.8 |
 
 * **Beside legacy the new stack is about 17 GB resident**: the models alone 16.0 (seg 4.0, ocsr 9.6, cls 2.0, chem
-  0.4), the whole stack 17.1. D18 first said "about 17 GB of models", about 1 GB above the models' 16.0; D18 now
-  says 16. The resident figures come from the service READMEs; the api, worker and redis rows are estimates. **The ceilings are higher** (30.8 GB: ocsr's 6 GB limit
+  0.4), the whole stack 17.4. D18 first said "about 17 GB of models", about 1 GB above the models' 16.0; D18 now
+  says 16. The resident figures come from the service READMEs; the api, worker and redis rows are estimates. **The ceilings are higher** (31.8 GB: ocsr's 6 GB limit
   x 2 is most of it). The 62.8 GiB VM already uses about 25 GiB besides the new stack (legacy about 22.2, the
-  rest of the host about 2.6), so the ceilings together make 30.8 + 25.0 = 55.8 GiB: about 7 GiB of headroom for
-  the kernel and page cache, about 6 with `worker-fast`. If memory gets tight, `OCSR_REPLICAS=1` takes 6 GB off
-  the ceiling and 4.8 GB off the resident total.
-* **After cutover** about 31 GB resident (29.8 GB of it models, D18's "about 30 GB") and
-  a 52.3 GB ceiling; with the host's 2.6 GiB that is 54.9 of 62.8 GiB, since legacy is gone. The limits are
+  rest of the host about 2.6), so the ceilings together make 31.8 + 25.0 = 56.8 GiB: about 6 GiB of headroom for
+  the kernel and page cache (it was 7 before `worker-fast` became part of the default start). If memory gets
+  tight, `OCSR_REPLICAS=1` takes 6 GB off the ceiling and 4.8 GB off the resident total, and running without
+  `worker-fast` (`$DC up -d --scale worker-fast=0`, safe: see "Two queues") takes 1 GB.
+* **After cutover** about 32 GB resident (29.8 GB of it models, D18's "about 30 GB") and
+  a 53.3 GB ceiling; with the host's 2.6 GiB that is 55.9 of 62.8 GiB, since legacy is gone. The limits are
   ceilings: a container over its limit is OOM-killed and restarted, never swapped (`memswap_limit` equals
   `mem_limit`).
-* The fast lane (`worker-fast`, below) adds 1 GB of limit and about 0.3 GB resident when enabled.
+* **The worker's pages in memory.** A page is read, decoded and held as a PNG (2-4 MB for an A4 page at 300
+  DPI, up to 36 MiB for a 50 MP page) only once it has a seg slot, and a crop only once it has an ocsr slot, so
+  what the worker holds is bounded by the slots, not by the number of waiting jobs: at most 2 x 36 MiB = 72 MiB of
+  pages beside legacy and 6 x 36 MiB = 216 MiB after cutover per worker process (the fast worker has its own),
+  and no more decoding threads than that.
 * Images are several GB each for the three TensorFlow services (estimate, not built), shared by all replicas of
   a service; disk is no concern. 12 replicas starting at once after a reboot load their models together (ocsr
   about 50 s, CPU-heavy): expect a couple of minutes until `$DC ps` shows everything healthy.
@@ -369,23 +384,53 @@ Per replica (limits are per container; resident from the READMEs): seg 3 GB / ab
 
 | Variable | Beside legacy | After cutover | Meaning |
 |---|---|---|---|
-| `SEG_CONCURRENCY`, `OCSR_CONCURRENCY`, `CLS_CONCURRENCY` | 2 each | 6, 3, 3 | **Today: the total** of calls in flight to the service (one semaphore, one URL, no balancing: each new connection re-resolves the name and Docker rotates the order of the addresses), so they equal the replica counts; with 1 the second replica idles. **After P3-04b: per replica** (each replica runs one inference at a time; the worker multiplies by the replicas it finds), 1 each in both layouts; change the defaults then |
+| `SEG_CONCURRENCY`, `OCSR_CONCURRENCY`, `CLS_CONCURRENCY` | 1 each | 1 each | **Per replica**: calls in flight to one replica at a time, over all jobs of the worker; the worker finds the replicas through DNS and multiplies (a service with 3 replicas takes 3 calls). Each replica runs one inference at a time and queues a few more, so 1 keeps it fed. The same in both layouts: they do **not** follow the replica counts (before P3-04b they were service totals and had to) |
 | `CHEM_CONCURRENCY` | 1 | 1 | chem has one replica |
-| `WORKER_MAX_JOBS` | 4 | 8 | Jobs running at once, so that several jobs' crops interleave on the replicas and a small job is not stuck behind a big one |
+| `WORKER_MAX_JOBS` | 4 | 8 | Jobs running at once, about twice the ocsr slots, so that several jobs' crops interleave on the replicas, a small job's calls go first and the replicas are kept fed while other jobs render and check. With the fast lane off it is also how many big PDFs can run before a small job waits for a place |
+| `REPLICA_REFRESH_SECONDS`, `REPLICA_COOLDOWN_SECONDS` | 10, 10 | 10, 10 | How often the replicas are looked up again (and at once after a connection failed), and how long a replica that refused a connection is skipped |
+| `SMALL_FIRST_BURST` | 4 | 4 | Calls of small jobs go first, but after this many in a row a waiting call of a large job gets the next free slot (a stream of pasted images cannot starve a PDF) |
+| `SMALL_JOB_MAX_PAGES` | 1 | 1 | A job of at most this many processed pages is small (a pasted image, one image, a one-page PDF); also used by the api to choose the queue |
 | `RENDER_CONCURRENCY` | 1 | 2 | PDF pages rendered at once (a 50 MP page is about 0.5 GB while it renders) |
 | `WORKER_MEM_LIMIT`, `WORKER_CPUS` | 2g, 2 | 3g, 2 | The container's limits |
 
-### Two queues, so that small jobs never wait
+### Two queues and fair dispatching, so that small jobs never wait (TODO, D18)
 
-`worker-fast` is a second worker service on its own arq queue, for small jobs (a pasted image, a single small
-upload, at most one page): they would otherwise queue behind 10-page PDFs. It is **behind a profile**:
-`COMPOSE_PROFILES=fast-lane` in `deploy/.env` (or `--profile fast-lane`). The queue names are variables
-(provisional): `WORKER_QUEUE_NAME` (default `arq:queue`, arq's own) and `WORKER_FAST_QUEUE_NAME` (default
-`decimer:fast`); the api gets both, `worker` serves the first, `worker-fast` the second (`WORKER_FAST_MAX_JOBS`
-2, 1 GB, 1 CPU), and `worker_healthcheck.py` checks `<queue name>:health-check`. **Pending the worker change
-P3-04b**: the worker must read `WORKER_QUEUE_NAME` and the api must choose the queue by the size of a job; today
-both ignore the names, so enabling the profile only adds a second ordinary worker on the same queue, and it
-reports unhealthy (its queue's health key is never written). Do not enable it before that lands.
+Two mechanisms, one inside the worker and one around it.
+
+**Inside a worker (always on).** Several jobs run at once and share the replicas. When every replica of a
+service is busy, the waiting calls go to the next free slot in this order: a call of a **small job** (a
+pasted image, a single image upload, a PDF of at most `SMALL_JOB_MAX_PAGES` = 1 processed page) first;
+among jobs of one size the one served longest ago, so two big jobs interleave their crops; and after
+`SMALL_FIRST_BURST` (4) small calls in a row a waiting call of a large job gets the slot, so that a stream of
+small jobs cannot starve a big one (it gets at least one slot in five). A small job therefore does not queue
+behind the calls of big PDFs; it cannot interrupt a call that is already running on a replica (ocsr: about 3 s,
+up to 55 s for an image that is not a structure), and it takes its turn behind other small jobs.
+
+**Around the workers: the fast lane.** `worker-fast` is a second worker service on its own arq queue for small
+jobs, so that a small job also does not wait for a *place* (`WORKER_MAX_JOBS`) behind 10-page PDFs. It is **part
+of the default start** (1 GB limit, in the memory table above). Queue names: `WORKER_QUEUE_NAME` (default
+`arq:queue`, arq's own; a worker serves the queue it names, and `worker-fast` gets `WORKER_FAST_QUEUE_NAME`) and
+`WORKER_FAST_QUEUE_NAME` (default `decimer:fast`); `worker-fast` has `WORKER_FAST_MAX_JOBS` 2, 1 GB, 1 CPU, and
+`worker_healthcheck.py` checks `<queue name>:health-check`, the key arq's worker keeps for its queue.
+
+What this guarantees, and what it does not. A small job never waits for a worker place or in the queue of the big
+jobs. It can still wait for: the call already running on a replica (not interrupted: ocsr takes 3 s, up to 55 s
+for an image that is not a structure), including a call of the *other* worker process (a replica serves one call
+at a time for both); the calls of other small jobs ahead of it in the turn order; and the one slot in
+`SMALL_FIRST_BURST + 1` (5) that goes to a large call while one is waiting.
+
+**Running without `worker-fast` is safe.** (`$DC up -d --scale worker-fast=0` or `$DC stop worker-fast`; `up`
+was not run for this document, so check which works on the VM's Compose.) The api puts a small job on the fast
+queue only while a fast worker is alive, i.e. while `<WORKER_FAST_QUEUE_NAME>:health-check` exists in Redis (arq
+sets it every minute with a lifetime of 61 s and deletes it on a clean stop; the api looks at most every 5 s).
+Without it, small jobs go on the default queue and the default worker runs them (their calls to the replicas
+still go first). So there is no switch to keep in step with the container, and no queue that nobody serves. If a
+fast worker dies, the default worker (which looks every `FAST_LANE_RESCUE_SECONDS`, 30) moves the jobs still
+**waiting** on its queue to the default queue once the key is gone: about 90 s at most. A job that was already
+**running** on the dead fast worker is moved too, but it is started again only when arq's in-progress key for it
+expires, `job_timeout + 10 s` after the run began: about 18 minutes with the defaults (and its record expires
+20 minutes after its last save, so such a job may be gone by then). The queue position a client sees counts both
+lanes together (it is the job's place in the arrival order, not in one arq queue).
 
 ## Docker Compose on the VM: two versions
 
@@ -580,10 +625,9 @@ door that does not strip the prefix.
 | pyproject patches | `patches/` | Apply `apply-pyproject-patches.sh` and commit the services' lock files; check seg, ocsr, cls and chem still pass `uv run pytest` and the slow tests |
 | ingest sidecar | `compose.yaml`, API | Required before cutover (see above); needs an API change (an `IngestRunner` that calls the sidecar, per-request scratch) |
 | seg page downscaling | worker | P3-04: downscale pages above 40 MP for seg; seg's cap stays |
-| replica discovery and balancing | worker | P3-04b: resolve all A records of seg/ocsr/cls, refresh them, least-busy healthy replica, per-replica concurrency from `.env`, several jobs at once; until then it uses one URL (no balancing) and reads the concurrency as a total |
-| fast lane | worker, api, `worker-fast` | P3-04b: read `WORKER_QUEUE_NAME`, route small jobs to `WORKER_FAST_QUEUE_NAME`; then enable the `fast-lane` profile |
 | replica and thread numbers | `.env`, compose | Verify the model's estimates (P3-13: golden paper and a stress case at 2/2/2 and 6/3/3, `docker stats`); the ocsr thread sensitivity is the weakest input |
-| first `up` with replicas | the VM | `up` was not run: confirm N containers per service and the DNS check; Compose v2.3.3 and v2.39.2 both parse the file |
+| first `up` with replicas | the VM | `up` was not run: confirm N containers per service and the DNS check; check the worker's log shows `replica ... joined` once per replica (P3-04b is tested against fake replicas only); Compose v2.3.3 and v2.39.2 both parse the file |
+| fast lane on the VM | `compose.yaml` | `worker-fast` is part of the default start now: check it becomes healthy and `redis-cli exists decimer:fast:health-check` is 1; if memory is tight, run without it (`--scale worker-fast=0`, safe) |
 | child oom_score_adj | API, worker | Ingest and render children lower their own `oom_score_adj` (1000); compose cannot do it per process |
 | `TRUSTED_PROXY_CIDR` | `.env` | The campus proxy's address(es) and what it does to `X-Forwarded-For` (Q3) |
 | campus proxy hostname | front door | Can it route `/beta/` and `/api/`, or provide `beta.decimer.ai` (Q3) |

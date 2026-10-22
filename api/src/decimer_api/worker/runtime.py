@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+import time
 
 import httpx
 
@@ -11,6 +12,7 @@ from ..settings import MIB, Settings
 from ..store import JobStore
 from .pipeline import CdkFallback, Deps
 from .render import Renderer, SubprocessRenderer
+from .replicas import Clock, Resolver, system_resolver
 from .services import Sleep, make_gates, make_http_client, make_services
 from .settings import WorkerSettings
 
@@ -26,16 +28,18 @@ def build_deps(
     renderer: Renderer | None = None,
     cdk_fallback: CdkFallback | None = None,
     sleep: Sleep | None = None,
+    resolver: Resolver = system_resolver,
+    clock: Clock = time.monotonic,
 ) -> Deps:
-    """The production wiring: one shared HTTP client, a child process per rendered page.
-    `Deps.aclose()` closes the client."""
+    """The production wiring: one shared HTTP client, a child process per rendered page, one pool
+    of replicas per model service. `Deps.aclose()` closes the client."""
     worker.check_against(settings)
     client = http or make_http_client(worker)
     gates = make_gates(worker)
     services = (
-        make_services(client, gates, worker)
+        make_services(client, worker, resolver=resolver, clock=clock)
         if sleep is None
-        else make_services(client, gates, worker, sleep=sleep)
+        else make_services(client, worker, sleep=sleep, resolver=resolver, clock=clock)
     )
     if renderer is None:
         renderer = SubprocessRenderer(

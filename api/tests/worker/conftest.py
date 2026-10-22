@@ -18,11 +18,12 @@ from decimer_api.settings import Settings
 from decimer_api.store import Admission, JobStore
 from decimer_api.worker.pipeline import Deps, run_pipeline
 from decimer_api.worker.render import ThreadRenderer
+from decimer_api.worker.replicas import Resolver
 from decimer_api.worker.services import make_gates, make_services
 from decimer_api.worker.settings import WorkerSettings
 from tests.conftest import FakeClock
 from tests.factories import make_pdf
-from tests.worker.fakes import FakeBackend, FakeSleep
+from tests.worker.fakes import FakeBackend, FakeSleep, no_dns
 
 IP = "client-a"
 SMALL_PAGE = (144.0, 144.0)  # 2 x 2 in: 600 x 600 px at 300 DPI
@@ -156,6 +157,7 @@ async def make_rig(
         *,
         api: dict[str, object] | None = None,
         backend: FakeBackend | None = None,
+        resolver: Resolver = no_dns,
         **worker_overrides: object,
     ) -> Rig:
         api_settings = settings.model_copy(update=api or {})
@@ -172,7 +174,7 @@ async def make_rig(
         client = httpx.AsyncClient(transport=fake.transport)
         clients.append(client)
         gates = make_gates(worker)
-        services = make_services(client, gates, worker, sleep=sleep)
+        services = make_services(client, worker, sleep=sleep, resolver=resolver)
         deps = Deps(
             settings=api_settings,
             worker=worker,

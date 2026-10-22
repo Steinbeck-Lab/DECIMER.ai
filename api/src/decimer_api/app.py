@@ -124,7 +124,12 @@ def create_app_from_env() -> FastAPI:
     make_undumpable()  # before anything that parses an upload can run: see hardening.py
     settings = Settings()
     redis: Redis = Redis.from_url(settings.redis_url, decode_responses=True)
-    enqueuer = ArqEnqueuer(settings.redis_url)
+    enqueuer = ArqEnqueuer(
+        settings.redis_url,
+        queue_name=settings.worker_queue_name,
+        fast_queue_name=settings.worker_fast_queue_name,
+        fast_lane_check_seconds=settings.fast_lane_check_seconds,
+    )
 
     async def shutdown() -> None:
         await enqueuer.aclose()

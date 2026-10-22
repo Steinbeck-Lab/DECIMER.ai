@@ -213,7 +213,7 @@ async def create_job(request: Request, response: Response) -> JobView:
         if verdict is not Admission.OK:
             raise _admission_error(verdict, settings)
         try:
-            await deps.enqueue(job.id)
+            await deps.enqueue(job.id, small=settings.is_small_job(job.pages_processed))
         except Exception as error:
             log.exception("could not enqueue job %s", job.id)
             raise ApiError(
