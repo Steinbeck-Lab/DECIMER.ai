@@ -46,28 +46,36 @@ LABEL org.opencontainers.image.title="decimer-edge" \
 # The edge only reads it (compose mounts it read-only here).
 # /var/cache/nginx: where nginx keeps buffered request bodies (nginx.conf). The official image leaves it
 # to root; nginx runs as uid 101 here, so it is handed over (a volume mounted there takes this owner).
+# /var/log/nginx: the error log (nginx.conf), on the edge-logs volume. The official image makes
+# access.log and error.log symlinks to /dev/stdout and /dev/stderr there, and a new volume would copy
+# them: they go, so that the error log is a real file that edge-logs.sh can rotate and delete (the access
+# log is written to stdout by edge.conf itself). The directory is handed over like the cache.
 RUN rm -rf /etc/nginx/conf.d/* /usr/share/nginx/html/* \
     && mkdir -p /etc/nginx/snippets /data/jobs \
     && chown 10001:10001 /data/jobs \
     && chmod 755 /data/jobs \
     && chown 101:101 /var/cache/nginx \
-    && chmod 700 /var/cache/nginx
+    && chmod 700 /var/cache/nginx \
+    && rm -f /var/log/nginx/access.log /var/log/nginx/error.log \
+    && chown 101:101 /var/log/nginx \
+    && chmod 700 /var/log/nginx
 
 COPY --chmod=0644 deploy/nginx/nginx.conf /etc/nginx/nginx.conf
 COPY --chmod=0644 deploy/nginx/edge.conf /etc/nginx/conf.d/edge.conf
 COPY --chmod=0644 deploy/nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --chmod=0755 deploy/nginx/edge-entrypoint.sh /usr/local/bin/edge-entrypoint.sh
+COPY --chmod=0755 deploy/nginx/edge-logs.sh /usr/local/bin/edge-logs.sh
 # No --chmod here: it would apply to the directories too (0644: nobody could enter them).
 COPY --from=build /app/dist/ /usr/share/nginx/html/
 
 # Fail the build on a configuration nginx rejects. edge-entrypoint.sh writes /tmp/edge-generated.conf at
 # start; a stand-in with the same shape lets `nginx -t` run here. nginx -t runs as root and creates its
-# temp directories, which would then belong to root: they are removed again, nginx makes its own at start.
-# ($max_upload_mb below is nginx syntax and must stay literal.)
+# temp directories and error.log, which would then belong to root: they are removed again, nginx makes its
+# own at start. ($max_upload_mb below is nginx syntax and must stay literal.)
 # hadolint ignore=SC2016
 RUN printf 'set_real_ip_from 127.0.0.1;\nproxy_read_timeout 60000ms;\nclient_max_body_size 101m;\nset $max_upload_mb 100;\n' > /tmp/edge-generated.conf \
     && nginx -t \
-    && rm -rf /tmp/edge-generated.conf /var/cache/nginx/*
+    && rm -rf /tmp/edge-generated.conf /var/cache/nginx/* /var/log/nginx/*
 
 USER 101:101
 # As the nginx user: every file the edge serves or reads must be readable, which also needs every
@@ -76,8 +84,11 @@ USER 101:101
 RUN test -r /usr/share/nginx/html/index.html \
     && find /usr/share/nginx/html /etc/nginx -type f -exec head -c 1 {} + > /dev/null
 EXPOSE 8080
-# The edge's own answer; /readyz (through to the API) is for the uptime check, not for this.
+# The edge's own answer; /readyz (through to the API) is for the uptime check, not for this. And the
+# error log's retention: `edge-logs.sh enforce` rotates it and deletes what is a week old by itself, then
+# checks (nginx/edge-logs.sh), so the seven days are kept every 15 seconds even if the loop beside nginx
+# has died; the edge is "unhealthy" in `docker ps` only for what rotating cannot mend.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
-    CMD ["wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+    CMD ["sh", "-c", "wget -q -O /dev/null http://127.0.0.1:8080/healthz && /usr/local/bin/edge-logs.sh enforce"]
 ENTRYPOINT ["/usr/local/bin/edge-entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]

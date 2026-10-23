@@ -375,36 +375,20 @@ test('the editor panel traps focus while open and hands it back to the tile on c
   await waitForEditor(page, 800);
   await expect(panel.getByRole('heading', { name: 'Editing 5' })).toBeFocused();
 
-  // Tab cycles inside the panel and never reaches the page behind it. One press can end on the body: Tab from the
-  // last button of a Ketcher toolbar group ("Add Image", "Extended Table") lands on a scroll arrow that Ketcher then
-  // removes (a Ketcher 3.18.0 behaviour, pinned by "known upstream" in editor.spec.ts, which says when to delete
-  // this tolerance). That is accepted only after a control inside the canvas, and the next press must be back inside
-  // the panel. Anything else outside the panel, or a drop out of our own controls, fails.
+  // Tab cycles inside the panel and never reaches the page behind it, and no press ends on the body (P4-14: Ketcher's
+  // toolbar scroll arrows, which used to take focus and vanish, are out of the tab order; toolbar-focus.spec.ts).
   const state = () =>
     panel.evaluate((el) => ({
       inside: el.contains(document.activeElement),
       body: document.activeElement === document.body,
-      canvas: !!document.activeElement?.closest('.dc-editor__canvas'),
       tag: document.activeElement?.tagName ?? '',
     }));
-  let wasInCanvas = false;
-  let afterDip = false;
-  let dips = 0;
   for (let i = 0; i < 160; i++) {
     await page.keyboard.press('Tab');
     const now = await state();
-    if (now.body) {
-      dips++;
-      expect(afterDip, `Tab ${i + 1}: two presses in a row ended on the body`).toBe(false);
-      expect(wasInCanvas, `Tab ${i + 1}: focus dropped out of the panel's own controls`).toBe(true);
-      afterDip = true;
-      continue;
-    }
+    expect(now.body, `Tab ${i + 1}: focus is on the body`).toBe(false);
     expect(now.inside, `Tab ${i + 1} ended on <${now.tag}> outside the panel`).toBe(true);
-    afterDip = false;
-    wasInCanvas = now.canvas;
   }
-  expect(dips).toBeLessThan(10);
 
   // Escape (from the panel's own controls) closes it and focus returns to the tile.
   await panel.getByRole('button', { name: 'Next structure' }).focus();

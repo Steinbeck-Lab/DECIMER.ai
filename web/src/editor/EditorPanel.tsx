@@ -9,7 +9,8 @@ import { IconCheck, IconChevronLeft, IconChevronRight, IconFlag, IconReset, Icon
 import { nameHover, statusLabel } from '../ui/format';
 import { KetcherPanel } from './KetcherPanel';
 import { blockKeysWhileBusy } from './busyKeys';
-import { keepKetcherLabelled } from './labels';
+import { keepShiftTabForFocus } from './focusKeys';
+import { keepKetcherFixed } from './labels';
 import { CopyButton } from './CopyButton';
 import { Links } from './Links';
 import { StructureCode } from './StructureCode';
@@ -24,11 +25,11 @@ function focusTile(index: number | null): void {
   (tile ?? document.getElementById('main'))?.focus();
 }
 
-/** Names the controls of Ketcher's own markup that have none, from the moment the editor mounts and as it re-renders. */
-function useKetcherLabels(host: React.RefObject<HTMLDivElement | null>, mounted: boolean) {
+/** Names the controls of Ketcher's own markup that have none and takes its scroll arrows out of the tab order, from the moment the editor mounts and as it re-renders (labels.ts). */
+function useKetcherFixes(host: React.RefObject<HTMLDivElement | null>, mounted: boolean) {
   useEffect(() => {
     const el = host.current;
-    return el && mounted ? keepKetcherLabelled(el) : undefined;
+    return el && mounted ? keepKetcherFixed(el) : undefined;
   }, [host, mounted]);
 }
 
@@ -131,7 +132,7 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
   const open = visible && view !== undefined;
   const trapRef = useFocusTrap(open);
 
-  useKetcherLabels(canvasHost, state.editorMounted);
+  useKetcherFixes(canvasHost, state.editorMounted);
   useCanvasResizeKick(canvasHost, Boolean(ketcher));
 
   const inCanvas = (node: EventTarget | Element | null) =>
@@ -187,6 +188,13 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
     controller.select(null);
     // Once React has hidden the panel, the tile can take focus back.
     requestAnimationFrame(() => focusTile(index));
+  };
+
+  // The capture phase of the canvas, before Ketcher's own listener: Shift+Tab is for focus (focusKeys.ts), and while the
+  // canvas is busy the rest of the keyboard does not reach Ketcher (busyKeys.ts).
+  const onCanvasKeyDownCapture = (event: React.KeyboardEvent<HTMLElement>) => {
+    keepShiftTabForFocus(event);
+    if (swapping) blockKeysWhileBusy(event);
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
@@ -282,7 +290,7 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
         role="group"
         aria-label={strings.editor.canvasLabel}
         aria-busy={swapping}
-        onKeyDownCapture={swapping ? blockKeysWhileBusy : undefined}
+        onKeyDownCapture={onCanvasKeyDownCapture}
       >
         {state.editorMounted && <KetcherPanel onReady={onReady} />}
         {view && loadFailed === view.index && (

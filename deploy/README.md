@@ -146,7 +146,8 @@ are never pulled (`pull_policy: never`): there is no registry namespace somebody
   plus the campus proxies in `TRUSTED_PROXY_CIDR` of `.env`, and gives the API one `X-Forwarded-For`
   entry, the real client. **Proxy addresses, never client networks** (every host in a listed network can
   choose the address its limits are counted against; `/0` is refused by both).
-* **Process settings.** Services have `no-new-privileges`, `cap_drop: ALL`, log rotation (5 x 10 MB), and
+* **Process settings.** Services have `no-new-privileges`, `cap_drop: ALL`, log rotation (5 x 10 MB; by size, not
+  by age, which is why the edge's error log is kept apart, see "Error log" below), and
   `oom_score_adj` 300 (500 for the model services and chem) so the kernel sacrifices the new stack before
   legacy. seg, cls, ocsr, chem, redis and the edge have a read-only root file system with a RAM-backed
   `/tmp` (untested: if a service stops with "Read-only file system", add the path to `tmpfs`). The api is
@@ -234,11 +235,57 @@ internal location, and sends the CSP from `security-headers.conf` (identical to 
 `Permissions-Policy` and COOP/CORP. Legacy links `/about`, `/privacy_policy`, `/impressum` redirect to the
 hash routes. HSTS is left to the TLS terminator (commented line in the snippet).
 
-* **Privacy in the logs (for P5-06, the data-protection review):** the access log has no client address, no
-  query string, and job ids replaced by `:id` (they are bearer tokens). **nginx's error log still names the
-  real client address of failed proxying** (level `error`), and lives as long as docker's log rotation (5 x
-  10 MB) keeps it; rate-limit refusals are logged below its level and show as 429s in the access log. Say so
-  in the privacy text or lower the error log (`error_log stderr crit`), and decide before the beta.
+* **Privacy in the logs (P5-06; the privacy page says all of this):** the access log (stdout, docker's json-file
+  driver) has no client address, no user agent, no referrer, no query string, and job ids replaced by `:id`
+  (they are bearer tokens). **nginx's error log is the one place the edge writes an address.** Any server error
+  can be logged there (failed proxying, an upload over the size limit, a media file that cannot be opened, ...),
+  and a line holds **the client address, the request line (so a job id and any query string), the host and
+  the referrer** (`client: ..., request: "GET /api/jobs/<id>?x HTTP/1.1", host: "...", referrer: "..."`). It is
+  kept **seven days at most**, by the mechanism below. Rate-limit refusals are logged below its level and
+  show as 429s in the access log.
+* **Error log: seven days, not "until docker rotates it".** docker's `json-file` driver (5 x 10 MB) bounds
+  the size of a log, not its age, so the error log does not go through it. `nginx.conf` writes it to
+  `/var/log/nginx/error.log`, on the `edge-logs` volume, and `nginx/edge-logs.sh` (in the image as
+  `/usr/local/bin/edge-logs.sh`) keeps the promise:
+  * A day's lines end up in `error.log.YYYY-MM-DD` (UTC; the first run after midnight renames the file and
+    sends nginx `USR1` to open a new one), and a file is deleted when its day is a week behind (at the last
+    run before its oldest line would be seven days old). So no line outlives seven days and none goes before
+    about six. Only files named `error.log.<date>[.n]` are ever deleted. A clock that goes back cannot make a
+    file outlive its week: a file dated after today is dated today.
+  * **Who runs it.** `edge-entrypoint.sh` runs `edge-logs.sh rotate` and `edge-logs.sh check` before nginx starts
+    (a start also deletes whatever a stopped edge left behind past its week, before anything is served; an
+    `error.log` that is a symlink to stderr, as a volume seeded by the stock nginx image would have it, stops
+    the start), and `edge-logs.sh loop` beside nginx (every 10 minutes). **The image's HEALTHCHECK runs
+    `edge-logs.sh enforce` every 15 seconds: `rotate`, then `check`.** So the seven days are enforced by Docker's
+    health-check cadence even if the loop died, and the edge is `unhealthy` only for what rotating cannot mend
+    (not a plain file, a volume that cannot be written, ...). `rotate` takes a lock (the directory
+    `.error.log.lock`; a run that finds it taken leaves the work to the holder, a lock a minute old is broken),
+    so the loop, the health check and a host-side run never rotate at once. If healthchecks are ever switched
+    off (`healthcheck: disable`), the loop is the only enforcer.
+  * **A stopped edge prunes nothing.** After `$DC down` or `stop`, and for the pause before a cutover, the
+    `edge-logs` volume ages: its lines are deleted at the next start, not at seven days. The privacy page's
+    "no line is kept longer than seven days" holds while the edge runs. For a stop of more than a few days,
+    prune from the host (a throwaway container on the volume; it runs the same script, as the volume's owner):
+
+    ```sh
+    docker run --rm --user 101:101 --read-only -e EDGE_LOG_DIR=/l -v decimer-next_edge-logs:/l \
+      --entrypoint /usr/local/bin/edge-logs.sh localhost/decimer-next/edge:local rotate
+    ```
+
+    (Or delete the volume: `docker volume rm decimer-next_edge-logs`, with the edge stopped.) Put it in the
+    runbook next to `$DC down`.
+  * **Verify:** `docker exec <edge> ls -la /var/log/nginx` shows `error.log`, at most six dated files and
+    `.error.log.began` (the day the current file started). `docker exec <edge> edge-logs.sh check` exits 0 when
+    the retention is being kept and says why when not. The script is tested, under dash and BusyBox, by
+    `api/tests/test_edge_logs.py` (including a simulation of eleven days of lines, deleting every line older
+    than seven days and none younger than about six, a dead loop, concurrent runs and a clock that goes
+    back), and `api/tests/test_privacy_promises.py` holds the page, the nginx files and the settings together.
+  * **Reading the error log** (it is no longer in `docker logs`):
+    `docker exec <edge> tail -n 50 /var/log/nginx/error.log`. Do not copy it anywhere that keeps it longer
+    than seven days (and do not add an `error_log stderr`: that would put the addresses back into docker's log).
+  * If the retention ever changes, change `EDGE_LOG_KEEP_DAYS` (the script's default, 7) and the privacy text together.
+  * What the university proxy and the legacy front door log is not governed by this: the privacy page keeps an
+    open question for it (ask the network team).
 * **DNS:** the edge resolves `api` per request through docker's resolver, so recreating the api container
   does not leave nginx holding a stale address.
 * **Leftover uploads:** the edge empties `/var/cache/nginx` when it starts, so the buffered body of a request
@@ -648,10 +695,15 @@ door that does not strip the prefix.
 ## Backups and retention
 
 * `decimer-next_jobs`: job files, swept 1 h after a job ends (`sweep`), nothing to back up.
-* `decimer-next_reports`: problem reports, private (api only, never the edge), kept until
-  analysed, then deleted by hand. **Backed up by nothing yet.** Reading it needs a throwaway
-  container: `docker run --rm -v decimer-next_reports:/r:ro busybox tar -C /r -cf - .`.
+* `decimer-next_reports`: problem reports, private (api only, never the edge). Deleted by hand
+  once analysed, and by the api itself when older than `REPORTS_MAX_AGE_DAYS` (364 days, a day short of the 12
+  months the privacy page promises: at start-up and then every hour; `api/README.md`, "report"). **In no backup, on purpose:** the privacy page says reports
+  are in none, so the backup of the VM must leave this volume out, or a deleted report would live
+  on in it. Reading it needs a throwaway container:
+  `docker run --rm -v decimer-next_reports:/r:ro busybox tar -C /r -cf - .`.
 * `decimer-next_edge-cache`: nginx's temporary files for buffered uploads; emptied at every edge start.
+* `decimer-next_edge-logs`: nginx's error log and at most six rotated days, deleted after seven days by
+  `edge-logs.sh` (above, "Error log"). Client addresses are in it: not for a backup either.
 
 ## Open TODOs
 
@@ -667,11 +719,12 @@ door that does not strip the prefix.
 | `TRUSTED_PROXY_CIDR` | `.env` | The campus proxy's address(es) and what it does to `X-Forwarded-For` (Q3) |
 | campus proxy hostname | front door | Can it route `/beta/` and `/api/`, or provide `beta.decimer.ai` (Q3) |
 | chem in the api | `compose.yaml` | Done in P3-06: the `chem-api` network and the api's `CHEM_URL`; check on the VM that the api reaches `chem:8004` and not seg, cls or ocsr |
-| reports volume | `compose.yaml` | `REPORTS_DIR` is the api's setting (P3-08, done); the backup is still open |
+| reports volume | `compose.yaml` | `REPORTS_DIR` is the api's setting (P3-08, done); old reports are deleted by the api (`REPORTS_MAX_AGE_DAYS`); the backup must exclude this volume |
 | cls soak | `compose.yaml` | A few thousand requests, watch RSS, confirm 2.5 GB |
 | memory limits per replica | `compose.yaml` | seg 3 GB, ocsr 6 GB, cls 2.5 GB come from the READMEs; measure on the VM |
 | Sentry or GlitchTip | `.env`, compose | Decide which; then an `egress` network for api and worker, and the SPA's CSP `connect-src` |
 | SPA API client | `web.Dockerfile` | `VITE_API=http` builds, but the client is TODO: the app errors at start-up until then |
-| privacy review | `nginx/edge.conf` | The log content: no addresses in the access log, addresses in the error log |
+| privacy review | `nginx/edge.conf` | The log content is settled and on the privacy page: no addresses in the access log, addresses in the error log, deleted after seven days (`edge-logs.sh`, tested); open: what the university proxy logs |
+| edge-logs on the VM | `compose.yaml`, `web.Dockerfile` | Untested on the VM: that nginx (uid 101) opens `error.log` on a fresh `edge-logs` volume, that `USR1` makes it open a new file after the daily rename, and that the edge is `healthy` (`enforce` passes); smoke-tested on a scratch image only (fresh volume, read-only root, uid 101) |
 | untested runtime pieces | compose | Redis reading its config from stdin, the read-only file systems, the named-volume ownership, nginx writing `/var/cache/nginx` as uid 101: first start on the VM |
 | Compose version | the VM | v2.3.3 shadows v2.39.2: pick one (above) |
