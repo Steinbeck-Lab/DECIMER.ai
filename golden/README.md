@@ -20,14 +20,34 @@ One open-access paper with hand-checked labels, used to check scientific output 
 
 ```bash
 uv run decimer-golden legacy --base-url http://127.0.0.1:8080   # run the paper through the live legacy site
+uv run decimer-golden next --base-url http://127.0.0.1:8090     # run the paper through the new stack's /api
 uv run decimer-golden score runs/<run>/predictions.csv          # score a run against labels.csv
 uv run decimer-golden draft-labels runs/<run>/predictions.csv   # first-pass labels from a run
 ```
 
-Each run writes `runs/<stack>-<timestamp>/` containing `predictions.csv`, `run.json` (step timings) and `crops/`.
+Each run writes `runs/<stack>-<timestamp>/` (`-2`, `-3`, ... is appended when a run of the same second already has the name) containing `predictions.csv`, `run.json` and `crops/`.
+
+### `next`
+
+```bash
+uv run decimer-golden next [--base-url http://127.0.0.1:8090] [--pdf FILE] [--poll 1.0] [--timeout 900] \
+    [--docker-project decimer-next]
+```
+
+Uploads the PDF to `POST /api/jobs`, polls `GET /api/jobs/{id}` every `--poll` seconds until the job is `done` or `failed`, then downloads each result's crop from the media URL the job lists (same origin as `--base-url`, which is an origin, not a path). One job at a time. 429 and 503 are answered by waiting for `Retry-After` (5 s when the answer has none). `--timeout` bounds the upload and the wait together, retries included; the crop downloads get their own 5 minutes.
+
+- `predictions.csv` has the legacy columns (`index,segment,smiles,inchikey,classifier`) plus `page` (1-based, as in `labels.csv`), `valid`, `confidence`, `name` and `name_tier`. `classifier` is the API's `isStructure` (`True`, `False`, or empty when the classifier gave no answer). The InChIKey is recomputed from the SMILES with RDKit, as for legacy; `run.json` lists the positions where the API's own `inchikey` differs. The structures the API found but did not return (its 20-structure cap, `structuresDropped`) are appended as empty rows, so "dropped by cap" is comparable with the legacy run. A result with an empty SMILES (recognition failed) scores as invalid, not as dropped; only the padding rows, whose `valid` is empty, count as cut by the cap. `score` reads `valid` strictly: `True`, `False` or empty, anything else is an error.
+- `run.json` holds `started_at` (UTC, taken before the upload), `seconds` (`upload`, `processing`, `total` = from the start of the upload the API accepted to the poll that saw `done`, `per_page`, `retry_wait`, `crops`), `stage_seconds` and `stage_seen` (the job record has stage states but no timestamps, so these are what the polling saw: accurate to about `--poll`), `trace` (every change of status or stage), `retries`, the job's `warnings`, `pages`, `pages_processed`, `truncated`, `structures_found`, `structures_dropped`, the `failure` if any, and `pdf_sha256`.
+- `--docker-project NAME` samples `docker stats --no-stream` for that Compose project's containers every 2 s while the job runs (not during the crop downloads) and records in `run.json` under `memory` each container's baseline (before the upload) and peak in MiB, the highest total at any one moment, and that peak minus the baseline, also per processed page. This is the "memory per page" of TODO. A sampling problem is recorded under `memory.errors` and never fails the run.
+- A failed job, a refused upload, a timeout, an unreachable API or a crop that cannot be fetched writes `run.json` (with `failure.kind`, `message` and the job id) and exits 1; bad arguments exit 2. `predictions.csv` is written whenever the job finished `done`, so a crop problem still leaves a scorable run. There is no way to cancel a job yet, so a run that times out or is interrupted leaves its job to expire.
 
 ## Baseline
 
 | Run | Correct | Extra | Invalid | Cut by cap | Time |
 |---|---|---|---|---|---|
 | `legacy-20261022-140954` (TF 2.7, DECIMER `3db6954`, segmentation 1.4.0) | 13 / 26 | 6 | 1 | 12 | 95.3 s |
+| `next-20261022-230836` (TF 2.15.1, DECIMER 2.8.0, 2 seg / 2 ocsr / 2 cls replicas, stages one after the other) | 13 / 26 | 5 | 2 | 12 | 98.3 s |
+
+The two times are not measured alike. Legacy's 95.3 s is the sum of three step timers, one per request (upload 4.47 s + segmentation 38.85 s + recognition 52.0 s, from its `run.json`), not one wall-clock span: the page loads between the steps are not in it. `next`'s `total` is wall clock from the start of the upload to the poll that saw `done`, so it is good to one poll interval (1 s here), and its stage times to about 1 s.
+
+`next-20261022-231212` is the same run with 3 ocsr replicas: 99.3 s and the same score, so recognition is bounded by one non-structure crop (about 46 s from the ocsr log's timestamps, ending in a 422), not by the replica count. Both runs predate the `started_at` fix: their `run.json` gives the end of the run there; the directory name is the start.
