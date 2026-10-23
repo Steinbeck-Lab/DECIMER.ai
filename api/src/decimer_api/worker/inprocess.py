@@ -59,8 +59,6 @@ class InProcessEnqueuer:
                     poll_seconds=self._deps.worker.cancel_poll_seconds,
                     folder=self._deps.settings.data_dir / job_id,
                 )
-            except asyncio.CancelledError:
-                raise
             except Exception:
                 log.exception("job %s: the pipeline raised", job_id)
 

@@ -216,10 +216,9 @@ def refuse_java_subprocess() -> Callable[[], None]:
     process, and anything else fails closed. The refusal is a `FileNotFoundError`, which is what a
     missing `java` raises and what Orthonym's fallbacks are written to catch. Idempotent.
     """
-    current = subprocess.Popen.__init__
-    if hasattr(current, "_chem_original"):
+    original = subprocess.Popen.__init__
+    if hasattr(original, "_chem_original"):
         return lambda: None
-    original = current
 
     def guarded(self: subprocess.Popen[Any], args: Any, *rest: Any, **kwargs: Any) -> None:
         if _runs_java(args):

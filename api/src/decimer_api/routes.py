@@ -17,7 +17,7 @@ from starlette.datastructures import FormData, UploadFile
 from starlette.formparsers import MultiPartException, MultiPartParser
 
 from .clientip import fairness_key, real_client_ip
-from .errors import ApiError, ErrorResponse, not_found
+from .errors import ApiError, ErrorResponse, not_found, unavailable
 from .ingest_gate import IngestBusy
 from .media import resolve_media
 from .models import Job, JobStatus, JobView, is_valid_job_id, new_job_id
@@ -129,6 +129,16 @@ async def _read_form(request: Request, settings: Settings) -> FormData:
         raise ApiError(400, "invalid_request", "The upload could not be read.") from error
 
 
+async def find_job(request: Request, job_id: str) -> Job:
+    """The live record of `job_id`, or 404 (a malformed id is never looked up)."""
+    if not is_valid_job_id(job_id):
+        raise not_found()
+    job: Job | None = await request.app.state.deps.store.get(job_id)
+    if job is None:
+        raise not_found()
+    return job
+
+
 def client_key(request: Request) -> str:
     """The keyed hash of the client's address that every per-client limit counts against."""
     deps = request.app.state.deps
@@ -222,9 +232,7 @@ async def create_job(request: Request, response: Response) -> JobView:
             await deps.enqueue(job.id, small=settings.is_small_job(job.pages_processed))
         except Exception as error:
             log.exception("could not enqueue job %s", job.id)
-            raise ApiError(
-                503, "unavailable", "The service is temporarily unavailable. Please retry."
-            ) from error
+            raise unavailable() from error
         enqueued = True
     except BaseException as failure:
         if not enqueued:
@@ -264,11 +272,7 @@ async def _give_back(store: Any, reservation: Reservation, job: Job | None, job_
 )
 async def get_job(job_id: str, request: Request, response: Response) -> JobView:
     store = request.app.state.deps.store
-    if not is_valid_job_id(job_id):
-        raise not_found()
-    job = await store.get(job_id)
-    if job is None:
-        raise not_found()
+    job = await find_job(request, job_id)
     position = await store.queue_position(job_id) if job.status is JobStatus.QUEUED else None
     response.headers["Cache-Control"] = "no-store"
     return JobView.from_job(job, position)
@@ -287,11 +291,7 @@ async def delete_job(job_id: str, request: Request) -> Response:
     (`worker/cancel.py`); a finished one loses its files before the hour is up. The job answers
     404 from then on."""
     deps = request.app.state.deps
-    if not is_valid_job_id(job_id):
-        raise not_found()
-    job = await deps.store.get(job_id)
-    if job is None:
-        raise not_found()
+    job = await find_job(request, job_id)
     await deps.store.cancel(job)
     await asyncio.to_thread(shutil.rmtree, deps.settings.data_dir / job_id, True)
     return Response(status_code=204)

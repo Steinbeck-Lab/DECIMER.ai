@@ -5,13 +5,13 @@ import {
   editorPanel,
   fixtureImage,
   layoutOnCanvas,
+  tile,
   waitForEditor,
   watchProblems,
 } from './helpers';
 
 // Behaviour added or tightened in the review round. Each test says what it pins.
 
-const tile = (page: Page, n: number) => page.getByRole('button', { name: new RegExp(`^Structure ${n}\\b`) });
 const counts = (page: Page) => page.getByRole('list', { name: 'Status of the structures' });
 
 async function openResults(page: Page, file = 'figure2.png', query = '?mockStepMs=150') {

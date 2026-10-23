@@ -42,7 +42,6 @@ from .exports import (
 )
 from .guards import Guard, GuardedRoute, guarded
 from .media import resolve_media
-from .models import Job, is_valid_job_id
 from .molfile import MolfileError, clean_molfile
 from .names import NO_NAME, nameable
 from .reports import ReportsFull, save_report
@@ -55,7 +54,7 @@ from .result_models import (
     ValidateRequest,
     ValidateView,
 )
-from .routes import client_key
+from .routes import client_key, find_job
 from .settings import Settings
 
 log = logging.getLogger("decimer_api")
@@ -101,13 +100,8 @@ def _errors(*statuses: int) -> dict[int | str, dict[str, Any]]:
     return {status: {"model": ErrorResponse, "description": texts[status]} for status in statuses}
 
 
-async def _job(request: Request, job_id: str) -> Job:
-    if not is_valid_job_id(job_id):
-        raise not_found()
-    job: Job | None = await request.app.state.deps.store.get(job_id)
-    if job is None:
-        raise not_found()
-    return job
+def _unusable(error: Exception) -> ApiError:
+    return ApiError(422, ErrorCode.INVALID_REQUEST, f"The molfile cannot be used: {error}.")
 
 
 def client_molfile(text: str, settings: Settings) -> str:
@@ -126,9 +120,7 @@ def client_molfile(text: str, settings: Settings) -> str:
     try:
         return clean_molfile(text)
     except MolfileError as error:
-        raise ApiError(
-            422, ErrorCode.INVALID_REQUEST, f"The molfile cannot be used: {error}."
-        ) from error
+        raise _unusable(error) from error
 
 
 # --- validate ------------------------------------------------------------------------------------
@@ -152,16 +144,14 @@ async def validate(
     computes them for a recognised structure. The name is null when chem is off, slow, or
     declines. A molfile that is a molfile but not a valid structure answers `valid: false`."""
     deps = request.app.state.deps
-    job = await _job(request, job_id)
+    job = await find_job(request, job_id)
     if n >= len(job.results):
         raise not_found()
     molfile = client_molfile(body.molfile, deps.settings)
     try:
         chem = await deps.analysis.analyse(molfile)
     except MolfileError as error:
-        raise ApiError(
-            422, ErrorCode.INVALID_REQUEST, f"The molfile cannot be used: {error}."
-        ) from error
+        raise _unusable(error) from error
     # No CDK fallback here: CDK reads SMILES, and DECIMER's SMILES are what the worker
     # tries with it (`Result.valid_by`). This molfile came from the editor, which wrote its own
     # (also when the user opened a structure that only CDK had accepted); if RDKit refuses it, it
@@ -274,16 +264,14 @@ class DownloadResponse(StreamingResponse):
 async def export_job(job_id: str, body: ExportRequest, request: Request) -> Response:
     deps = request.app.state.deps
     settings: Settings = deps.settings
-    job = await _job(request, job_id)
+    job = await find_job(request, job_id)
     if not job.results:
         raise ApiError(409, ErrorCode.NO_RESULTS, "This job has no structures to export.")
     edits = _edits(body.molfiles, len(job.results), settings)
     try:
         rows = await build_rows(job.results, edits, deps.namer, deps.analysis)
     except StructureError as error:
-        raise ApiError(
-            422, ErrorCode.INVALID_REQUEST, f"The molfile cannot be used: {error}."
-        ) from error
+        raise _unusable(error) from error
 
     extension = body.format.value
     headers = {
@@ -343,7 +331,7 @@ async def report_problem(job_id: str, body: ReportRequest, request: Request) -> 
     at them. Only the index comes from the client. A result reported twice is kept once."""
     deps = request.app.state.deps
     settings: Settings = deps.settings
-    job = await _job(request, job_id)
+    job = await find_job(request, job_id)
     if body.index >= len(job.results):
         raise not_found()
     result = job.results[body.index]

@@ -311,7 +311,7 @@ class OcsrModel:
                 since = (
                     "no real selftest pass yet"
                     if math.isinf(age)
-                    else (f"no real selftest pass for {int(age)} s")
+                    else f"no real selftest pass for {int(age)} s"
                 )
                 raise RuntimeError(
                     f"selftest could not run: {since}, and the model was busy for "

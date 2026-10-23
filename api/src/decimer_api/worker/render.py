@@ -25,12 +25,12 @@ import asyncio
 import json
 import math
 import os
-import signal
 import sys
 import threading
 from pathlib import Path
 from typing import Protocol
 
+from ..hardening import CHILD_ENV, kill_child
 from .errors import RenderError
 
 RENDER_DPI = 300  # the same as ingest.RENDER_DPI, which sizes the pixel limits (a test checks)
@@ -75,9 +75,7 @@ def render_page(pdf: Path, index: int, out: Path, dpi: int = RENDER_DPI) -> tupl
             temporary.unlink(missing_ok=True)
         width, height = image.size
         return int(width), int(height)
-    except MemoryError:
-        raise
-    except RenderError:
+    except (MemoryError, RenderError):
         raise
     except Exception as error:
         raise RenderError(f"cannot render page {index}: {error}") from error
@@ -132,7 +130,7 @@ class SubprocessRenderer:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,  # captured; pdfium may be chatty
             cwd=out.parent,
-            env={"PATH": "/usr/bin:/bin", "LC_ALL": "C.UTF-8"},  # none of the worker's secrets
+            env=CHILD_ENV,  # none of the worker's secrets
             start_new_session=True,
         )
         self.last_pid = process.pid
@@ -143,18 +141,8 @@ class SubprocessRenderer:
         except TimeoutError as error:
             raise RenderError(f"took too long ({self._timeout:g} s limit)") from error
         finally:
-            await _kill(process)
+            await kill_child(process)
         return _interpret(process.returncode, stdout, stderr)
-
-
-async def _kill(process: asyncio.subprocess.Process) -> None:
-    """Make sure the child, and anything it started, is gone and reaped."""
-    if process.returncode is None:
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        await process.wait()
 
 
 def _interpret(returncode: int | None, stdout: bytes, stderr: bytes) -> tuple[int, int]:

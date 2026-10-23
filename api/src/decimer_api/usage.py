@@ -209,9 +209,8 @@ def table(rows: list[Day]) -> str:
     for row in rows:
         for name, value in row.items():
             if name.startswith("refused.") and isinstance(value, int):
-                codes[name.removeprefix("refused.")] = (
-                    codes.get(name.removeprefix("refused."), 0) + value
-                )
+                code = name.removeprefix("refused.")
+                codes[code] = codes.get(code, 0) + value
     if codes:
         out.append("")
         out.append(

@@ -16,27 +16,18 @@ every other upload are unaffected.
 from __future__ import annotations
 
 import json
-import os
 import resource
 import sys
 import traceback
 from pathlib import Path
 
 from .errors import ApiError
+from .hardening import current_address_space
 from .ingest import run_guarded
 from .uploads import Ingested, Limits, Upload, processing_limit
 
 MIB = 1024 * 1024
 OPEN_FILES = 64
-
-
-def current_address_space() -> int:
-    """Bytes of address space in use now (Linux), or 0 when unknown."""
-    try:
-        with open("/proc/self/statm") as statm:
-            return int(statm.read().split()[0]) * os.sysconf("SC_PAGE_SIZE")
-    except (OSError, ValueError, IndexError):
-        return 0
 
 
 def apply_limits(

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { fixtureImage, waitForEditor } from './helpers';
+import { fixtureImage, tile, waitForEditor } from './helpers';
 
 // P4-14: keyboard focus inside Ketcher 3.18.0's toolbars (text for EPAM in docs/ketcher-a11y-upstream.md, items 4 and 5;
 // the workarounds are in src/editor/labels.ts and src/editor/focusKeys.ts).
@@ -16,8 +16,6 @@ import { fixtureImage, waitForEditor } from './helpers';
 //
 // Ketcher takes about 300 ms to remove an arrow, so every press is checked at 0, 400 and 800 ms: a landing on an
 // element that disappears shows up at the second or third reading, not at the first.
-
-const tile = (page: Page, n: number) => page.getByRole('button', { name: new RegExp(`^Structure ${n}\\b`) });
 
 async function openEditor(page: Page) {
   await page.goto('./?mockStepMs=150');

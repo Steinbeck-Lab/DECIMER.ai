@@ -56,6 +56,10 @@ class StageName(StrEnum):
     CHECK = "check"
 
 
+# The stages the worker runs, in order (`upload` is the API's and is done when a job is created).
+PIPELINE_STAGES = (StageName.RENDER, StageName.SEGMENT, StageName.RECOGNISE, StageName.CHECK)
+
+
 class StageState(StrEnum):
     PENDING = "pending"
     ACTIVE = "active"
@@ -134,15 +138,7 @@ class ResultView(Result):
 def initial_stages() -> list[Stage]:
     return [
         Stage(name=StageName.UPLOAD, state=StageState.DONE),
-        *(
-            Stage(name=name, state=StageState.PENDING)
-            for name in (
-                StageName.RENDER,
-                StageName.SEGMENT,
-                StageName.RECOGNISE,
-                StageName.CHECK,
-            )
-        ),
+        *(Stage(name=name, state=StageState.PENDING) for name in PIPELINE_STAGES),
     ]
 
 

@@ -10,7 +10,7 @@ import { useStrayDropGuard, useUnloadGuard } from './shell/guards';
 import { Header } from './shell/Header';
 import { NoticeRegion } from './shell/NoticeRegion';
 import { useRoute, type Route } from './shell/router';
-import { hasWork } from './state/selectors';
+import { hasResults, hasWork } from './state/selectors';
 import { useAppState, useController } from './state/react';
 import { strings } from './strings';
 import { usePasteToUpload } from './upload/paste';
@@ -58,8 +58,7 @@ export function App() {
   // The visit counter learns of a move to another page (it counted the first page itself).
   useEffect(() => trackRoute(route), [route]);
 
-  const hasResults = state.phase === 'results' && (state.job?.results.length ?? 0) > 0;
-  const split = route === '/' && hasResults;
+  const split = route === '/' && hasResults(state);
 
   // Below 900 px the editor is a modal sheet: the page behind it is inert (no focus, no clicks, hidden from
   // assistive technology) for as long as it is open. The editor and the notices stay outside the inert parts.
@@ -72,7 +71,7 @@ export function App() {
   else if (route === '/impressum') content = <Impressum />;
   else if (state.phase === 'working') content = <WorkingView />;
   else if (state.phase === 'failed') content = <FailedView />;
-  else if (state.phase === 'results') content = hasResults ? <ResultsView /> : <NoStructuresView />;
+  else if (state.phase === 'results') content = hasResults(state) ? <ResultsView /> : <NoStructuresView />;
   else content = <EmptyView />;
 
   return (

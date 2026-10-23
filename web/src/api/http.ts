@@ -180,10 +180,6 @@ export class HttpApiClient implements ApiClient {
     this.pollIntervalMs = options.pollIntervalMs ?? 2000;
   }
 
-  private url(path: string): string {
-    return `${this.baseUrl}${path}`;
-  }
-
   /**
    * A media URL as the page can load it. The API sends paths from its own root (`/api/jobs/{id}/media/crop-0.png`),
    * so they go behind the same base as every other call, whether that is another origin (`https://host`), a
@@ -198,7 +194,7 @@ export class HttpApiClient implements ApiClient {
   private async send(path: string, init: RequestInit): Promise<Response> {
     let response: Response;
     try {
-      response = await this.fetchFn(this.url(path), {
+      response = await this.fetchFn(`${this.baseUrl}${path}`, {
         credentials: 'same-origin',
         ...init,
         headers: { Accept: 'application/json', ...init.headers },

@@ -225,11 +225,10 @@ class WorkerSettings(BaseSettings):
         }[service]
 
     def concurrency(self, service: str) -> int:
-        """Calls in flight at once to one replica of `service` (to the process for render)."""
+        """Calls in flight at once to one replica of `service`."""
         return {
             "seg": self.seg_concurrency,
             "ocsr": self.ocsr_concurrency,
             "cls": self.cls_concurrency,
             "chem": self.chem_concurrency,
-            "render": self.render_concurrency,
         }[service]

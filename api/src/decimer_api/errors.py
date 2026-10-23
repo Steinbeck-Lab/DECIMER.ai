@@ -71,5 +71,12 @@ class ApiError(Exception):
         self.headers = dict(headers or {})
 
 
+UNAVAILABLE_MESSAGE = "The service is temporarily unavailable. Please retry."
+
+
 def not_found() -> ApiError:
     return ApiError(404, ErrorCode.NOT_FOUND, "Not found. The job may have expired.")
+
+
+def unavailable() -> ApiError:
+    return ApiError(503, ErrorCode.UNAVAILABLE, UNAVAILABLE_MESSAGE)
