@@ -446,6 +446,32 @@ async def test_close_kills_the_children_and_reaps_them(
     assert pids(pool) == [None, None]
 
 
+async def test_close_during_start_up_does_not_leave_a_child_behind(
+    settings: Settings,
+) -> None:
+    """Closing while a child is still starting (a short-lived api, a test) cancels its start-up;
+    the process it had spawned is not in the pool yet, so the start-up has to take it down."""
+    spawned: list[asyncio.subprocess.Process] = []
+
+    async def spawn(*argv: str, **kwargs: object) -> asyncio.subprocess.Process:
+        process = await asyncio.create_subprocess_exec(*argv, **kwargs)  # type: ignore[arg-type]
+        spawned.append(process)
+        return process
+
+    silent = [sys.executable, "-I", "-c", "import time; time.sleep(60)"]  # never says it is ready
+    pool = AnalysisPool(settings, argv=silent, spawn=spawn)
+    await pool.start()
+    for _ in range(200):
+        if len(spawned) == settings.max_concurrent_analyses:
+            await asyncio.sleep(0.05)  # waiting for the child's first word
+            break
+        await asyncio.sleep(0.05)
+    assert len(spawned) == settings.max_concurrent_analyses
+    await pool.aclose()
+    assert [process.returncode is not None for process in spawned] == [True] * len(spawned)
+    assert not any(alive(process.pid) for process in spawned)
+
+
 # --- no child: 503 ------------------------------------------------------------------------------
 
 

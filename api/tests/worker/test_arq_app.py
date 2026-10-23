@@ -66,9 +66,36 @@ def test_the_worker_makes_itself_undumpable_before_it_starts(
     order: list[str] = []
     monkeypatch.setattr(arq_app, "make_undumpable", lambda: order.append("undumpable") or True)
     monkeypatch.setattr(arq_app, "run_worker", lambda config: order.append("run"))
-    monkeypatch.setattr(arq_app, "build_arq_settings", lambda: {})
+    monkeypatch.setattr(arq_app, "build_arq_settings", lambda *_: {})
+    monkeypatch.setattr(arq_app, "configure_logging", lambda **_: order.append("logging"))
+    monkeypatch.setattr(arq_app, "init_error_reporting", lambda *_, **__: order.append("reporting"))
     arq_app.main()
-    assert order == ["undumpable", "run"]
+    # Reporting is started before the worker is built (the arq integration patches arq's Worker),
+    # after the process is undumpable (the DSN is in the environment).
+    assert order == ["logging", "undumpable", "reporting", "run"]
+
+
+def test_the_worker_reports_errors_as_the_worker_when_a_dsn_is_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, Any] = {}
+    monkeypatch.setenv("SENTRY_DSN", "http://key@glitchtip:8000/2")
+    monkeypatch.setenv("SENTRY_ENVIRONMENT", "staging")
+    monkeypatch.setenv("SENTRY_RELEASE", "2026-10-23")
+    monkeypatch.setattr(arq_app, "make_undumpable", lambda: True)
+    monkeypatch.setattr(arq_app, "run_worker", lambda config: None)
+    monkeypatch.setattr(arq_app, "build_arq_settings", lambda *_: {})
+    monkeypatch.setattr(arq_app, "configure_logging", lambda **_: None)
+    monkeypatch.setattr(
+        arq_app, "init_error_reporting", lambda dsn, **kwargs: seen.update(dsn=dsn, **kwargs)
+    )
+    arq_app.main()
+    assert seen == {
+        "dsn": "http://key@glitchtip:8000/2",
+        "service": "worker",
+        "environment": "staging",
+        "release": "2026-10-23",
+    }
 
 
 async def test_process_job_runs_the_pipeline_and_returns_none(make_rig: RigFactory) -> None:

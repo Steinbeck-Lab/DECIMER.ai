@@ -14,8 +14,10 @@ What this layer promises:
 * Could not connect (refused, or no answer to the connection attempt): that replica is down or
   starting and is skipped for a while, the names are looked up again, and the call goes to
   another replica at once if one is healthy. When none is, retry with doubling backoff (capped
-  per wait) until `CONNECT_RETRY_BUDGET_SECONDS` have been spent waiting, which covers a cold
-  start of ocsr; then `ServiceUnavailable`. The budget is per call, over all replicas.
+  per wait) until `CONNECT_RETRY_BUDGET_SECONDS` have been spent, which covers a cold start of
+  ocsr; then `ServiceUnreachable`. What is spent is the waiting AND the failed attempts
+  themselves: a replica that drops packets takes the connect timeout (5 s) for each. The budget
+  is per call, over all replicas.
 * The connection broke after the request went out (reset, closed by the server): that replica
   is skipped for a while and the call is retried `SENT_RETRIES` times (once; on another replica
   when one is healthy), then `ServiceFailed` for this call. The service may have started the
@@ -55,7 +57,13 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-from .errors import ServiceFailed, ServiceRejected, ServiceTimedOut, ServiceUnavailable
+from .errors import (
+    ServiceFailed,
+    ServiceRejected,
+    ServiceTimedOut,
+    ServiceUnavailable,
+    ServiceUnreachable,
+)
 from .files import png_size
 from .replicas import (
     OUTSIDE_A_JOB,
@@ -82,6 +90,9 @@ Pools = dict[str, ReplicaPool]
 COULD_NOT_CONNECT = (httpx.ConnectError, httpx.ConnectTimeout)
 # The connection broke once the request was on its way.
 BROKE_AFTER_SENDING = (httpx.ReadError, httpx.WriteError, httpx.RemoteProtocolError)
+# A refused connection fails at once; only an attempt that waited (no answer: a black hole) is time
+# spent.
+REFUSED_SECONDS = 0.1
 ERROR_BODY_BYTES = 2048  # how much of an error answer is kept, for the log
 REJECTED_STATUSES = (413, 422)
 
@@ -228,11 +239,13 @@ class ServiceCaller:
         settings: WorkerSettings,
         *,
         sleep: Sleep = asyncio.sleep,
+        clock: Clock = time.monotonic,
     ) -> None:
         self._http = http
         self._pools = pools
         self._settings = settings
         self._sleep = sleep
+        self._clock = clock
 
     def _timeout(self, service: str) -> httpx.Timeout:
         read = self._settings.read_timeout(service)
@@ -277,28 +290,39 @@ class ServiceCaller:
         ticket = ticket or OUTSIDE_A_JOB
         settings = self._settings
         busy = resent = connect_attempts = switches = 0
-        waited = 0.0
+        waited = 0.0  # backing off, after a connection could not be made
+        spent = (
+            0.0  # in connection attempts that failed (a black hole takes the connect timeout each)
+        )
+        budget = settings.connect_retry_budget(service)
         try:
             while True:
                 if lease is None:
                     lease = await pool.acquire(ticket)
                 try:
+                    began = self._clock()
                     status, retry_after, body = await self._exchange(
                         service, f"{lease.url}{path}", files=files, data=data, json=json
                     )
                 except COULD_NOT_CONNECT as error:
+                    took = self._clock() - began
+                    spent += took if took >= REFUSED_SECONDS else 0.0
                     lease.release(alive=False)
                     lease = None
                     await pool.refresh(force=True)  # a replica that restarted has a new address
-                    if pool.has_healthy() and switches < pool.replica_count:
+                    if (
+                        pool.has_healthy()
+                        and switches < pool.replica_count
+                        and waited + spent <= budget
+                    ):
                         switches += 1  # another replica may be fine: no waiting
                         continue
                     delay = min(
                         settings.connect_backoff_seconds * 2**connect_attempts,
                         settings.connect_backoff_max_seconds,
                     )
-                    if waited + delay > settings.connect_retry_budget_seconds:
-                        raise ServiceUnavailable(
+                    if waited + spent + delay > budget:
+                        raise ServiceUnreachable(
                             service, f"unreachable ({type(error).__name__})"
                         ) from error
                     connect_attempts += 1
@@ -513,7 +537,7 @@ def make_services(
     clock: Clock = time.monotonic,
 ) -> Services:
     pools = make_pools(settings, resolver=resolver, clock=clock)
-    return Services(ServiceCaller(http, pools, settings, sleep=sleep), settings)
+    return Services(ServiceCaller(http, pools, settings, sleep=sleep, clock=clock), settings)
 
 
 def make_http_client(settings: WorkerSettings) -> httpx.AsyncClient:

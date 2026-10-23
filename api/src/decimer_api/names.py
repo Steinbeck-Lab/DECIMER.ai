@@ -5,7 +5,8 @@ The worker names a job's structures in its pipeline; the api names an edited str
 user validates or exports it. Both go through `Services.names` (`worker/services.py`): the same
 size limits and checks on the answer. What differs is the patience. A person is waiting for a
 validated structure, so a call here has no retries (`connect_retry_budget_seconds=0`,
-`busy_retries=0`, `sent_retries=0`) and `NAMES_TIMEOUT_SECONDS` for everything, queueing for chem
+`chem_connect_retry_budget_seconds=0`, `busy_retries=0`, `sent_retries=0`) and
+`NAMES_TIMEOUT_SECONDS` for everything, queueing for chem
 included. A name that cannot be had in that time is `NO_NAME`, the same as a name Orthonym
 declines: "No verified name" in the UI. A failure is logged and never reaches the client as an
 error. The chem service takes SMILES only; the molfile is turned into a SMILES by RDKit first.
@@ -125,6 +126,7 @@ def build_namer(settings: Settings) -> Namer:
         chem_url=settings.chem_url,
         chem_timeout_seconds=settings.names_timeout_seconds,
         connect_retry_budget_seconds=0,
+        chem_connect_retry_budget_seconds=0,
         busy_retries=0,
         sent_retries=0,
     )

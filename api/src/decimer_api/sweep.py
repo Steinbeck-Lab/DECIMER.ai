@@ -33,6 +33,7 @@ from pathlib import Path
 
 from redis.asyncio import Redis
 
+from .logs import configure_logging
 from .models import is_valid_job_id
 from .settings import Settings
 from .store import CorruptRecord, JobStore
@@ -160,8 +161,8 @@ def main(argv: list[str] | None = None) -> None:
         help="keep running and sweep at this interval (default: sweep once and exit)",
     )
     arguments = parser.parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     settings = Settings()
+    configure_logging(fmt=settings.log_format, level=settings.log_level)
 
     async def go() -> None:
         redis: Redis = Redis.from_url(settings.redis_url, decode_responses=True)

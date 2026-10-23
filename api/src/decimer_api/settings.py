@@ -6,7 +6,8 @@ import logging
 import re
 from ipaddress import IPv4Network, IPv6Network, ip_network
 from pathlib import Path
-from typing import Annotated, Any, Self
+from typing import Annotated, Any, Literal, Self
+from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -157,6 +158,37 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = Field(default=8000, ge=1, le=65535)
 
+    # --- observability ---
+    # Error reports go to the GlitchTip of the stack, through its gate
+    # (`http://<key>@glitchtip-gate:8000/<project id>`); empty switches them off. What a report may
+    # carry is `scrub.py`; the SDK is set up in `observability.py`.
+    sentry_dsn: str | None = None
+    sentry_environment: str = "production"
+    # The release the reports name (compose passes DECIMER_TAG); the package version when unset.
+    sentry_release: str | None = None
+    # `json`: one object per line (time, level, logger, message), for the containers; `text`: for a
+    # terminal in development. The level applies to every logger.
+    log_format: Literal["json", "text"] = "json"
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+
+    # --- usage counter ---
+    # Where the per-day counts go. Empty: REDIS_URL (the same Redis as the jobs, which loses them
+    # when it restarts). Compose points it at a small Redis with a persistent volume (`usage`).
+    usage_redis_url: str | None = None
+    # How long a day's counts are kept. Counts have no addresses and no job ids.
+    usage_ttl_days: int = Field(default=800, gt=0)
+
+    # --- the ingest sidecar ---
+    # `tcp://host:port` of the `ingest` container (`decimer_api.sidecar`). Empty: uploads are parsed
+    # in child processes of this process, and molfiles are read by children of this process
+    # (development, and the stack until the sidecar is switched on).
+    ingest_sidecar_url: str | None = None
+    # What the sidecar itself listens on (`python -m decimer_api.sidecar`; containers need 0.0.0.0).
+    sidecar_host: str = "127.0.0.1"
+    sidecar_port: int = Field(default=9000, ge=1, le=65535)
+    # Where the sidecar keeps the request it is working on (its own volume; nothing else is on it).
+    sidecar_scratch_dir: Path = Path("/scratch")
+
     @field_validator("trusted_proxy_cidr", mode="before")
     @classmethod
     def _split_cidrs(cls, value: Any) -> Any:
@@ -168,11 +200,38 @@ class Settings(BaseSettings):
                 raise ValueError(f"TRUSTED_PROXY_CIDR: {error}") from error
         return value
 
-    @field_validator("chem_url", mode="before")
+    @field_validator(
+        "chem_url",
+        "sentry_dsn",
+        "sentry_release",
+        "usage_redis_url",
+        "ingest_sidecar_url",
+        mode="before",
+    )
     @classmethod
-    def _empty_chem_url_is_none(cls, value: Any) -> Any:
+    def _empty_is_none(cls, value: Any) -> Any:
         if isinstance(value, str) and not value.strip():
             return None
+        return value
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _level_in_capitals(cls, value: Any) -> Any:
+        return value.strip().upper() if isinstance(value, str) else value
+
+    @field_validator("log_format", mode="before")
+    @classmethod
+    def _format_in_lower_case(cls, value: Any) -> Any:
+        return value.strip().lower() if isinstance(value, str) else value
+
+    @field_validator("ingest_sidecar_url")
+    @classmethod
+    def _sidecar_url_is_tcp(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        parsed = urlsplit(value)
+        if parsed.scheme != "tcp" or not parsed.hostname or parsed.port is None or parsed.path:
+            raise ValueError("INGEST_SIDECAR_URL must look like tcp://ingest:9000")
         return value
 
     @field_validator("worker_queue_name", "worker_fast_queue_name")

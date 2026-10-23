@@ -4,7 +4,8 @@ import { defineConfig } from 'vite';
 
 // The CSP the production nginx will send. Preview serves it too, so the
 // e2e tests run under the real policy. matomo.nfdi4chem.de is the visit counter (src/analytics/matomo.ts): its script,
-// its tracking image and its beacon.
+// its tracking image and its beacon. Error reports (src/observability/sentry.ts) use the page's own origin, through the
+// edge's /glitchtip/ location, so `connect-src 'self'` needs no entry for them.
 export const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   "script-src 'self' 'wasm-unsafe-eval' https://matomo.nfdi4chem.de",

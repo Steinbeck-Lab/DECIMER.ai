@@ -25,13 +25,16 @@ from .hardening import make_undumpable
 from .ingest_gate import IngestGate
 from .ingest_runner import IngestRunner, SubprocessIngest
 from .names import Namer, build_namer
+from .observability import close_error_reporting, init_error_reporting
 from .queue import ArqEnqueuer, Enqueue
 from .reports import TIDY_INTERVAL_SECONDS, tidy, tidy_every
 from .result_routes import router as result_router
 from .routes import router
 from .settings import Settings
+from .sidecar_client import RemoteAnalysis, RemoteIngest
 from .store import JobStore
 from .uploads import Limits
+from .usage import NullUsage, RedisUsage, Usage, build_usage
 
 log = logging.getLogger("decimer_api")
 
@@ -52,6 +55,7 @@ class Deps:
     analysis: Analysis
     streams: Capacity
     client_streams: ClientShares  # of those, what one client may hold
+    usage: Usage  # the per-day counts (`usage`); counts nothing in tests
     warned_peers: set[str] = field(default_factory=set)
 
 
@@ -78,10 +82,17 @@ def create_app(
     ingest_runner: IngestRunner | None = None,
     namer: Namer | None = None,
     analysis: Analysis | None = None,
+    usage: Usage | None = None,
     on_shutdown: Callable[[], Awaitable[None]] | None = None,
 ) -> FastAPI:
     deps_namer = namer or build_namer(settings)
-    deps_analysis = analysis or build_analysis(settings)
+    # With INGEST_SIDECAR_URL the parsers run in the ingest sidecar's container, not in children of
+    # this one (`sidecar.py`); without it, in children of this process.
+    sidecar = settings.ingest_sidecar_url is not None
+    deps_analysis = analysis or (RemoteAnalysis(settings) if sidecar else build_analysis(settings))
+    deps_ingest = ingest_runner or (
+        RemoteIngest(settings) if sidecar else SubprocessIngest(settings)
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -129,7 +140,7 @@ def create_app(
         settings=settings,
         store=store,
         enqueue=enqueue,
-        ingest=ingest_runner or SubprocessIngest(settings),
+        ingest=deps_ingest,
         limits=Limits.from_settings(settings),
         hash_client=_client_hasher(settings.ip_hash_secret),
         gate=IngestGate(settings.ingest_concurrency),
@@ -138,6 +149,7 @@ def create_app(
         analysis=deps_analysis,
         streams=Capacity(settings.max_concurrent_downloads),
         client_streams=ClientShares(settings.max_downloads_per_client),
+        usage=usage or NullUsage(),
     )
     handlers.register(app)
     app.include_router(router)
@@ -154,6 +166,12 @@ def create_app(
     )
     async def readyz() -> Response:
         ready = await store.ping() and _writable(settings)
+        # With the ingest sidecar (INGEST_SIDECAR_URL) the api is not ready while it does not
+        # answer: uploads cannot work without it. (Said here and not in `summary`, which is part
+        # of the OpenAPI schema.)
+        sidecar_ping = getattr(deps_ingest, "ping", None)
+        if ready and sidecar_ping is not None:
+            ready = bool(await sidecar_ping())  # uploads cannot work without the sidecar
         if ready:
             return JSONResponse({"status": "ready"})
         return JSONResponse({"status": "not ready"}, status_code=503)
@@ -169,6 +187,13 @@ def create_app_from_env() -> FastAPI:
     """The production app: settings from the environment, real Redis, arq enqueue."""
     make_undumpable()  # before anything that parses an upload can run: see hardening.py
     settings = Settings()
+    # Off without SENTRY_DSN. The uvicorn process is the API: the integrations patch Starlette once.
+    init_error_reporting(
+        settings.sentry_dsn,
+        service="api",
+        environment=settings.sentry_environment,
+        release=settings.sentry_release,
+    )
     redis: Redis = Redis.from_url(settings.redis_url, decode_responses=True)
     enqueuer = ArqEnqueuer(
         settings.redis_url,
@@ -177,8 +202,14 @@ def create_app_from_env() -> FastAPI:
         fast_lane_check_seconds=settings.fast_lane_check_seconds,
     )
 
+    usage: RedisUsage = build_usage(settings)
+
     async def shutdown() -> None:
         await enqueuer.aclose()
         await redis.aclose()
+        await usage.aclose()
+        close_error_reporting()
 
-    return create_app(settings, JobStore(redis, settings), enqueuer, on_shutdown=shutdown)
+    return create_app(
+        settings, JobStore(redis, settings), enqueuer, usage=usage, on_shutdown=shutdown
+    )

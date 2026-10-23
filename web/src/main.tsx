@@ -36,6 +36,14 @@ import { AppProvider } from './state/react';
 import { strings } from './strings';
 import { cssVariablesResolver, theme } from './theme';
 
+// Error reports are off unless the build names a GlitchTip (VITE_SENTRY_DSN, env.d.ts). Vite replaces the variable, so a
+// build without one has no reporting code at all; with one, the SDK is a chunk of its own, off the way of the first paint.
+if (import.meta.env.VITE_SENTRY_DSN) {
+  import('./observability/sentry').then(
+    (reporting) => reporting.startErrorReporting(),
+    () => {}, // the chunk did not load (offline): the page does not need it
+  );
+}
 startMatomo();
 
 const root = document.getElementById('root');

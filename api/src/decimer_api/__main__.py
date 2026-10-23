@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import logging
-
 import uvicorn
 
+from .logs import configure_logging
 from .settings import Settings
 
 
@@ -22,12 +21,16 @@ def uvicorn_config(settings: Settings) -> uvicorn.Config:
         server_header=False,
         # The access log would write every client address; the proxy keeps its own log.
         access_log=False,
+        # No uvicorn logging set-up of its own: its loggers propagate to the JSON handler of
+        # `logs.configure_logging` (uvicorn's default format is plain text with the client address).
+        log_config=None,
     )
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
-    uvicorn.Server(uvicorn_config(Settings())).run()
+    settings = Settings()
+    configure_logging(fmt=settings.log_format, level=settings.log_level)
+    uvicorn.Server(uvicorn_config(settings)).run()
 
 
 if __name__ == "__main__":

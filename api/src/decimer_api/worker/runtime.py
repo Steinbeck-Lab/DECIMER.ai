@@ -10,6 +10,7 @@ import httpx
 
 from ..settings import MIB, Settings
 from ..store import JobStore
+from ..usage import Usage
 from .pipeline import Deps
 from .render import Renderer, SubprocessRenderer
 from .replicas import Clock, Resolver, system_resolver
@@ -29,6 +30,7 @@ def build_deps(
     sleep: Sleep | None = None,
     resolver: Resolver = system_resolver,
     clock: Clock = time.monotonic,
+    usage: Usage | None = None,
 ) -> Deps:
     """The production wiring: one shared HTTP client, a child process per rendered page, one pool
     of replicas per model service. `Deps.aclose()` closes the client."""
@@ -49,7 +51,7 @@ def build_deps(
         )
     if worker.cdk_fallback and worker.chem_url is None:
         log.info("CDK_FALLBACK is on, but CHEM_URL is not set: RDKit decides alone")
-    return Deps(
+    deps = Deps(
         settings=settings,
         worker=worker,
         store=store,
@@ -58,3 +60,6 @@ def build_deps(
         gates=gates,
         http=client,
     )
+    if usage is not None:
+        deps.usage = usage
+    return deps

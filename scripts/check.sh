@@ -34,6 +34,11 @@ for project in api services/common services/seg services/ocsr services/cls servi
   fi
 done
 
+# deploy/compose.yaml: networks, secrets, read-only mounts and the error-report path are what the README says
+# (stdlib only; runs "docker compose config" on a copy with dummy secrets, no container is started).
+step "deploy: compose file checks (deploy/check-compose.py)"
+python3 -I deploy/check-compose.py
+
 if [[ $E2E == 1 ]]; then
   # TODO: the API end to end (upload, arq worker, pipeline, poll, validate, export, delete) against fake model
   # services, on a real Redis: a throwaway container of the release deploy/compose.yaml runs, on a free port of

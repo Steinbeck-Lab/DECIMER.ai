@@ -34,6 +34,7 @@ async def make_namer() -> AsyncIterator[Callable[..., tuple[ChemNamer, FakeBacke
             chem_url="http://chem.test",
             chem_timeout_seconds=timeout,
             connect_retry_budget_seconds=0,
+            chem_connect_retry_budget_seconds=0,  # what `build_namer` sets: no retries for a person
             busy_retries=0,
             sent_retries=0,
         )
@@ -233,6 +234,28 @@ async def test_a_chem_url_builds_a_namer_with_no_retries_and_a_budget(settings: 
     assert namer._timeout == 3  # noqa: SLF001
     await namer.aclose()
     assert namer._http is not None and namer._http.is_closed  # noqa: SLF001
+
+
+async def test_the_api_namer_never_waits_for_a_chem_that_refuses_connections(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A person is waiting: the production namer has no retries, neither under the models'
+    budget nor under chem's own (a worker waits 5 s for chem)."""
+    from decimer_api import names
+
+    seen: list[WorkerSettings] = []
+    real = names.make_services
+
+    def spy(http: httpx.AsyncClient, worker: WorkerSettings, **kwargs: object) -> object:
+        seen.append(worker)
+        return real(http, worker, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(names, "make_services", spy)
+    namer = names.build_namer(Settings(chem_url="http://chem.test:8004"))
+    (worker,) = seen
+    assert worker.connect_retry_budget("chem") == 0
+    assert (worker.busy_retries, worker.sent_retries) == (0, 0)
+    await namer.aclose()
 
 
 def test_an_empty_chem_url_is_none(monkeypatch: pytest.MonkeyPatch) -> None:

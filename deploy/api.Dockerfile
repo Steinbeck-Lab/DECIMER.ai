@@ -4,10 +4,14 @@
 # The build context is the REPOSITORY ROOT:
 #   docker build -f deploy/api.Dockerfile -t localhost/decimer-next/api:local .
 #
-# Commands (compose.yaml sets the last two; the image's own CMD is the API):
+# Commands (compose.yaml sets all but the first; the image's own CMD is the API):
 #   python -m decimer_api                      the API (uvicorn, ONE process, see below)
 #   python -m decimer_api.worker               the arq worker
 #   python -m decimer_api.sweep --every 300    the retention sweep
+#   python -m decimer_api.sidecar              the ingest sidecar: parses uploads and reads molfiles
+#                                              for the api, in a container with no volume of job data and no
+#                                              route to Redis; `--ping` is its health check
+#   python -m decimer_api.usage --days 30      prints the per-day usage counts (run it with `docker compose exec api`)
 #
 # The API must run as exactly ONE process (never uvicorn --workers N, never two api containers): the
 # ingest gate and the queue throttle are per process (api/README.md). The CMD is the exec form with
@@ -48,8 +52,9 @@ LABEL org.opencontainers.image.title="decimer-api" \
       org.opencontainers.image.description="decimer.ai job API, arq worker and TTL sweep"
 
 # uid/gid 10001. /data/jobs is DATA_DIR (the job volume, shared with the worker, the sweep and, read
-# only, the edge) and /data/reports is the private problem-report volume. A new named
-# volume takes the ownership of these directories on its first mount.
+# only, the edge), /data/reports is the private problem-report volume and /scratch is the
+# ingest sidecar's own volume (TODO; the same image runs it, and the api's other containers never
+# mount it). A new named volume takes the ownership of these directories on its first mount.
 # Unpinned like the other images: the versions come from Debian trixie at build time.
 # hadolint ignore=DL3008
 RUN apt-get update \
@@ -59,10 +64,10 @@ RUN apt-get update \
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --no-create-home --home-dir /nonexistent \
                --shell /usr/sbin/nologin app \
-    && mkdir -p /data/jobs /data/reports \
-    && chown 10001:10001 /data/jobs /data/reports \
+    && mkdir -p /data/jobs /data/reports /scratch \
+    && chown 10001:10001 /data/jobs /data/reports /scratch \
     && chmod 755 /data/jobs \
-    && chmod 700 /data/reports
+    && chmod 700 /data/reports /scratch
 
 COPY --from=builder /opt/venv /opt/venv
 COPY deploy/healthcheck.py deploy/worker_healthcheck.py /usr/local/bin/
