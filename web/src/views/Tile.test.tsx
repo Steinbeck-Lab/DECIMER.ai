@@ -1,0 +1,68 @@
+import { MantineProvider } from '@mantine/core';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, expect, test, vi } from 'vitest';
+import { asCdkOnly, fixtureResults } from '../mocks/fixtures';
+import { viewOf } from '../state/selectors';
+import type { EditEntry } from '../state/model';
+import { Tile } from './Tile';
+
+afterEach(cleanup);
+
+const [ethanol] = fixtureResults(1);
+if (!ethanol) throw new Error('no fixture');
+
+function show(result = ethanol, edit?: EditEntry) {
+  const view = viewOf(result!, edit);
+  render(
+    <MantineProvider>
+      <ul>
+        <Tile view={view} selected={false} order={0} onSelect={vi.fn()} />
+      </ul>
+    </MantineProvider>,
+  );
+  return screen.getByRole('button');
+}
+
+const hoverText = async (button: HTMLElement) => {
+  fireEvent.focus(button);
+  return (await screen.findByRole('tooltip', undefined, { timeout: 2000 })).textContent;
+};
+
+test('a structure only CDK accepted says so on the tile instead of "Invalid SMILES"', () => {
+  const button = show(asCdkOnly(ethanol));
+  expect(button.textContent).toContain('Accepted by CDK only');
+  expect(button.textContent).not.toContain('Invalid SMILES');
+  expect(button.getAttribute('data-status')).toBe('review'); // still low trust
+});
+
+test('its hover says that RDKit could not read it, then that there is no name', async () => {
+  const text = await hoverText(show(asCdkOnly(ethanol)));
+  expect(text).toBe('Accepted by CDK only (RDKit could not read it)No verified name');
+});
+
+test('a structure nobody accepted keeps its "Invalid SMILES" flag and no CDK line', async () => {
+  const button = show({ ...ethanol, valid: false, validBy: null, inchikey: '', name: null, nameTier: null, nameVerified: null });
+  expect(button.textContent).toContain('Invalid SMILES');
+  expect(button.textContent).not.toContain('CDK');
+  expect(await hoverText(button)).toBe('No verified name');
+});
+
+test('an RDKit-valid structure has neither flag nor CDK line', async () => {
+  const button = show();
+  expect(button.textContent).not.toContain('Invalid SMILES');
+  expect(button.textContent).not.toContain('CDK');
+  expect(await hoverText(button)).not.toContain('CDK');
+});
+
+test('while an edit is unanswered the tile says nothing about CDK: the values are from before it', async () => {
+  const button = show(asCdkOnly(ethanol), {
+    molfile: 'x',
+    modified: true,
+    checked: false,
+    derived: null,
+    validating: true,
+    validationFailed: false,
+  });
+  expect(button.textContent).not.toContain('CDK');
+  expect(await hoverText(button)).toBe('Updating name and SMILES…');
+});

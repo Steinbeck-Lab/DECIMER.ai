@@ -113,6 +113,8 @@ x-worker-env: &worker-env
   # `-` and not `:-`: the default applies only when CHEM_URL is unset, so `CHEM_URL=` in .env really is
   # empty, which switches names off.
   CHEM_URL: ${CHEM_URL-http://chem:8004}
+  # D4 (kept): the SMILES RDKit refuses go to chem's POST /cdk, one batch per job (needs CHEM_URL). `false` = no call.
+  CDK_FALLBACK: ${CDK_FALLBACK:-true}
   SEG_CONCURRENCY: ${SEG_CONCURRENCY:-1}
   OCSR_CONCURRENCY: ${OCSR_CONCURRENCY:-1}
   CLS_CONCURRENCY: ${CLS_CONCURRENCY:-1}

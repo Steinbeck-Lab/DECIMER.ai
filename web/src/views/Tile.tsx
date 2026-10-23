@@ -3,7 +3,7 @@ import { memo } from 'react';
 import { strings } from '../strings';
 import type { ResultView } from '../state/selectors';
 import { IconAlert } from '../ui/icons';
-import { imageSrc, nameHover, statusLabel } from '../ui/format';
+import { imageSrc, nameHover, statusLabel, validityHover } from '../ui/format';
 
 interface Props {
   view: ResultView;
@@ -20,8 +20,11 @@ interface Props {
  */
 export const Tile = memo(function Tile({ view, selected, order, onSelect }: Props) {
   const status = statusLabel(view.status);
-  // What kind of name this is and how it was checked; while an edit is unanswered there is nothing to say yet.
-  const hover = view.stale ? [strings.editor.updating] : nameHover(view.name, view.nameTier, view.nameVerified);
+  // Who accepted the structure (when only CDK did), then what kind of name this is and how it was checked; while an
+  // edit is unanswered there is nothing to say yet.
+  const hover = view.stale
+    ? [strings.editor.updating]
+    : [...validityHover(view.validBy), ...nameHover(view.name, view.nameTier, view.nameVerified)];
   // From the edit until the server answers, the name and depiction are from before it: say so rather than
   // show them (dimming text would take it below the contrast floor on a selected tile).
   const name = view.stale
@@ -81,7 +84,7 @@ export const Tile = memo(function Tile({ view, selected, order, onSelect }: Prop
             {view.invalid && !view.stale && (
               <span className="dc-status dc-status--invalid">
                 <IconAlert size={12} />
-                {strings.editor.invalidFlag}
+                {view.validBy === 'cdk' ? strings.tile.cdkOnlyFlag : strings.editor.invalidFlag}
               </span>
             )}
           </span>

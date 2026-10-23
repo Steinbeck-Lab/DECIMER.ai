@@ -11,6 +11,15 @@ What goes in, for each structure and in the order of the job's results (never th
 * **a structure without a molfile** (the recognition failed, or the SMILES is not valid) has no
   `.mol` file and no SDF record; it is still in the SMILES file and the CSV, so that the lists
   have every structure and the gaps are visible.
+* **a structure that only CDK accepted** (RDKit refused its SMILES, CDK read it: D4, TODO)
+  does have a molfile, CDK's, and so a `.mol` file and an SDF record (with `VALID` = `cdk`). Its
+  SMILES is the one DECIMER wrote, its InChIKey and name are empty, and the CSV column `valid`
+  says `cdk`.
+
+The CSV has the columns `number, smiles, inchikey, valid, name, edited`, one row per structure:
+`valid` is `true` (RDKit accepts the structure), `cdk` (RDKit does not, CDK does: see above) or
+`false` (neither); `edited` is `true` or `false`. An edited structure is judged by RDKit alone
+(the molfile comes from the editor), so it is `true` or `false`, never `cdk`.
 * text from outside (a SMILES that OCSR made up, a name from chem) is put on one line and cleaned
   of what could end an SDF record or start a spreadsheet formula.
 
@@ -31,7 +40,7 @@ from typing import BinaryIO
 
 from .analysis_pool import Analysis
 from .chemistry import Chemistry
-from .models import Result
+from .models import Result, ValidBy
 from .molfile import SDF_RECORD_END, MolfileError, clean_molfile
 from .names import NO_NAME, NameInfo, Namer, nameable
 
@@ -59,6 +68,7 @@ class Row:
     smiles: str
     inchikey: str
     valid: bool
+    valid_by: ValidBy | None
     name: str | None
     molfile: str  # clean (see `clean_molfile`), or "" when there is none
     edited: bool
@@ -66,6 +76,13 @@ class Row:
     @property
     def number(self) -> int:
         return self.index + 1
+
+    @property
+    def validity(self) -> str:
+        """`true`, `cdk` or `false`: what the CSV's `valid` column and the SDF's `VALID` say."""
+        if self.valid:
+            return "true"
+        return "cdk" if self.valid_by == "cdk" else "false"
 
 
 def file_stem(number: int, count: int) -> str:
@@ -119,6 +136,7 @@ async def build_rows(
                     smiles=result.smiles,
                     inchikey=result.inchikey,
                     valid=result.valid,
+                    valid_by=result.valid_by,
                     name=result.name,
                     molfile=stored_molfile(result),
                     edited=False,
@@ -131,6 +149,7 @@ async def build_rows(
                     smiles=chem.smiles,
                     inchikey=chem.inchikey,
                     valid=chem.valid,
+                    valid_by="rdkit" if chem.valid else None,
                     name=names.get(result.index, NO_NAME).name,
                     molfile=edits[result.index],
                     edited=True,
@@ -173,6 +192,7 @@ def sdf_text(rows: Sequence[Row]) -> str:
             "INCHIKEY": row.inchikey,
             "NAME": _sdf_value(row.name),
             "EDITED": "true" if row.edited else "false",
+            "VALID": "cdk" if row.validity == "cdk" else "",  # only where it adds something
         }
         body = "".join(f"> <{key}>\n{value}\n\n" for key, value in properties.items() if value)
         records.append(f"{row.molfile}{body}$$$$\n")
@@ -194,7 +214,7 @@ def csv_text(rows: Sequence[Row]) -> str:
                 row.number,
                 _cell(row.smiles),
                 row.inchikey,
-                "true" if row.valid else "false",
+                row.validity,
                 _cell(row.name or ""),
                 "true" if row.edited else "false",
             ]

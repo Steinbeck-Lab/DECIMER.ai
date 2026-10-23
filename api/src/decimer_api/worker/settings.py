@@ -133,9 +133,10 @@ class WorkerSettings(BaseSettings):
     # --- chemistry ---
     # Names are asked for in batches of at most this many structures (chem takes 20).
     chem_batch_size: int = Field(default=20, gt=0, le=20)
-    # D4: the CDK fallback stays off until the golden-set data says otherwise. The seam is
-    # `Deps.cdk_fallback`; with the flag on and nothing plugged in, the worker says so at start.
-    cdk_fallback: bool = False
+    # D4 (kept, 2026-10-23): a SMILES RDKit refuses is tried with CDK 2.8 in chem (`POST /cdk`, one
+    # batch per job). A structure only CDK accepts is shown as such (`Result.valid_by == "cdk"`).
+    # Needs `chem_url`; false switches the call off.
+    cdk_fallback: bool = True
 
     @field_validator("chem_url", mode="before")
     @classmethod

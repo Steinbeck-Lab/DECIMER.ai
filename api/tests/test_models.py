@@ -136,3 +136,46 @@ def test_the_stored_record_holds_nothing_derived() -> None:
     job.status = JobStatus.RUNNING
     running = json.loads(JobView.from_job(job, queue_position=3).model_dump_json(by_alias=True))
     assert running["queuePosition"] is None
+
+
+# --- who accepted the SMILES ---------------------------------------------------------
+
+RESULT = {
+    "index": 0,
+    "pageIndex": 0,
+    "bbox": [0, 0, 10, 10],
+    "smiles": "CCO",
+    "inchikey": "LFQSCWFLJHTTHZ-UHFFFAOYSA-N",
+    "valid": True,
+    "isStructure": True,
+    "confidence": 0.9,
+}
+
+
+def test_a_record_from_before_valid_by_existed_reads_a_valid_result_as_rdkits() -> None:
+    """The records live an hour, so a deploy can meet one the old worker wrote."""
+    assert Result.model_validate(RESULT).valid_by == "rdkit"
+    assert Result.model_validate({**RESULT, "valid": False}).valid_by is None
+
+
+def test_valid_by_as_stored_is_kept() -> None:
+    cdk = Result.model_validate({**RESULT, "valid": False, "validBy": "cdk"})
+    assert (cdk.valid, cdk.valid_by) == (False, "cdk")
+    assert Result.model_validate({**RESULT, "validBy": "rdkit"}).valid_by == "rdkit"
+    # An explicit null is a statement, not an absence: nothing is filled in over it.
+    assert Result.model_validate({**RESULT, "validBy": None}).valid_by is None
+
+
+def test_valid_by_is_camel_case_in_json_and_survives_the_store_round_trip() -> None:
+    result = Result.model_validate({**RESULT, "valid": False, "validBy": "cdk"})
+    text = result.model_dump_json(by_alias=True)
+    assert json.loads(text)["validBy"] == "cdk"
+    assert Result.model_validate_json(text).valid_by == "cdk"
+
+
+def test_valid_by_accepts_nothing_but_rdkit_and_cdk() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        Result.model_validate({**RESULT, "validBy": "indigo"})

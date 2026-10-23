@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { STAGE_ORDER, type Job } from '../api/contract';
+import { STAGE_ORDER, type Job, type Result } from '../api/contract';
 import { fixtureResults } from '../mocks/fixtures';
 import { initialState, type State } from './model';
 import { reducer, type Action } from './reducer';
@@ -8,6 +8,7 @@ import {
   countsOf,
   filterCounts,
   filterViews,
+  reasonsFor,
   stepList,
   viewOf,
   viewsOf,
@@ -113,6 +114,55 @@ test('an invalid SMILES goes to review with its reason; an R group is named as s
   expect(viewOf({ ...base, valid: false, inchikey: '' }).status).toBe('review');
   expect(viewOf({ ...base, valid: false }).reasons).toEqual(['invalid']);
   expect(viewOf({ ...base, smiles: '*CC(=O)O' }).reasons).toEqual(['rgroup']);
+});
+
+// ---- a structure only CDK accepted (decision D4) ------------------------------------------------------------------
+
+const cdkOnly = (over: Partial<Result> = {}): Result => {
+  const base = results[0];
+  if (!base) throw new Error('no result');
+  return { ...base, valid: false, validBy: 'cdk', inchikey: '', name: null, nameTier: null, nameVerified: null, ...over };
+};
+
+test('a structure only CDK accepted goes to review for its own reason, not as an invalid SMILES', () => {
+  const view = viewOf(cdkOnly());
+  expect(view).toMatchObject({ valid: false, validBy: 'cdk', invalid: true, status: 'review' });
+  expect(view.reasons).toEqual(['cdkOnly']);
+  // Low confidence is a second reason, as it is for any other result.
+  expect(viewOf(cdkOnly({ confidence: 0.5 })).reasons).toEqual(['cdkOnly', 'lowConfidence']);
+  // And the classifier's doubt still decides the status ("not sure"), as for an invalid SMILES.
+  expect(viewOf(cdkOnly({ isStructure: false })).status).toBe('notsure');
+});
+
+test('a structure nobody accepted is still an invalid SMILES, whoever recognised it', () => {
+  expect(viewOf(cdkOnly({ validBy: null })).reasons).toEqual(['invalid']);
+  expect(reasonsFor({ isStructure: true, valid: false, confidence: 0.9, smiles: 'C(' })).toEqual(['invalid']);
+  expect(reasonsFor({ isStructure: true, valid: false, validBy: 'cdk', confidence: 0.9, smiles: 'C(' })).toEqual(['cdkOnly']);
+});
+
+test('CDK-only does not make an RDKit-valid result review', () => {
+  expect(viewOf({ ...cdkOnly(), valid: true, validBy: 'rdkit', inchikey: 'AAAAAAAAAAAAAA-BBBBBBBBBB-C' })).toMatchObject({
+    status: 'unchecked',
+    reasons: [],
+    validBy: 'rdkit',
+  });
+});
+
+test('after an edit the server answers for RDKit alone: valid is RDKit, an invalid answer is nobody', () => {
+  const edited = molfileOf('a');
+  const start: State = { ...initialState, phase: 'results', jobId: job.id, job: { ...job, results: [cdkOnly()] } };
+  const answer = (valid: boolean): Action => ({
+    type: 'validated',
+    index: 0,
+    molfile: edited,
+    derived: { smiles: valid ? 'CCO' : '', inchikey: '', svg: '', valid, name: null, nameTier: null, nameVerified: null },
+  });
+  const after = (valid: boolean) =>
+    viewsOf([{ type: 'edit', index: 0, molfile: edited } as Action, answer(valid)].reduce(reducer, start))[0];
+  expect(after(true)).toMatchObject({ valid: true, validBy: 'rdkit', status: 'edited', reasons: [] });
+  const refused = after(false);
+  expect(refused).toMatchObject({ valid: false, validBy: null });
+  expect(refused?.reasons).toEqual(['invalid']); // not "only CDK": the structure is the user's now
 });
 
 test('after validation the new SMILES, name and validity replace the recognised ones', () => {

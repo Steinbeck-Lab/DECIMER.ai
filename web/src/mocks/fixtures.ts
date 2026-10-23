@@ -72,6 +72,15 @@ const NOT_A_STRUCTURE = new Set([12]);
 const FIGURE_PAGE = 2;
 
 /**
+ * The result as the API leaves one that RDKit refused and only CDK accepted (decision D4): `valid` is false (RDKit's
+ * word), `validBy` is `cdk`, there is no InChIKey and no name. The SMILES is DECIMER's own text; the molfile and the
+ * drawing stay the fixture's (the real ones are CDK's molblock and RDKit's drawing of it, which a mock cannot make).
+ */
+export function asCdkOnly(result: Result): Result {
+  return { ...result, valid: false, validBy: 'cdk', inchikey: '', name: null, nameTier: null, nameVerified: null };
+}
+
+/**
  * `count` results. With more than the 8 fixtures the compounds repeat, which
  * only the "twenty structures" scenario uses. `numbering: 'paper'` keeps the
  * paper's compound numbers; otherwise results are numbered 1..count.
@@ -98,6 +107,7 @@ export function fixtureResults(
       inchikey: c.inchikey,
       molfile: c.molfile,
       valid: true,
+      validBy: 'rdkit' as const,
       isStructure: classifierUnavailable ? null : !NOT_A_STRUCTURE.has(c.number),
       confidence: CONFIDENCE[c.number] ?? 0.95,
       name: c.iupac,

@@ -59,6 +59,11 @@ class MolfileError(ValueError):
     """The text is not a molfile (or not one that may be stored, written to a file or read)."""
 
 
+class MolfileTooBig(MolfileError):
+    """A molfile that reads fine but is more than the gate lets through (atoms, bonds, bonds at one
+    atom, independent rings: `MAX_*`). Its text is not what is wrong with it."""
+
+
 class TooComplex(MolfileError):
     """A molfile that passed the text checks but cost too much to read: it took too long or too
     much memory in the process that reads molfiles, which was stopped."""
@@ -107,7 +112,7 @@ def structure_graph(cleaned: str) -> tuple[list[int], list[tuple[int, int]]]:
 
 
 def _too_big(what: str, found: int, limit: int) -> MolfileError:
-    return MolfileError(f"it is too large to read: {found} {what}, at most {limit}")
+    return MolfileTooBig(f"it is too large to read: {found} {what}, at most {limit}")
 
 
 def check_cost(lines: list[str]) -> tuple[int, int]:

@@ -14,6 +14,11 @@ are exactly those of running the four stages one after the other:
   later page that seg answers first waits for its predecessors; nothing is ever renumbered.
 * Every page is still segmented, also those beyond the cap, because `structuresFound` counts them.
 * The names (chem) are asked for in the same batches as before, once every structure is checked.
+  So is CDK: once every structure is checked, the SMILES that RDKit refused go
+  to chem's `POST /cdk` in one batch (chunks of at most 20), before the names are asked for. A
+  structure that CDK accepts and RDKit refused keeps `valid=False` and gets `valid_by="cdk"`, its
+  SMILES as DECIMER wrote it, CDK's molblock as its molfile and RDKit's drawing of that (read
+  without sanitizing); it is not named (Orthonym needs RDKit's reading).
 * `results` are filled in at once, when the check is done (never earlier). `structuresFound` is
   set when the last page has been segmented; a job that fails before that has 0.
 * The warnings are kept in the order of the stages that raise them (`_WARNING_RANK`), as they
@@ -49,6 +54,12 @@ What goes wrong, and what the user gets:
   answer, one warning `classifier_unavailable`;
 * chem failing, timing out or declining for time: names stay null, one warning
   `names_unavailable` (a decline for any other reason is just "no name");
+* chem failing for the CDK batch, or CDK running out of time or breaking on a structure, or chem
+  sending a molblock that is no molfile: those structures stay invalid, one warning
+  `cdk_unavailable`. After a TIMEOUT of that call chem is taken to be hung and the names are not
+  asked for either (one `names_unavailable` if there was something to name). CDK declining a SMILES
+  (it cannot read it or lay it out) is not a failure: the structure is invalid, as RDKit said; nor
+  is a well-formed molblock that our molfile gate will not store (too many bonds at an atom, ...);
 * the prediction had extra fragments (legacy's rule, D16): the first is kept, warning
   `fragments_trimmed`;
 * anything unexpected: the job fails, `internal_error`; it runs too long: `timeout`.
@@ -91,16 +102,18 @@ from typing import Any
 
 import httpx
 
-from ..chemistry import Chemistry, analyse_smiles
+from ..chemistry import Chemistry, analyse_smiles, from_cdk
 from ..models import (
     Job,
     JobStatus,
     JobWarning,
     Result,
     StageName,
+    ValidBy,
     initial_stages,
     is_valid_job_id,
 )
+from ..molfile import MolfileError, MolfileTooBig
 from ..settings import Settings
 from ..store import JobStore
 from .crops import PART_PATTERN, CropRef, PageParts, Scaling, write_parts
@@ -128,14 +141,18 @@ from .settings import WorkerSettings
 
 log = logging.getLogger("decimer_api.worker")
 
-CdkFallback = Callable[[str], Awaitable[Chemistry | None]]
-
 IMAGE_INPUT = re.compile(r"[0-9]{4}\.png")
 # A structure's name, the tier it came in and how chem checked it; all three are None together.
 Name = tuple[str | None, str | None, str | None]
 NO_NAME: Name = (None, None, None)
 CHEMISTRY_THREADS = 4  # structures analysed with RDKit at once (each in its own thread)
 CHEM_MAX_SMILES = 2000  # the longest SMILES chem accepts
+# What chem takes as a SMILES (its request rule): printable ASCII, no space.
+CHEM_SMILES = re.compile(rf"[\x21-\x7e]{{1,{CHEM_MAX_SMILES}}}")
+# Why CDK has no molblock for a structure, when it is CDK's own business: it cannot read the SMILES
+# or lay it out, or the structure is more than DECIMER can write. Any other reason (timeout, engine
+# trouble) means CDK did not get to decide.
+CDK_DECLINED = frozenset({"invalid_smiles", "layout_failed", "too_large"})
 # Warnings the worker adds; a job that runs again starts without them.
 WORKER_WARNING_CODES = frozenset(
     {
@@ -147,6 +164,7 @@ WORKER_WARNING_CODES = frozenset(
         "classification_failed",
         "classifier_unavailable",
         "names_unavailable",
+        "cdk_unavailable",
         INPUT_MISSING.code,
         RENDER_FAILED.code,
         SEGMENTATION_FAILED.code,
@@ -167,9 +185,6 @@ class Deps:
     services: Services
     renderer: Renderer
     gates: Mapping[str, asyncio.Semaphore]
-    # D4: the CDK fallback. Plugged in only when the golden-set data keeps CDK; it is called for
-    # a SMILES RDKit rejects, and only when `worker.cdk_fallback` is on.
-    cdk_fallback: CdkFallback | None = None
     # The shared HTTP client, when `build_deps` opened it: `aclose` closes it.
     http: httpx.AsyncClient | None = None
 
@@ -346,6 +361,8 @@ class _Run:
         self.down: set[str] = set()  # optional services found dead or stuck during this job
         self.ocsr_timeouts = 0
         self.names_warned = False
+        self.cdk_warned = False
+        self.chem_hung = False  # a call to chem timed out: it is not asked again in this job
         self.single_image = False
         self.crops: list[Crop] = []  # numbered crops, as they were released: result order
         self.recognitions: dict[int, Recognition] = {}  # by crop index
@@ -747,20 +764,16 @@ class _Run:
     async def _analyse(self, recognition: Recognition) -> Chemistry:
         if recognition.smiles is None:
             return Chemistry(smiles="", inchikey="", valid=False, molfile="", svg="")
-        chemistry = await asyncio.to_thread(analyse_smiles, recognition.smiles)
-        fallback = self.deps.cdk_fallback
-        if chemistry.valid or fallback is None or not self.worker.cdk_fallback:
-            return chemistry
-        try:
-            return await fallback(recognition.smiles) or chemistry
-        except Exception:
-            log.warning("job %s: CDK fallback failed", self.job.id, exc_info=True)
-            return chemistry
+        return await asyncio.to_thread(analyse_smiles, recognition.smiles)
 
     async def _finish_check(self) -> None:
         """Every crop is recognised and checked: name them, fill in the results, finish."""
         crops = sorted(self.crops, key=lambda crop: crop.index)
         chemistry = [self.chemistry[crop.index] for crop in crops]
+        valid_by: list[ValidBy | None] = ["rdkit" if chem.valid else None for chem in chemistry]
+        for position, accepted in (await self._cdk(chemistry)).items():
+            chemistry[position] = accepted
+            valid_by[position] = "cdk"
         names = await self._names(chemistry)
         self.job.results = [
             Result(
@@ -770,6 +783,7 @@ class _Run:
                 smiles=chem.smiles,
                 inchikey=chem.inchikey,
                 valid=chem.valid,
+                valid_by=by,
                 is_structure=self.recognitions[crop.index].is_structure,
                 confidence=self.recognitions[crop.index].confidence,
                 name=name,
@@ -778,11 +792,75 @@ class _Run:
                 svg=chem.svg,
                 molfile=chem.molfile,
             )
-            for crop, chem, (name, tier, verified) in zip(crops, chemistry, names, strict=True)
+            for crop, chem, by, (name, tier, verified) in zip(
+                crops, chemistry, valid_by, names, strict=True
+            )
         ]
         # No await between the results and the stage: a save never shows one without the other.
         self._stages.finish(StageName.CHECK)
         await self._publish()
+
+    async def _cdk(self, chemistry: list[Chemistry]) -> dict[int, Chemistry]:
+        """D4: the structures of the job that RDKit refused, tried with CDK through chem, in ONE
+        batch (a job has 20 structures at most, so one request; `chem_batch_size` per request when
+        more). One call per structure would meet chem's gate (one running, a few waiting, then
+        503). Returns the chemistry of the ones CDK accepted, by position. A SMILES that CDK
+        declines stays as RDKit left it. A call that fails, and a structure CDK ran out of time or
+        broke on, leave the structures invalid and give one warning; the job is never failed by
+        it. Off with `CDK_FALLBACK=false`, and without chem."""
+        accepted: dict[int, Chemistry] = {}
+        if not (self.worker.cdk_fallback and self.services.chem_enabled):
+            return accepted
+        # One text per structure, used for the filter, the request, the molblock's reading and the
+        # result: what ocsr wrote without the white space around it (RDKit strips it too).
+        texts = {index: chem.smiles.strip() for index, chem in enumerate(chemistry)}
+        asked = [
+            index
+            for index, chem in enumerate(chemistry)
+            if not chem.valid and CHEM_SMILES.fullmatch(texts[index])
+        ]
+        size = self.worker.chem_batch_size
+        for start in range(0, len(asked), size):
+            batch = asked[start : start + size]
+            try:
+                answers = await self.services.cdk([texts[index] for index in batch])
+            except ServiceError as error:
+                log.warning("job %s: %s", self.job.id, error)
+                self._cdk_unavailable("CDK is unavailable at the moment.")
+                if isinstance(error, ServiceTimedOut):
+                    self.chem_hung = True  # a call for the names would wait as long again
+                break
+            for index, answer in zip(batch, answers, strict=True):
+                if answer.molfile is None:
+                    if answer.reason not in CDK_DECLINED:  # CDK did not get to decide
+                        self._cdk_unsure()
+                    continue
+                async with self._analysis_slots:
+                    try:
+                        accepted[index] = await asyncio.to_thread(
+                            from_cdk, texts[index], answer.molfile
+                        )
+                    except MolfileTooBig as error:
+                        # CDK read it and laid it out; our molfile gate will not store it. A
+                        # decline: the structure stays invalid, and chem did nothing wrong.
+                        log.debug("job %s: structure %d: %s", self.job.id, index + 1, error)
+                    except MolfileError as error:  # chem sent something that is no molblock
+                        log.warning(
+                            "job %s: structure %d: chem sent an unusable CDK molblock: %s",
+                            self.job.id,
+                            index + 1,
+                            error,
+                        )
+                        self._cdk_unsure()
+        return accepted
+
+    def _cdk_unsure(self) -> None:
+        self._cdk_unavailable("CDK could not check some structures that RDKit could not read.")
+
+    def _cdk_unavailable(self, message: str) -> None:
+        if not self.cdk_warned:
+            self.cdk_warned = True
+            self.warn(StageName.CHECK, "cdk_unavailable", message)
 
     async def _names(self, chemistry: list[Chemistry]) -> list[Name]:
         """IUPAC names from chem, one batch per `chem_batch_size` structures (a job has 20, so
@@ -797,6 +875,10 @@ class _Run:
             for index, chem in enumerate(chemistry)
             if chem.valid and "*" not in chem.smiles and len(chem.smiles) <= CHEM_MAX_SMILES
         ]
+        if asked and self.chem_hung:
+            # The CDK call timed out: chem is hung, and the names would wait as long again.
+            self._names_unavailable("IUPAC names are unavailable at the moment.")
+            return names
         size = self.worker.chem_batch_size
         for start in range(0, len(asked), size):
             batch = asked[start : start + size]

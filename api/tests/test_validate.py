@@ -14,8 +14,16 @@ from decimer_api.models import new_job_id
 from decimer_api.names import NameInfo
 from decimer_api.settings import Settings
 from decimer_api.store import JobStore
+from tests.cdk_molblocks import ALANINE_MOLBLOCK
 from tests.conftest import FakeClock
-from tests.results import FakeNamer, make_done_job, molfile_of, name_of, no_names
+from tests.results import (
+    FakeNamer,
+    make_cdk_only_result,
+    make_done_job,
+    molfile_of,
+    name_of,
+    no_names,
+)
 
 PENTAVALENT_CARBON = """
   RDKit          2D
@@ -90,17 +98,69 @@ async def test_n_is_the_zero_based_index_and_any_existing_result_will_do(
 async def test_a_molfile_that_is_not_a_valid_structure_is_valid_false_without_asking_chem(
     client: httpx.AsyncClient, job_id: str, namer: FakeNamer
 ) -> None:
+    """`valid: false` is RDKit's word: no SMILES, no InChIKey, no name. But the drawing is the
+    molfile as it is, drawn without sanitizing (as the worker draws what only CDK accepted): an
+    edit of a still hypervalent structure must not make the tile blank ("No depiction") just
+    because RDKit will not call the structure valid. (This answer used to have `svg: ""`.)"""
     body = (await validate(client, job_id, 0, PENTAVALENT_CARBON)).json()
+    svg = body.pop("svg")
     assert body == {
         "smiles": "",
         "inchikey": "",
-        "svg": "",
+        "valid": False,
+        "name": None,
+        "nameTier": None,
+        "nameVerified": None,
+    }
+    assert svg.startswith("<svg") and "<?xml" not in svg
+    assert svg.count("class='bond-") == 5  # the five bonds of the molfile, as drawn
+    assert namer.calls == []
+
+
+# --- a structure that only CDK accepted ---------------------------------------------
+
+
+async def test_the_stored_molfile_of_a_cdk_only_result_goes_through_validate(
+    client: httpx.AsyncClient,
+    store: JobStore,
+    settings: Settings,
+    clock: FakeClock,
+    namer: FakeNamer,
+) -> None:
+    """The editor opens the stored molfile (CDK's text) and writes its own back. Both are accepted
+    by the gate; RDKit, which refuses this structure, answers `valid: false` for the very text the
+    worker stored, and without asking chem for a name. There is no CDK fallback here: validate
+    answers for the molfile, in RDKit's words."""
+    cdk_only = make_cdk_only_result()
+    job = await make_done_job(store, settings, clock, [cdk_only], ip="cdk")
+    response = await validate(client, job.id, 0, job.results[0].molfile)
+    assert response.status_code == 200
+    body = response.json()
+    assert body.pop("svg").startswith("<svg")  # drawn, as the tile of the result is
+    assert body == {
+        "smiles": "",
+        "inchikey": "",
         "valid": False,
         "name": None,
         "nameTier": None,
         "nameVerified": None,
     }
     assert namer.calls == []
+
+
+async def test_an_edit_that_leaves_nothing_on_the_canvas_has_no_drawing_either(
+    client: httpx.AsyncClient, job_id: str
+) -> None:
+    body = (await validate(client, job_id, 0, EMPTY_CANVAS)).json()
+    assert (body["valid"], body["svg"]) == (False, "")
+
+
+async def test_a_molblock_as_cdk_writes_it_is_read_like_any_other(
+    client: httpx.AsyncClient, job_id: str
+) -> None:
+    """CDK's blank title line and its timestamp line pass the gate and RDKit."""
+    body = (await validate(client, job_id, 0, ALANINE_MOLBLOCK)).json()
+    assert body["valid"] is True and body["smiles"] == "C[C@H](N)C(=O)O"
 
 
 async def test_an_emptied_canvas_is_valid_false(

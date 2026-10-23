@@ -17,11 +17,13 @@ from decimer_api.models import Job, new_job_id
 from decimer_api.names import NameInfo
 from decimer_api.settings import Settings
 from decimer_api.store import JobStore
+from tests.cdk_molblocks import PENTAVALENT_MOLBLOCK, PENTAVALENT_SMILES
 from tests.conftest import FakeClock
 from tests.results import (
     FakeNamer,
     crop_bytes,
     crop_path,
+    make_cdk_only_result,
     make_done_job,
     make_results,
     molfile_of,
@@ -419,6 +421,86 @@ async def test_the_csv_of_an_invalid_structure_says_so(
     bad = await make_done_job(store, settings, clock, results, ip="bad")
     rows = list(csv.reader(io.StringIO((await export(client, bad.id, "csv")).text)))
     assert rows[1] == ["1", "C(C", "", "false", "", "false"]
+
+
+# --- a structure that only CDK accepted ---------------------------------------------
+
+
+@pytest.fixture
+async def mixed_job(store: JobStore, settings: Settings, clock: FakeClock) -> Job:
+    """Result 0 is ethanol (RDKit's), result 1 only CDK accepted, result 2 neither."""
+    results = make_results(["CCO", "CCN", "CCC"])
+    results[1] = make_cdk_only_result(1)
+    results[2] = results[2].model_copy(
+        update={
+            "smiles": "c1ccccc",
+            "inchikey": "",
+            "valid": False,
+            "valid_by": None,
+            "molfile": "",
+            "name": None,
+        }
+    )
+    return await make_done_job(store, settings, clock, results, ip="mixed")
+
+
+async def test_the_csv_valid_column_is_true_cdk_or_false(
+    client: httpx.AsyncClient, mixed_job: Job
+) -> None:
+    rows = list(csv.reader(io.StringIO((await export(client, mixed_job.id, "csv")).text)))
+    assert rows[0] == ["number", "smiles", "inchikey", "valid", "name", "edited"]
+    assert [row[3] for row in rows[1:]] == ["true", "cdk", "false"]
+    # CDK-only: DECIMER's SMILES, no InChIKey, no name, not edited.
+    assert rows[2] == ["2", PENTAVALENT_SMILES, "", "cdk", "", "false"]
+
+
+async def test_a_cdk_only_structure_exports_cdks_molblock_in_the_zip_and_the_sdf(
+    client: httpx.AsyncClient, mixed_job: Job
+) -> None:
+    exported = await export_zip(client, mixed_job.id)
+    assert exported.names == [
+        "structure-01.png",
+        "structure-01.mol",
+        "structure-02.png",
+        "structure-02.mol",
+        "structure-03.png",  # neither accepted it: no molfile
+        SMILES_FILE,
+    ]
+    assert exported.text("structure-02.mol") == PENTAVALENT_MOLBLOCK
+    assert exported.smiles_lines[1] == ["structure-02.png", PENTAVALENT_SMILES, ""]
+
+    records = (await export(client, mixed_job.id, "sdf")).text.split("$$$$\n")[:-1]
+    assert len(records) == 2  # ethanol and the CDK-only structure; the third has no molfile
+    assert records[1].startswith(PENTAVALENT_MOLBLOCK)
+    assert f"> <SMILES>\n{PENTAVALENT_SMILES}\n" in records[1]
+    assert "> <VALID>\ncdk\n" in records[1]
+    assert "> <INCHIKEY>" not in records[1] and "> <NAME>" not in records[1]
+    assert "> <VALID>" not in records[0]  # said only where it adds something
+
+
+async def test_an_edited_cdk_only_structure_is_judged_by_rdkit_alone(
+    client: httpx.AsyncClient, mixed_job: Job, namer: FakeNamer
+) -> None:
+    """The edit comes from the editor and RDKit reads it: `true` or `false`, never `cdk`."""
+    fixed = {"1": molfile_of("CCCl")}
+    rows = list(csv.reader(io.StringIO((await export(client, mixed_job.id, "csv", fixed)).text)))
+    assert rows[2] == [
+        "2",
+        "CCCl",
+        analyse_smiles("CCCl").inchikey,
+        "true",
+        name_of("CCCl"),
+        "true",
+    ]
+    # An edit RDKit still refuses is `false`, whatever CDK said of the structure before the edit.
+    still_bad = {"1": PENTAVALENT_MOLBLOCK}
+    rows = list(
+        csv.reader(io.StringIO((await export(client, mixed_job.id, "csv", still_bad)).text))
+    )
+    assert rows[2][3] == "false" and rows[2][5] == "true"
+    sdf = (await export(client, mixed_job.id, "sdf", still_bad)).text
+    assert "> <VALID>" not in sdf  # an edit is never `cdk`
+    assert namer.calls == [["CCCl"]]  # chem is asked about the valid edit only
 
 
 # --- text from outside is made harmless ----------------------------------------------------------

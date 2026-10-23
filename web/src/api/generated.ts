@@ -367,7 +367,7 @@ export interface components {
             isStructure: boolean | null;
             /**
              * Molfile
-             * @description V2000 molfile with 2D coordinates.
+             * @description V2000 molfile with 2D coordinates: RDKit's, or CDK's when `validBy` is cdk.
              * @default
              */
             molfile: string;
@@ -409,6 +409,11 @@ export interface components {
              * @description RDKit accepts the SMILES.
              */
             valid: boolean;
+            /**
+             * Validby
+             * @description Who accepted the SMILES: `rdkit` (then `valid` is true), `cdk` (RDKit refused it, CDK read it: `valid` is false, `molfile` and `svg` are CDK's reading) or null (neither). Equals `rdkit` for every valid result.
+             */
+            validBy?: ("rdkit" | "cdk") | null;
         };
         /** Stage */
         Stage: {
@@ -466,7 +471,7 @@ export interface components {
             smiles: string;
             /**
              * Svg
-             * @description RDKit depiction as an inline SVG string. Empty when not valid.
+             * @description RDKit depiction as an inline SVG string. For a structure RDKit reads but will not sanitize (`valid` false) it is the drawing of the molfile as it is; empty when the molfile has no atoms or the drawing fails.
              */
             svg: string;
             /**

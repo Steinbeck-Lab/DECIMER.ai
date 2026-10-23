@@ -1,5 +1,6 @@
 import { strings } from '../strings';
 import type { Status } from '../state/model';
+import type { ValidBy } from '../api/contract';
 
 /**
  * `src` for a depiction: a URL as it is, inline markup as a data URL. Anything
@@ -33,6 +34,15 @@ export function nameHover(name: string | null, tier: string | null, verified: st
   const how = verified === null ? undefined : strings.tile.verified[verified];
   if (how) lines.push(how);
   return lines;
+}
+
+/**
+ * The hover line about who accepted a structure: only a structure that RDKit refused and CDK read has something to
+ * say. RDKit's own acceptance is the normal case and says nothing, and neither does a structure nobody accepts
+ * (its flag already says so).
+ */
+export function validityHover(validBy: ValidBy | null): string[] {
+  return validBy === 'cdk' ? [strings.tile.cdkOnlyHover] : [];
 }
 
 export function statusLabel(status: Status): string {

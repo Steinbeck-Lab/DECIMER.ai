@@ -121,9 +121,38 @@ test('a created job can be polled to completion and exported in all three format
   expect(sdf).toContain('EDITED-MARKER');
 
   const csv = (await (await api.exportJob(id, { format: 'csv', molfiles: {} })).blob.text()).trim().split('\n');
-  expect(csv[0]).toBe('number,smiles,inchikey,name,edited');
+  expect(csv[0]).toBe('number,smiles,inchikey,valid,name,edited'); // the API's columns
   expect(csv).toHaveLength(9);
   expect(csv[3]?.startsWith('4,')).toBe(true);
+  expect(csv.slice(1).map((row) => row.split(',')[3])).toEqual(Array(8).fill('true'));
+});
+
+test('the cdkonly scenario has one structure that only CDK accepted, and the CSV and SDF say so', async () => {
+  let t = 0;
+  const api = new MockApiClient({ stepMs: STEP, now: () => t, latencyMs: 0 });
+  const { id } = await api.createJob([new File(['x'], 'cdkonly.png', { type: 'image/png' })]);
+  t = 1000;
+  const job = await api.getJob(id);
+  expect(job.status).toBe('done');
+  expect(job.results.map((r) => [r.valid, r.validBy])).toEqual([
+    [true, 'rdkit'],
+    [true, 'rdkit'],
+    [false, 'cdk'], // RDKit's word is `valid: false`
+    [true, 'rdkit'],
+    [true, 'rdkit'],
+    [true, 'rdkit'],
+    [true, 'rdkit'],
+    [true, 'rdkit'],
+  ]);
+  expect(job.results[2]).toMatchObject({ inchikey: '', name: null, nameTier: null, nameVerified: null });
+  expect(job.results[2]?.smiles).not.toBe(''); // DECIMER's own SMILES stays
+  const csv = (await (await api.exportJob(id, { format: 'csv', molfiles: {} })).blob.text()).trim().split('\n');
+  expect(csv.slice(1).map((row) => row.split(',')[3])).toEqual(['true', 'true', 'cdk', 'true', 'true', 'true', 'true', 'true']);
+  const edited = '\n  Ketcher\n\n  6  6  0  0  0  0  0  0  0  0999 V2000\nM  END\n';
+  const fixed = (await (await api.exportJob(id, { format: 'csv', molfiles: { 2: edited } })).blob.text()).trim().split('\n');
+  expect(fixed[3]?.split(',')[3]).toBe('true'); // an edit is RDKit's to judge, never `cdk`
+  const sdf = await (await api.exportJob(id, { format: 'sdf', molfiles: {} })).blob.text();
+  expect(sdf.match(/> <VALID>\ncdk\n/g)).toHaveLength(1);
 });
 
 test('the job has the fields of the API model: warnings, createdAt and expiresAt, null where absent', async () => {

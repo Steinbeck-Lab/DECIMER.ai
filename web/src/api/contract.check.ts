@@ -36,6 +36,8 @@ export type Checks = [
   Assert<Equal<Job['error'], string | null>>,
   Assert<Equal<Result['isStructure'], boolean | null>>,
   Assert<Equal<Result['name'], string | null>>,
+  // Who accepted the SMILES: the tile and the editor have wording for exactly these (strings.ts, `cdkOnly`).
+  Assert<Equal<Result['validBy'], 'rdkit' | 'cdk' | null>>,
   Assert<Equal<Result['nameTier'], string | null>>,
   Assert<Equal<Result['nameVerified'], string | null>>,
   // The validate answer carries the name fields exactly as a result does, so the two cannot drift.

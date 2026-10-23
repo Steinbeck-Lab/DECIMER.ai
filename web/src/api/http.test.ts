@@ -119,6 +119,22 @@ describe('getJob', () => {
     expect(wireJob().results).toBeUndefined(); // (the wire job really did omit them)
   });
 
+  // Who accepted the SMILES (decision D4): the server's word when it gives one, RDKit's for a valid result when it
+  // does not (an older API), nobody for an invalid one.
+  test.each([
+    [{ valid: true, validBy: 'rdkit' }, 'rdkit'],
+    [{ valid: false, validBy: 'cdk' }, 'cdk'],
+    [{ valid: false, validBy: null }, null],
+    [{ valid: true }, 'rdkit'],
+    [{ valid: false }, null],
+  ])('validBy of %j reaches the UI as %j', async (over, expected) => {
+    const results = [wireResult(0, over)] as unknown as JobView['results'];
+    const { api } = clientWith(() => json(wireJob({ status: 'done', results })));
+    const [result] = (await api.getJob(JOB_ID)).results;
+    expect(result?.validBy).toBe(expected);
+    expect(result?.valid).toBe(over.valid);
+  });
+
   test('a job still running has structuresFound and no results yet', async () => {
     const { api } = clientWith(() => json(wireJob({ status: 'running', structuresFound: 12, queuePosition: null })));
     const job = await api.getJob(JOB_ID);

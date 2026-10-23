@@ -148,14 +148,19 @@ the request; unknown JSON fields are refused.
   client molfiles; a stored one is only written to a file.
   What comes back: the same canonical SMILES, full
   InChIKey and SVG the worker computes for a recognised structure (`chemistry.py`). A molfile RDKit reads
-  but cannot sanitize, or with no atoms, is `valid: false` with empty values, not an error. The name
+  but cannot sanitize is `valid: false` with empty `smiles`, `inchikey` and name and **its drawing as it is**
+  (`svg`, drawn without sanitizing, like what only CDK accepted: an edit of a still hypervalent structure
+  keeps a picture); one with no atoms is `valid: false` with all values empty. Neither is an error. The name
   comes from chem (`names.py`) for a valid structure without a dummy atom; it is `null` when
   `CHEM_URL` is empty, chem is down, slow (`NAMES_TIMEOUT_SECONDS`) or declines. A name is never an
   error, and is never kept between requests (Orthonym can name one structure differently depending on
   what it named before). The api has one call in flight to chem, and a validate that finds it occupied
   answers with no name at once (the worker has priority on chem; an export waits for its turn).
-  *Seam for P3-06c:* the CDK fallback for a molfile RDKit rejects goes in the validate route, where the
-  comment is.
+  **No CDK here.** CDK reads SMILES, and the worker tries DECIMER's SMILES with it; the
+  molfile of a validate came from the editor, which writes its own, so RDKit alone decides (`valid: false`
+  when it refuses it). A structure only CDK accepted has CDK's molblock stored as its molfile; that text
+  passes `clean_molfile` unchanged (the worker only stores a molblock that does) and goes through the same
+  validate and export as any other. The answer has no `validBy`: the UI takes `valid` as RDKit's word.
 * **export.** Rows are the job's results in order. `molfiles` holds only the edits: a molfile sent for
   result `i` replaces the stored one, and that row's SMILES, InChIKey, validity and name are computed
   from it (chem is asked for the edited, valid ones only); the others are as stored. A key that is not
@@ -169,7 +174,12 @@ the request; unknown JSON fields are refused.
   (`MAX_DOWNLOADS_PER_CLIENT`, `429`), each for at most `DOWNLOAD_TIMEOUT_SECONDS` (120; a client that does not
   read is cut off); the places and the files are given back when the response ends, however it ends; compose gives the api `nofile` 4096).
   The SDF has a record per structure with a molfile (`NUMBER`, `SMILES`, `INCHIKEY`, `NAME`, `EDITED`
-  data items), the CSV a row for every structure (`number,smiles,inchikey,valid,name,edited`). Text that
+  data items, and `VALID` = `cdk` where only CDK accepted the structure), the CSV a row for every structure
+  (`number,smiles,inchikey,valid,name,edited`; **contract change:** `valid` used to be `true|false` and is now
+  `true|cdk|false`: `true` when RDKit accepts the structure, `cdk` when
+  RDKit refused it and CDK read it (CDK's molblock is then the molfile, the SMILES is DECIMER's, `inchikey`
+  and `name` are empty), `false` for neither; an edited structure is `true` or `false` only: RDKit judges the
+  editor's molfile). Text that
   came from OCSR or chem is put on one line, cannot start an SDF record or data item, and a CSV cell that
   starts like a formula gets a leading `'`.
 * **report.** Only `{"index"}` is sent. The api writes `REPORTS_DIR/<job id>-<index>/` with `crop.png`
@@ -212,7 +222,10 @@ JSON is camelCase. A job:
 ```
 
 `Result` (filled by the worker): `index`, `number`, `pageIndex`, `bbox` `[x0,y0,x1,y1]`, `smiles`,
-`inchikey`, `valid`, `isStructure`, `confidence`, `name`, `nameTier`, `svg`, `molfile`, `cropUrl`.
+`inchikey`, `valid`, `validBy`, `isStructure`, `confidence`, `name`, `nameTier`, `svg`, `molfile`, `cropUrl`.
+`validBy` is `"rdkit"` for a valid result, `"cdk"` for one that RDKit refused and only CDK accepted (`valid` is
+`false`; `molfile` is CDK's, `svg` RDKit's drawing of it, `smiles` DECIMER's own text, `inchikey` and `name`
+empty), `null` for one neither accepted.
 The stored record (`Job`, `Result`) holds none of the derived fields (`queuePosition`, `number`,
 `cropUrl`); the API composes them when it returns the job (`JobView`, `ResultView`).
 
@@ -390,12 +403,25 @@ stages (render, segment, recognise, check), not the order in which things happen
 | `render` | PDF: page `i` rendered with pypdfium2 at **exactly 300 DPI** to `page-<i>.png`, one child process per page (deadline, memory and CPU limits, no secrets in its environment; the worker never imports pdfium). Images: `input/000N.png` becomes `page-<N-1>.png` (hard link, else copy), in upload order. A page that cannot be rendered is skipped with a warning; if none can, the job fails. |
 | `segment` | seg is called once per page. A page above 25 MP or 36 MiB (seg takes 40 MP and 40 MiB; a B2 page is 49 MP) is sent as a smaller copy; the boxes seg returns are scaled back to the page and the crops are **cut from the full-resolution page** (not from seg's answer: those are the copy's pixels, white outside seg's mask). The crops of a page are written to part files as its answer arrives, only the first `MAX_STRUCTURES` of a page, and read back later, so no crop is held in memory. They are put in reading order (page by page, seg's order within a page) and cut at `MAX_STRUCTURES` (20): `structuresFound` is the total, the rest is `structuresDropped`, `truncated` is set and the warning `structures_truncated` added. **Single-image fallback:** only for a job made of exactly one uploaded image (not a PDF, not several images), and only when seg answered and found nothing: the whole image is the one structure (bbox = the page, `crop-0.png` a hard link to `page-0.png`). seg's answer is checked against what was sent: the echoed page index and image size, every box inside the image. |
 | `recognise` | Each kept crop, as soon as its number is known, is read, cut down for the models, and sent to ocsr and cls (together), at most as many crops at once as the replicas of the two services take. The models look at 512 px (ocsr) and 224 px (cls), so a crop above 4 MP or 4096 px on a side is downscaled (and re-encoded until under 19 MiB); the crop file keeps its size. ocsr's SMILES goes through **legacy's fragment filter**: more than four `.`-separated fragments, or a first fragment shorter than all the others together, keeps only the first fragment (warning `fragments_trimmed`; the raw prediction is in the debug log only). |
-| `check` | A crop goes through RDKit as soon as it is recognised; the names are asked for once every crop is through. RDKit (`chemistry.py`): canonical SMILES, validity, full InChIKey, V2000 molfile with 2D coordinates and wedge bonds, an SVG that starts with `<svg`. Then IUPAC names: one `POST /names` per job to chem (20 structures per request) if `CHEM_URL` is set, else `name`, `nameTier` and `nameVerified` are null. |
+| `check` | A crop goes through RDKit as soon as it is recognised; CDK and the names are asked for once every crop is through. RDKit (`chemistry.py`): canonical SMILES, validity, full InChIKey, V2000 molfile with 2D coordinates and wedge bonds, an SVG that starts with `<svg`. Then, if `CHEM_URL` is set: the SMILES RDKit refused go to chem's `POST /cdk` in **one batch per job**, then IUPAC names: one `POST /names` per job (20 structures per request); without `CHEM_URL`, `name`, `nameTier` and `nameVerified` are null and CDK is not tried. |
 
 `name`, `nameTier` and `nameVerified` come from chem's `name`, `tier` and `verified` (how the name was checked,
 e.g. `opsin`); all three are null together, and chem's `reason` is not stored (a `timeout` reason gives the
 `names_unavailable` warning, any other decline is just "no name"). `Result.name_verified` is a field added to
 `models.py`.
+
+**CDK.** Legacy sent every SMILES through CDK 2.8, whose parser is more
+tolerant than RDKit's. The new stack keeps CDK as a fallback only: the SMILES (DECIMER's own text, at most 2000
+printable characters) of the structures RDKit refused go to chem's `POST /cdk` in one batch per job (chunks of
+`CHEM_BATCH_SIZE`; per-crop calls would meet chem's gate of one running and four waiting requests, then 503), before
+the names. The job's ticket and the replica pool are the ones the names use. For each answer: CDK's V2000 molblock
+is accepted when `clean_molfile` (the bounded gate the validate route applies) and RDKit (read without
+sanitizing) accept it; the result then has `valid: false`, `validBy: "cdk"`, CDK's molblock (unchanged but for
+`clean_molfile`'s line breaks) as `molfile`, RDKit's drawing of it as `svg` (empty if the drawing fails), the
+SMILES as DECIMER wrote it, an empty `inchikey`, and **no name** (Orthonym needs RDKit's reading). A decline
+(`invalid_smiles`, `layout_failed`, `too_large`) leaves the result as RDKit left it. A failed call, and a
+structure CDK ran out of time or broke on (`timeout`, `engine_error`, `engine_unavailable`), leave the structures
+invalid and give one `cdk_unavailable` warning per job. `CDK_FALLBACK=false` makes no call at all.
 
 `results` appear in the record when `check` is done (an earlier poll shows `structuresFound`, once every page
 has been segmented, but no results; a job that fails before that has `structuresFound` 0). `confidence` is ocsr's `mean_confidence`. An invalid SMILES keeps its raw text with empty
@@ -436,6 +462,7 @@ and a 120 s timeout. An answer is read as a stream and refused above 64 MiB (seg
 | cls 500 / 422 on one crop | `isStructure: null` for it; warning `classification_failed` |
 | cls unreachable, busy or timing out | no more calls to cls in this job; `isStructure: null` for the crops it did not answer; one warning `classifier_unavailable` |
 | chem fails, times out, or answers nonsense | names stay null; one warning `names_unavailable`. A structure chem ran out of time on: null, the same warning. Any other decline (`UNNAMEABLE`, `NO_VERIFIED_PIN`, ...): null, no warning |
+| the `/cdk` batch fails, times out, or answers nonsense; CDK times out or breaks on a structure | those structures stay invalid (`validBy: null`); one warning `cdk_unavailable`. CDK declining a SMILES (`invalid_smiles`, `layout_failed`, `too_large`): invalid, no warning |
 | seg 500 / 422 / timeout, or an image that cannot be fitted to seg's limits, on one page | that page is skipped; warning `page_segmentation_failed` ("Page 3 ..."); on every page the job fails: `segmentation_failed` |
 | seg or ocsr unreachable or busy for good | the job fails: `service_unavailable` |
 | a page cannot be rendered | that page is skipped; warning `page_render_failed`; no page at all: the job fails, `render_failed` |
@@ -590,7 +617,7 @@ Environment variables, read by `WorkerSettings` (`worker/settings.py`); `.env.ex
 | `SEG_INPUT_MAX_PIXELS`, `SEG_INPUT_MAX_BYTES` | `25000000`, `37748736` | Larger pages are sent to seg as a smaller copy (seg takes 40 MP and 40 MiB). |
 | `CHEM_BATCH_SIZE` | `20` | Structures per `POST /names` (chem takes at most 20). |
 | `SHUTDOWN_WAIT_SECONDS` | `0` | How long arq waits for running jobs when stopped (0: cancel them). A container's stop grace period must exceed it. |
-| `CDK_FALLBACK` | `false` | D4: a seam only. With it on and no CDK backend plugged into `Deps.cdk_fallback`, the worker logs a warning and RDKit decides alone. |
+| `CDK_FALLBACK` | `true` | D4 (kept): a SMILES RDKit refuses is tried with CDK through chem (`POST /cdk`, one batch per job); needs `CHEM_URL`. `false`: no call. |
 
 The worker also reads the API's `REDIS_URL`, `DATA_DIR` and `MAX_STRUCTURES`. The HTTP client ignores
 `HTTP_PROXY` and friends (`trust_env=False`): the services are on the internal network. The worker
