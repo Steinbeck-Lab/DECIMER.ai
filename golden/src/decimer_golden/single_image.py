@@ -47,7 +47,7 @@ from typing import Any
 
 import httpx
 
-from .next_stack import JOB_ID, PNG_MAGIC, retry_after
+from .next_stack import JOB_ID, PNG_MAGIC, RETRY_GET, RETRY_POST, retry_after
 from .score import to_inchikey
 
 CROP_NAME = re.compile(r"(\d+)_crop-(\d+)\.png")
@@ -151,7 +151,7 @@ class Row:
     def as_csv(self) -> dict[str, str]:
         on, off = self.on, self.off
         checked = "" if not self.expected else str(all(e.checked for e in self.expected))
-        out = {
+        return {
             "crop": self.crop,
             "label": ";".join(e.number for e in self.expected),
             "width": str(self.width),
@@ -171,8 +171,6 @@ class Row:
             "checked": checked,
             "matched": str(on.matched),
             "fired": str(self.fired),
-        }
-        out |= {
             "off_status": "" if off is None else off.status,
             "off_found": "" if off is None else str(off.found),
             "off_bbox": "" if off is None else _box(off.bbox),
@@ -181,7 +179,6 @@ class Row:
             "off_matched": "" if off is None else str(off.matched),
             "off_correct": _tri(self.off_correct),
         }
-        return out
 
 
 def _box(bbox: Box | None) -> str:
@@ -275,12 +272,17 @@ def negative_items(folder: Path, labels_csv: Path) -> list[Item]:
     return items
 
 
-def covers(bbox: Box, size: tuple[int, int], found: int, fraction: float) -> tuple[float, bool]:
-    """(the box's share of the image, whether the worker's rule applies to it): exactly one
-    structure found and a box of at least `fraction` of the image's area."""
+def covers(bbox: Box, size: tuple[int, int], found: int, fraction: float) -> bool:
+    """Whether the worker's rule applies to the box: exactly one structure found and a box of at
+    least `fraction` of the image's area."""
     x0, y0, x1, y1 = bbox
-    share = (x1 - x0) * (y1 - y0) / (size[0] * size[1])
-    return share, found == 1 and (x1 - x0) * (y1 - y0) >= fraction * size[0] * size[1]
+    return found == 1 and (x1 - x0) * (y1 - y0) >= fraction * size[0] * size[1]
+
+
+def matched_labels(results: list[dict[str, Any]], expected: tuple[Expected, ...]) -> int:
+    """How many of the labels have their FULL InChIKey among the results' (RDKit, from SMILES)."""
+    keys = {to_inchikey(str(r.get("smiles", ""))) for r in results}
+    return sum(e.inchikey in keys for e in expected)
 
 
 # --- one job -------------------------------------------------------------------------------------
@@ -299,7 +301,7 @@ def _send(
     url: str,
     *,
     sleep: Callable[[float], None],
-    busy: frozenset[int] = frozenset({429, 503}),
+    busy: frozenset[int] = RETRY_POST,
     **kwargs: Any,
 ) -> httpx.Response:
     """One request; 429 and 503 (refused before anything happened) are waited out, Retry-After."""
@@ -370,13 +372,7 @@ def run_job(
             if clock() >= deadline:
                 raise Unfinished("timeout", f"not done after {timeout:g} s")
             sleep(poll)
-            reply = _send(
-                client,
-                "GET",
-                f"/api/jobs/{job_id}",
-                sleep=sleep,
-                busy=frozenset({429, 502, 503, 504}),
-            )
+            reply = _send(client, "GET", f"/api/jobs/{job_id}", sleep=sleep, busy=RETRY_GET)
             if not reply.is_success:
                 raise Unfinished("http_error", f"poll: HTTP {reply.status_code}")
             job = _record(reply, "poll")
@@ -414,7 +410,7 @@ def _outcome(job: dict[str, Any], size: tuple[int, int], expected: tuple[Expecte
     first = results[0]
     x0, y0, x1, y1 = (int(v) for v in first["bbox"])
     box = (x0, y0, x1, y1)
-    keys = {to_inchikey(str(r.get("smiles", ""))) for r in results}
+    smiles = str(first.get("smiles", ""))
     return Outcome(
         status="done",
         found=found,
@@ -422,9 +418,9 @@ def _outcome(job: dict[str, Any], size: tuple[int, int], expected: tuple[Expecte
         bbox=box,
         fraction=(x1 - x0) * (y1 - y0) / (size[0] * size[1]),
         whole=box == (0, 0, size[0], size[1]),
-        smiles=str(first.get("smiles", "")),
-        inchikey=to_inchikey(str(first.get("smiles", ""))) or "",
-        matched=sum(e.inchikey in keys for e in expected),
+        smiles=smiles,
+        inchikey=to_inchikey(smiles) or "",
+        matched=matched_labels(results, expected),
     )
 
 
@@ -469,7 +465,7 @@ def measure_item(
         both = [("pasted.png", data), ("blank.png", blank_png())]
         off = run_outcome(client, both, size, item.expected, **common)
     seen = off if off is not None else on  # seg's own box, when there is a job that shows it
-    predicted = seen.bbox is not None and covers(seen.bbox, size, seen.found, whole_fraction)[1]
+    predicted = seen.bbox is not None and covers(seen.bbox, size, seen.found, whole_fraction)
     return Row(item.path.name, size[0], size[1], item.expected, on, off, predicted)
 
 
@@ -562,15 +558,23 @@ def compare(before: list[dict[str, str]], after: list[dict[str, str]]) -> str:
     lines = [f"{'crop':<18}{'predicted':>10}{'fired':>7}{'before':>8}{'after':>7}  change"]
     predicted_set: set[str] = set()
     fired_set: set[str] = set()
+    gained: list[str] = []
+    lost: list[str] = []
     for r in after:
         b = earlier.get(r["crop"])
         if b is None:
             continue
         predicted = b["predicted_whole"] == "True"
-        fired = r["whole"] == "True" and r["found"] == "1" and b["whole"] != "True"
         # a crop seg found nothing on is "whole" before too: it is not the rule's doing
-        predicted_set |= {r["crop"]} if predicted else set()
-        fired_set |= {r["crop"]} if fired else set()
+        fired = r["whole"] == "True" and r["found"] == "1" and b["whole"] != "True"
+        if predicted:
+            predicted_set.add(r["crop"])
+        if fired:
+            fired_set.add(r["crop"])
+        if b["correct"] == "False" and r["correct"] == "True":
+            gained.append(r["crop"])
+        if b["correct"] == "True" and r["correct"] == "False":
+            lost.append(r["crop"])
         change = "" if b["smiles"] == r["smiles"] else f"{b['smiles']}  ->  {r['smiles']}"
         lines.append(
             f"{r['crop']:<18}{_yes(str(predicted)):>10}{_yes(str(fired)):>7}"
@@ -581,15 +585,5 @@ def compare(before: list[dict[str, str]], after: list[dict[str, str]]) -> str:
         f"predicted {len(predicted_set)}, fired {len(fired_set)}, "
         f"{'the same crops' if not kept else 'DIFFERENT: ' + ', '.join(kept)}"
     )
-    gained = [
-        r["crop"]
-        for r in after
-        if earlier.get(r["crop"], {}).get("correct") == "False" and r["correct"] == "True"
-    ]
-    lost = [
-        r["crop"]
-        for r in after
-        if earlier.get(r["crop"], {}).get("correct") == "True" and r["correct"] == "False"
-    ]
     lines.append(f"now right: {', '.join(gained) or '-'}; now wrong: {', '.join(lost) or '-'}")
     return "\n".join(lines)

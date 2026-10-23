@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { Locator, Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 
 /** Collects console errors, page errors and CSP violations; a test ends with `expect(problems).toEqual([])`. */
 export function watchProblems(page: Page): string[] {
@@ -74,6 +74,11 @@ export function chooseLargeFile(page: Page, name: string, bytes: number) {
   );
 }
 
+/** The tile of the structure numbered `n` (its button's name starts with "Structure n"). */
+export function tile(page: Page, n: number): Locator {
+  return page.getByRole('button', { name: new RegExp(`^Structure ${n}\\b`) });
+}
+
 /** Below 900 px the editor is a modal sheet (role dialog); above it a column beside the figure (role complementary). */
 export function editorPanel(page: Page): Locator {
   const width = page.viewportSize()?.width ?? 1280;
@@ -99,20 +104,32 @@ export async function waitForEditor(page: Page, settleMs = 1500): Promise<void> 
   await page.waitForTimeout(settleMs);
 }
 
-/** Edits the structure on the canvas the way a user does: click it, select all, Layout (Ctrl+L). */
-export async function layoutOnCanvas(page: Page): Promise<void> {
+/**
+ * Waits until the canvas shows the structure the panel's heading names. The heading follows a press of Next or Previous
+ * at once, but Ketcher swaps one structure per press, in order, so the canvas trails it; until it has caught up the
+ * canvas is busy and cannot be edited. This is the condition to wait for, not a pause: how long it takes depends on
+ * the machine.
+ */
+export async function waitForCanvas(page: Page, timeout = 60_000): Promise<void> {
+  await expect(page.locator('.dc-editor__canvas[data-active=true][aria-busy=false]')).toBeVisible({ timeout });
+}
+
+/** Clicks the canvas that is showing, then selects all on it. */
+async function selectAllOnCanvas(page: Page): Promise<void> {
   const box = await page.locator('.dc-editor__canvas[data-active=true]').boundingBox();
   if (!box) throw new Error('canvas is not showing');
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await page.keyboard.press('Control+a');
+}
+
+/** Edits the structure on the canvas the way a user does: click it, select all, Layout (Ctrl+L). */
+export async function layoutOnCanvas(page: Page): Promise<void> {
+  await selectAllOnCanvas(page);
   await page.keyboard.press('Control+l');
 }
 
 /** Empties the canvas: select all, Delete. */
 export async function clearCanvas(page: Page): Promise<void> {
-  const box = await page.locator('.dc-editor__canvas[data-active=true]').boundingBox();
-  if (!box) throw new Error('canvas is not showing');
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await page.keyboard.press('Control+a');
+  await selectAllOnCanvas(page);
   await page.keyboard.press('Delete');
 }

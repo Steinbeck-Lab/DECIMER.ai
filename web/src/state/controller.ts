@@ -209,6 +209,14 @@ export class AppController {
   startOver(): void {
     const jobId = this.store.getState().jobId;
     this.generation++;
+    this.cancelRequests();
+    this.revokePreviews();
+    this.store.dispatch({ type: 'startOver' });
+    if (jobId) void this.api.deleteJob(jobId).catch(() => undefined);
+  }
+
+  /** Stops the upload, the polling and every validation, waiting or in flight. */
+  private cancelRequests(): void {
     this.pollAbort?.abort();
     this.submitAbort?.abort();
     this.pollAbort = null;
@@ -217,9 +225,6 @@ export class AppController {
     this.validateTimers.clear();
     this.validateAborts.forEach((a) => a.abort());
     this.validateAborts.clear();
-    this.revokePreviews();
-    this.store.dispatch({ type: 'startOver' });
-    if (jobId) void this.api.deleteJob(jobId).catch(() => undefined);
   }
 
   dismissProblem(): void {
@@ -374,10 +379,7 @@ export class AppController {
   }
 
   dispose(): void {
-    this.pollAbort?.abort();
-    this.submitAbort?.abort();
-    this.validateTimers.forEach((t) => clearTimeout(t));
-    this.validateAborts.forEach((a) => a.abort());
+    this.cancelRequests();
     if (this.noticeTimer) clearTimeout(this.noticeTimer);
   }
 }

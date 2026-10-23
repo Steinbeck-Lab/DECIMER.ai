@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Wordmark } from '../brand/Wordmark';
 import { strings } from '../strings';
-import { hasWork, isPdfUpload, workSummary } from '../state/selectors';
+import { hasResults, hasWork, isPdfUpload, workSummary } from '../state/selectors';
 import { useAppState, useController } from '../state/react';
 import { ConfirmNewUpload } from './ConfirmNewUpload';
 import { DownloadMenu } from './DownloadMenu';
@@ -13,7 +13,6 @@ export function Header({ route }: { route: Route }) {
   const [confirming, setConfirming] = useState(false);
 
   const home = route === '/';
-  const hasResults = state.phase === 'results' && (state.job?.results.length ?? 0) > 0;
   // The big logo of the empty screen already is the wordmark.
   const showMark = !(home && state.phase === 'empty');
   const showNewUpload = state.phase !== 'empty';
@@ -49,7 +48,7 @@ export function Header({ route }: { route: Route }) {
           {strings.shell.github}
         </a>
       </nav>
-      {hasResults && state.job && (
+      {hasResults(state) && state.job && (
         <div className="dc-header__tools">
           <span className="dc-capacity">
             {strings.results.capacity(state.job.results.length, state.job.pagesProcessed, isPdfUpload(state.sources))}

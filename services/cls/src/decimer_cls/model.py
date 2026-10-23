@@ -125,7 +125,7 @@ def _blank_image() -> Image.Image:
 
 def _selftest_image() -> Image.Image:
     """A white square with one drawn hexagon: the smallest thing that looks like a structure."""
-    image = Image.new("RGB", (128, 128), (255, 255, 255))
+    image = _blank_image()
     draw = ImageDraw.Draw(image)
     corners = [
         (64 + 40 * math.cos(math.radians(60 * i)), 64 + 40 * math.sin(math.radians(60 * i)))

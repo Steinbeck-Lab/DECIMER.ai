@@ -12,7 +12,7 @@ import {
 import type { EditEntry, Filter, SourceFile, State, Status } from './model';
 
 /** Below this the model is not confident and the result goes to "review". */
-export const REVIEW_CONFIDENCE_BELOW = 0.8;
+const REVIEW_CONFIDENCE_BELOW = 0.8;
 
 export type Reason = 'notStructure' | 'invalid' | 'cdkOnly' | 'rgroup' | 'lowConfidence';
 
@@ -147,7 +147,7 @@ export function countsOf(views: readonly ResultView[]): Counts {
   return counts;
 }
 
-export function matchesFilter(view: ResultView, filter: Filter): boolean {
+function matchesFilter(view: ResultView, filter: Filter): boolean {
   if (filter === 'all') return true;
   if (filter === 'review') return view.status === 'review' || view.status === 'notsure';
   // "Edited" is everything the user changed, whether or not they have since checked it.
@@ -202,6 +202,11 @@ export function workSummary(edits: Record<number, EditEntry>): { edited: number;
     edited: entries.filter((e) => e.modified).length,
     checked: entries.filter((e) => e.checked).length,
   };
+}
+
+/** The results screen with at least one structure: the figure, the editor and the header's Download menu. */
+export function hasResults(state: Pick<State, 'phase' | 'job'>): boolean {
+  return state.phase === 'results' && (state.job?.results.length ?? 0) > 0;
 }
 
 export function hasWork(edits: Record<number, EditEntry>): boolean {

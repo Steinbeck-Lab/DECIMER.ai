@@ -50,8 +50,11 @@ class Limits:
     ready_cache_seconds: float = 30.0
 
 
-class _Gate:
-    """A semaphore that refuses new work once `capacity` callers are inside or waiting."""
+class Gate:
+    """A semaphore that refuses new work once `slots + waiting` callers are inside or waiting.
+
+    Public because the chem service (JSON, not the image-upload skeleton) uses it too.
+    """
 
     def __init__(self, slots: int, waiting: int) -> None:
         self._sem = asyncio.Semaphore(slots)
@@ -84,7 +87,7 @@ def create_app(model: Model, limits: Limits | None = None) -> FastAPI:
         yield
 
     app = FastAPI(title=f"decimer-{model.name}", lifespan=lifespan)
-    gate = _Gate(limits.max_concurrency, limits.max_waiting)
+    gate = Gate(limits.max_concurrency, limits.max_waiting)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, str]:

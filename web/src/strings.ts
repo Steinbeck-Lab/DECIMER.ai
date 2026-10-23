@@ -112,7 +112,6 @@ export const strings = {
   },
 
   working: {
-    heading: 'Working on your upload',
     queuedHeading: 'Waiting for a free worker',
     queuePosition: (n: number) =>
       n <= 1 ? 'You are next in line.' : `You are number ${n} in the queue.`,
@@ -243,7 +242,6 @@ export const strings = {
       opsin_acids: 'OPSIN reads each component acid; together they rebuild this structure',
       identity: 'Exact match in a curated list',
     } as Record<string, string>,
-    structureAlt: (n: number) => `Recognised structure ${n}`,
     cropAlt: (n: number) => `Original crop of structure ${n}`,
     /** Read before the number, so a button is named "Structure 4 (2R)-3,3-bis… Checked". */
     structure: 'Structure',
@@ -288,18 +286,15 @@ export const strings = {
     loadFailedShort: 'Not loaded',
     loadFailedHeading: (n: number) => `Structure ${n}, not loaded in the editor`,
     retryLoad: 'Try again',
-    dialogName: 'Structure editor',
     updateFailed: 'Could not update the name and SMILES. Your edit is kept.',
     smiles: 'SMILES',
     noSmiles: 'No valid SMILES',
     molfile: 'Molfile',
-    copy: 'Copy',
     copied: 'Copied',
     copySmiles: 'Copy SMILES',
     copyName: 'Copy name',
     copyMolfile: 'Copy molfile',
     markChecked: 'Mark as checked',
-    isChecked: 'Checked',
     undoChecked: 'Undo check',
     reset: 'Reset',
     resetHint: 'Back to the structure as recognised',

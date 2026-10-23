@@ -435,8 +435,8 @@ def test_the_table_with_the_job_without_the_rule_shows_both_readings(tmp_path: P
     rows = measure(api, [item(tmp_path, "a.png", (100, 100), "1")], also_without_rule=True)
     out = tmp_path / "out.csv"
     single_image.write_rows(out, rows)
-    line = single_image.table(single_image.read_rows(out)).splitlines()[1]
-    assert "crop path" in single_image.table(single_image.read_rows(out)).splitlines()[0]
+    head, line = single_image.table(single_image.read_rows(out)).splitlines()[:2]
+    assert "crop path" in head
     assert line.split()[:2] == ["a.png", "1"] and "64%" in line  # seg's own box, not the whole
     assert line.count("yes") >= 2 and "no" in line
 

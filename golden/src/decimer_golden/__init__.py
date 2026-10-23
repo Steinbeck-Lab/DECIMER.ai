@@ -83,16 +83,29 @@ def _shown(path: Path) -> str:
     return str(path.relative_to(HERE)) if path.is_relative_to(HERE) else str(path)
 
 
+def _error(message: str) -> int:
+    """A bad argument: the message on stderr, exit status 2."""
+    print(f"error: {message}", file=sys.stderr)
+    return 2
+
+
+def _warn_unchecked(unchecked: list[str]) -> None:
+    if unchecked:
+        print(
+            f"WARNING: {len(unchecked)} labels not yet checked by hand (marked * above): "
+            + ", ".join(unchecked)
+            + "; an absolute count is against drafts, only a before/after difference is solid"
+        )
+
+
 def _next(args: argparse.Namespace) -> int:
     pdf = Path(args.pdf)
     if not pdf.is_file():
-        print(f"error: {pdf} is not a file", file=sys.stderr)
-        return 2
+        return _error(f"{pdf} is not a file")
     try:
         origin = next_stack.check_origin(args.base_url)
     except ValueError as error:
-        print(f"error: {error}", file=sys.stderr)
-        return 2
+        return _error(str(error))
     run_dir = _make_run_dir("next", time.strftime("%Y%m%d-%H%M%S", time.gmtime()))
     sampler = MemorySampler(args.docker_project) if args.docker_project else None
     with next_stack.new_client(origin) as client:
@@ -121,12 +134,10 @@ def _next(args: argparse.Namespace) -> int:
 
 def _single_image(args: argparse.Namespace) -> int:
     if not args.crops and not args.negatives:
-        print("error: give --crops and/or --negatives", file=sys.stderr)
-        return 2
+        return _error("give --crops and/or --negatives")
     for folder in (args.crops, args.negatives):
         if folder and not Path(folder).is_dir():
-            print(f"error: {folder} is not a directory", file=sys.stderr)
-            return 2
+            return _error(f"{folder} is not a directory")
     items: list[single_image.Item] = []
     if args.crops:
         items += single_image.crop_items(Path(args.crops), LABELS)
@@ -135,8 +146,7 @@ def _single_image(args: argparse.Namespace) -> int:
     try:
         origin = next_stack.check_origin(args.base_url)
     except ValueError as error:
-        print(f"error: {error}", file=sys.stderr)
-        return 2
+        return _error(str(error))
     run_dir = _make_run_dir("single", time.strftime("%Y%m%d-%H%M%S", time.gmtime()), crops=False)
     with next_stack.new_client(origin) as client:
         rows = single_image.measure(
@@ -152,13 +162,7 @@ def _single_image(args: argparse.Namespace) -> int:
     single_image.write_rows(out, rows)
     written = single_image.read_rows(out)
     print(single_image.table(written))
-    unchecked = single_image.unchecked(rows)
-    if unchecked:
-        print(
-            f"WARNING: {len(unchecked)} labels not yet checked by hand (marked * above): "
-            + ", ".join(unchecked)
-            + "; an absolute count is against drafts, only a before/after difference is solid"
-        )
+    _warn_unchecked(single_image.unchecked(rows))
     if args.before:
         print()
         print(single_image.compare(single_image.read_rows(Path(args.before)), written))
@@ -172,25 +176,22 @@ def _single_image(args: argparse.Namespace) -> int:
         "jobs": len(rows) * (2 if args.also_without_rule else 1),
     }
     (run_dir / "run.json").write_text(json.dumps(meta, indent=2) + "\n")
-    print(f"{_shown(out)}")
+    print(_shown(out))
     return 0
 
 
 def _multi_image(args: argparse.Namespace) -> int:
     if not Path(args.crops).is_dir():
-        print(f"error: {args.crops} is not a directory", file=sys.stderr)
-        return 2
+        return _error(f"{args.crops} is not a directory")
     try:
         origin = next_stack.check_origin(args.base_url)
         groups = multi_image.make_groups(
             single_image.crop_items(Path(args.crops), LABELS), args.sizes, limit=args.limit
         )
     except ValueError as error:
-        print(f"error: {error}", file=sys.stderr)
-        return 2
+        return _error(str(error))
     if not groups:
-        print(f"error: {args.crops} has too few crops for groups of {args.sizes}", file=sys.stderr)
-        return 2
+        return _error(f"{args.crops} has too few crops for groups of {args.sizes}")
     run_dir = _make_run_dir("multi", time.strftime("%Y%m%d-%H%M%S", time.gmtime()), crops=False)
     with next_stack.new_client(origin) as client:
         rows = multi_image.measure(
@@ -206,13 +207,7 @@ def _multi_image(args: argparse.Namespace) -> int:
     multi_image.write_rows(out, rows)
     written = multi_image.read_rows(out)
     print(multi_image.table(written))
-    unchecked = multi_image.unchecked(rows)
-    if unchecked:
-        print(
-            f"WARNING: {len(unchecked)} labels not yet checked by hand (marked * above): "
-            + ", ".join(unchecked)
-            + "; an absolute count is against drafts, only a before/after difference is solid"
-        )
+    _warn_unchecked(multi_image.unchecked(rows))
     if args.before:
         print()
         print(multi_image.compare(multi_image.read_rows(Path(args.before)), written))
@@ -226,7 +221,7 @@ def _multi_image(args: argparse.Namespace) -> int:
         "images": len(rows),
     }
     (run_dir / "run.json").write_text(json.dumps(meta, indent=2) + "\n")
-    print(f"{_shown(out)}")
+    print(_shown(out))
     return 0
 
 
