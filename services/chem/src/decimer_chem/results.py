@@ -4,6 +4,9 @@ Owner decision D14: the service ships Orthonym's `valid` tier, labelled, and nev
 `result_from_row` is the gate on every row the engine returns. It is fail-closed twice over: the
 tier must be on the tier allow-list, and the way the name was checked (`verified`) must be on the
 round-trip allow-list. A name that fails either is withheld and never shown.
+
+The CDK fallback (owner decision D4, TODO) has its own small result, `CdkResult`: a V2000
+molblock, or a decline with a reason.
 """
 
 from __future__ import annotations
@@ -32,6 +35,20 @@ ENGINE_UNAVAILABLE_REASON = "engine_unavailable"
 NOT_ROUND_TRIPPED_REASON = "not_round_tripped"
 NOT_ACCEPTED_REASON = "tier_not_accepted"
 NO_NAME_REASON = "no_verified_name"
+#: CDK declines (`CdkResult.reason`), besides `invalid_smiles`, `timeout`, `engine_error` and
+#: `engine_unavailable` above: the layout or the writer failed on a SMILES CDK did parse, and the
+#: molecule is over what the layout is asked to do (`cdk.MAX_ATOMS`, `cdk.MAX_BONDS`: more than
+#: DECIMER can write) or its molblock is over the size cap.
+LAYOUT_FAILED_REASON = "layout_failed"
+TOO_LARGE_REASON = "too_large"
+
+#: The longest SMILES any entry point takes (the HTTP layer, and the engine again).
+MAX_SMILES_CHARS = 2000
+#: The longest molblock the naming process will send, and the parent accept, in UTF-8 bytes. CDK
+#: writes 300 atoms and 300 bonds (`cdk.MAX_ATOMS`) in about 28 KB, and a full V2000 file of 999
+#: and 999 in about 92 KB; the pipe carries 1 MiB at most (`supervisor.MAX_MESSAGE_BYTES`), so this
+#: leaves room for the JSON escapes.
+MAX_MOLFILE_BYTES = 256 * 1024
 
 
 @dataclass(frozen=True)
@@ -80,3 +97,26 @@ def result_from_row(row: Mapping[str, object]) -> NameResult:
         return NameResult(None, reported_tier, None, code)
     # A name in a tier that is not shipped: withhold it.
     return NameResult(None, reported_tier, None, NOT_ACCEPTED_REASON)
+
+
+def looks_like_molfile(text: object) -> bool:
+    """True for the shape of a V2000 molblock: a counts line that says `V2000` in its fourth line
+    and `M  END` as its last line. A shape check, not a parser: the caller still reads the file."""
+    if not isinstance(text, str):
+        return False
+    lines = text.rstrip().splitlines()
+    return len(lines) >= 5 and lines[3].rstrip().endswith("V2000") and lines[-1].strip() == "M  END"
+
+
+@dataclass(frozen=True)
+class CdkResult:
+    """One CDK answer: exactly one of `molfile` (a V2000 molblock with CDK's own 2D coordinates) and
+    `reason` (why there is none: `invalid_smiles`, `layout_failed`, `too_large`, `timeout`,
+    `engine_error`, `engine_unavailable`) is set."""
+
+    molfile: str | None
+    reason: str | None
+
+    def as_dict(self) -> dict[str, str | None]:
+        """The two fields as plain `str` or None."""
+        return {key: _plain(value) for key, value in asdict(self).items()}

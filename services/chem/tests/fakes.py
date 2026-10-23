@@ -16,7 +16,7 @@ import time
 from collections.abc import Callable, Sequence
 
 from decimer_chem.app import CAFFEINE_NAME, CAFFEINE_SMILES
-from decimer_chem.results import NameResult
+from decimer_chem.results import CdkResult, NameResult
 from decimer_chem.settings import Settings
 
 
@@ -24,6 +24,24 @@ def named(smiles: str) -> NameResult:
     if smiles == CAFFEINE_SMILES:
         return NameResult(CAFFEINE_NAME, "pin_verified", "opsin", None)
     return NameResult(f"name of {smiles}", "pin_verified", "opsin", None)
+
+
+def fake_molfile(atoms: int, bonds: int, title: str = "fake") -> str:
+    """A molblock of the right shape (the parent checks the shape), with `atoms` carbons in a chain
+    and `bonds` bond lines; not a real structure."""
+    lines = [title, "  fake", "", f"{atoms:3d}{bonds:3d}  0  0  0  0  0  0  0  0999 V2000"]
+    lines += [
+        f"{i:10.4f}{0.0:10.4f}{0.0:10.4f} C   0  0  0  0  0  0  0  0  0  0  0  0"
+        for i in range(atoms)
+    ]
+    lines += [f"{1:3d}{2:3d}  1  0  0  0  0" for _ in range(bonds)]
+    return "\n".join([*lines, "M  END", ""])
+
+
+def molfile_for(smiles: str) -> CdkResult:
+    """The fake CDK: caffeine gets the counts the selftest requires, everything else 3 and 2."""
+    counts = (14, 15) if smiles == CAFFEINE_SMILES else (3, 2)
+    return CdkResult(fake_molfile(*counts, title=smiles), None)
 
 
 class FakeNamer:
@@ -35,6 +53,8 @@ class FakeNamer:
         self.start_error: Exception | None = None
         self.calls: list[list[str]] = []
         self.rule: Callable[[str], NameResult] = named
+        self.cdk_calls: list[list[str]] = []
+        self.cdk_rule: Callable[[str], CdkResult] = molfile_for
         self.error: Exception | None = None
         self.hold: asyncio.Event | None = None
         self.entered = asyncio.Event()
@@ -62,6 +82,19 @@ class FakeNamer:
             if self.error is not None:
                 raise self.error
             return [self.rule(s) for s in smiles]
+        finally:
+            self._inflight -= 1
+
+    async def cdk_many(self, smiles: Sequence[str]) -> list[CdkResult]:
+        self.cdk_calls.append(list(smiles))
+        self._inflight += 1
+        self.entered.set()
+        try:
+            if self.hold is not None:
+                await self.hold.wait()
+            if self.error is not None:
+                raise self.error
+            return [self.cdk_rule(s) for s in smiles]
         finally:
             self._inflight -= 1
 
@@ -123,9 +156,48 @@ class FakeEngine:
             return NameResult(None, "abstain", None, "UNNAMEABLE")
         return NameResult(f"{smiles}@{timeout_s:.2f}", "pin_verified", "opsin", None)
 
+    def cdk(self, smiles: str, timeout_s: float) -> CdkResult:
+        """The same behaviours for CDK requests. A molblock carries what the test wants to read
+        back (the process id, the soft limit, the SMILES) in its title line."""
+        if smiles == "HANG":
+            signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGALRM})
+            while True:
+                time.sleep(0.05)
+        if smiles == "CRASH":
+            os._exit(13)
+        if smiles == "BOOM":
+            raise RuntimeError("cdk bug")
+        if smiles == "BADFIELD":
+            return CdkResult(123, None)  # type: ignore[arg-type]
+        if smiles == "SOFTTIMEOUT":  # what the real engine does: answer, then ask to be replaced
+            self.recycle_requested = True
+            return CdkResult(None, "timeout")
+        if smiles == "BOTH":  # a molblock and a reason: not an answer
+            return CdkResult(fake_molfile(3, 2), "invalid_smiles")
+        if smiles == "NEITHER":
+            return CdkResult(None, None)
+        if smiles == "NOTMOL":  # a string that is not a molblock
+            return CdkResult("this is not a molblock", None)
+        if smiles == "OVERCAP":  # a real-shaped molblock just over the cap the parent enforces
+            return CdkResult(fake_molfile(3000, 3000), None)
+        if smiles == "HUGE":  # a reply far larger than the pipe carries
+            return CdkResult(fake_molfile(30000, 30000), None)
+        if smiles == "SURROGATE":
+            return CdkResult(fake_molfile(3, 2, title="\ud800"), None)
+        if smiles == "LEAK":  # a result, after which the process asks to be replaced
+            self.recycle_requested = True
+            return CdkResult(fake_molfile(3, 2, title=str(os.getpid())), None)
+        if smiles == "PID":
+            return CdkResult(fake_molfile(3, 2, title=str(os.getpid())), None)
+        if smiles.startswith("SLOW"):
+            time.sleep(0.2)
+        if smiles == "DECLINE":
+            return CdkResult(None, "invalid_smiles")
+        return CdkResult(fake_molfile(3, 2, title=f"{smiles}@{timeout_s:.2f}"), None)
+
 
 def make_engine(settings: Settings) -> FakeEngine:
     return FakeEngine(settings)
 
 
-__all__ = ["FakeEngine", "FakeNamer", "make_engine", "named"]
+__all__ = ["FakeEngine", "FakeNamer", "fake_molfile", "make_engine", "molfile_for", "named"]

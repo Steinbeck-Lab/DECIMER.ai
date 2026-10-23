@@ -24,13 +24,17 @@ def _positive_seconds(env: Mapping[str, str], name: str, default: float) -> floa
 
 @dataclass(frozen=True)
 class Settings:
-    #: Where the OPSIN and centres jars are. None: Orthonym's own jar directory (`ORTHONYM_JAR_DIR`,
-    #: else the user cache). The image sets this to the directory it baked the jars into.
+    #: Where the OPSIN, centres and CDK jars are. None: Orthonym's own jar directory
+    #: (`ORTHONYM_JAR_DIR`, else the user cache). The image sets this to the directory it baked the
+    #: jars into.
     jars_dir: Path | None = None
     #: Development only: let Orthonym download a missing jar. A service without network cannot.
     allow_jar_download: bool = False
     #: Soft limit for one structure (Orthonym's own wall-clock limit inside the naming process).
     name_timeout_s: float = 10.0
+    #: Soft limit for one CDK structure (parse, 2D layout, molblock). CDK's layout takes
+    #: milliseconds for a drug-sized molecule and several seconds for a chain of a thousand atoms.
+    cdk_timeout_s: float = 10.0
     #: Budget for one request. Structures after it is spent are declined with reason "timeout".
     batch_timeout_s: float = 60.0
     #: How long after the soft limit the naming process may keep running before it is killed.
@@ -48,5 +52,6 @@ class Settings:
             jars_dir=Path(env["CHEM_JARS_DIR"]).absolute() if env.get("CHEM_JARS_DIR") else None,
             allow_jar_download=env.get("CHEM_ALLOW_JAR_DOWNLOAD") == "1",
             name_timeout_s=_positive_seconds(env, "CHEM_NAME_TIMEOUT_S", cls.name_timeout_s),
+            cdk_timeout_s=_positive_seconds(env, "CHEM_CDK_TIMEOUT_S", cls.cdk_timeout_s),
             batch_timeout_s=_positive_seconds(env, "CHEM_BATCH_TIMEOUT_S", cls.batch_timeout_s),
         )

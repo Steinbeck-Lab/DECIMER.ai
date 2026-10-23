@@ -19,14 +19,16 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from fakes import fake_molfile
 
 from decimer_chem import supervisor
-from decimer_chem.results import TIMEOUT_REASON, NameResult
+from decimer_chem.results import MAX_MOLFILE_BYTES, TIMEOUT_REASON, CdkResult, NameResult
 from decimer_chem.settings import Settings
 from decimer_chem.supervisor import EngineUnavailable, ProcessNamer
 
 FAST = Settings(
     name_timeout_s=0.5,
+    cdk_timeout_s=0.7,  # not the same as the names', so a test can tell which limit it was given
     batch_timeout_s=10.0,
     kill_grace_s=0.5,
     startup_timeout_s=30.0,
@@ -845,5 +847,330 @@ async def test_a_namer_whose_start_failed_can_be_started_again(
     await bounded(n.start())
     try:
         assert await pid_of(n) > 0
+    finally:
+        await n.stop()
+
+
+# --- CDK: the second kind of request through the same process -------------------------------------
+#
+# The fake engine's `cdk` answers by SMILES like its `name` does, with a molblock whose title line
+# carries what a test wants to read back (a process id, the soft limit and the SMILES).
+
+
+def title(result: CdkResult) -> str:
+    assert result.molfile is not None
+    return result.molfile.splitlines()[0]
+
+
+async def cdk_pid_of(namer: ProcessNamer) -> int:
+    [r] = await namer.cdk_many(["PID"])
+    return int(title(r))
+
+
+async def test_cdk_results_come_back_in_order_from_the_process_that_names(
+    namer: ProcessNamer,
+) -> None:
+    results = await namer.cdk_many(["a", "DECLINE", "c", "d"])
+    assert [r.reason for r in results] == [None, "invalid_smiles", None, None]
+    assert [title(r).split("@")[0] for r in results if r.molfile] == ["a", "c", "d"]
+    assert results[1].molfile is None
+    assert await cdk_pid_of(namer) == await pid_of(namer) != os.getpid()  # one JVM for both
+
+
+async def test_cdk_is_given_its_own_soft_limit_not_the_one_for_names(namer: ProcessNamer) -> None:
+    [r] = await namer.cdk_many(["x"])
+    assert title(r) == "x@0.70"  # cdk_timeout_s; the names' limit in these settings is 0.5
+    [n] = await namer.name_many(["x"])
+    assert n.name == "x@0.50"
+
+
+async def test_a_cdk_call_that_ignores_the_soft_limit_is_killed_at_the_hard_deadline(
+    namer: ProcessNamer,
+) -> None:
+    before = await cdk_pid_of(namer)
+    start = time.monotonic()
+    [r] = await bounded(namer.cdk_many(["HANG"]))
+    elapsed = time.monotonic() - start
+    assert r == CdkResult(None, TIMEOUT_REASON)
+    assert 1.1 <= elapsed < 5  # soft limit 0.7 s + grace 0.5 s
+    assert namer.hard_kills == 1
+    assert await cdk_pid_of(namer) != before  # the next call is served by a fresh process
+
+
+async def test_after_the_first_cdk_timeout_the_rest_of_the_batch_is_a_timeout_not_sent(
+    namer: ProcessNamer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A CDK timeout leaves a runaway Java thread, so the process is replaced (about 3.5 s). A batch
+    # of slow structures would otherwise replace it once per structure and hold the one process,
+    # and every name waiting for it, for the whole request budget.
+    sent: list[str] = []
+    spawned: list[int] = []
+    real_call, real_spawn = namer._call_one, namer._spawn
+
+    async def spy_call(op: Any, smiles: str, *rest: Any) -> Any:
+        sent.append(smiles)
+        return await real_call(op, smiles, *rest)
+
+    async def spy_spawn() -> Any:
+        spawned.append(1)
+        return await real_spawn()
+
+    monkeypatch.setattr(namer, "_call_one", spy_call)
+    monkeypatch.setattr(namer, "_spawn", spy_spawn)
+    before = await cdk_pid_of(namer)
+    sent.clear()
+    results = await bounded(namer.cdk_many(["a", "SOFTTIMEOUT", "c", "DECLINE", "e"]))
+    assert reasons(results) == [
+        None,
+        TIMEOUT_REASON,
+        TIMEOUT_REASON,
+        TIMEOUT_REASON,
+        TIMEOUT_REASON,
+    ]
+    assert all(r.molfile is None for r in results[1:])
+    assert sent == ["a", "SOFTTIMEOUT"]  # the other three never reached the engine
+    await until(lambda: namer.pid not in (None, before))
+    assert spawned == [1]  # one replacement for the batch, not one per structure
+    [after] = await bounded(namer.cdk_many(["fresh"]))  # the next request is served normally
+    assert title(after) == "fresh@0.70"
+
+
+async def test_a_cdk_hang_killed_at_the_hard_deadline_also_gives_up_the_rest_of_the_batch(
+    namer: ProcessNamer,
+) -> None:
+    results = await bounded(namer.cdk_many(["a", "HANG", "c", "DECLINE"]))
+    assert reasons(results) == [None, TIMEOUT_REASON, TIMEOUT_REASON, TIMEOUT_REASON]
+    assert namer.hard_kills == 1  # one kill, not three
+
+
+async def test_a_names_timeout_does_not_give_up_its_batch(namer: ProcessNamer) -> None:
+    # Orthonym puts its state back after a timeout and the process lives on: the next name is fine.
+    results = await bounded(namer.name_many(["a", "HANG", "c"]))
+    assert reasons(results) == [None, TIMEOUT_REASON, None]
+
+
+async def test_when_the_batch_budget_is_spent_the_rest_of_a_cdk_batch_is_a_timeout() -> None:
+    n = make(replace(FAST, batch_timeout_s=0.5, cdk_timeout_s=5.0))
+    await n.start()
+    try:
+        results = await bounded(n.cdk_many(["SLOW1", "SLOW2", "SLOW3", "after"]))
+        assert reasons(results[:2]) == [None, None]
+        assert results[3] == CdkResult(None, TIMEOUT_REASON)  # never sent: the budget was gone
+        assert float(title(results[2]).split("@")[1]) < 0.5  # the limit shrinks to the budget
+    finally:
+        await n.stop()
+
+
+async def test_an_error_inside_cdk_costs_that_structure_only(
+    namer: ProcessNamer, caplog: pytest.LogCaptureFixture
+) -> None:
+    before = await cdk_pid_of(namer)
+    with caplog.at_level("DEBUG"):
+        results = await namer.cdk_many(["a", "BOOM", "d"])
+    assert reasons(results) == [None, "engine_error", None]
+    assert results[1].molfile is None
+    assert await cdk_pid_of(namer) == before  # the process is the same
+    assert "cdk bug" not in " ".join(str(r.__dict__) for r in caplog.records)
+
+
+async def test_a_crash_in_cdk_costs_that_structure_and_the_batch_carries_on(
+    namer: ProcessNamer,
+) -> None:
+    before = await cdk_pid_of(namer)
+    results = await bounded(namer.cdk_many(["a", "CRASH", "c"]))
+    assert reasons(results) == [None, "engine_error", None]
+    assert await cdk_pid_of(namer) != before
+
+
+async def test_two_crashes_in_a_row_stop_a_cdk_batch_and_the_rest_is_unavailable(
+    namer: ProcessNamer,
+) -> None:
+    results = await bounded(namer.cdk_many(["a", "CRASH", "CRASH", "d", "e"]))
+    assert reasons(results) == [None, "engine_error", "engine_error"] + ["engine_unavailable"] * 2
+    assert all(isinstance(r, CdkResult) for r in results)
+
+
+async def test_when_no_cdk_structure_can_be_tried_the_engine_is_unavailable(
+    namer: ProcessNamer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAKE_ENGINE_FAIL_START", "1")
+    await bounded(namer.cdk_many(["HANG"]))  # killed; its replacement will fail
+    await until(lambda: namer.pid is None and not namer.starting)
+    with pytest.raises(EngineUnavailable, match="/nowhere/opsin.jar"):
+        await bounded(namer.cdk_many(["a", "b"]))
+
+
+async def test_a_process_that_asks_to_be_replaced_after_a_cdk_call_is_replaced(
+    namer: ProcessNamer,
+) -> None:
+    before = await cdk_pid_of(namer)
+    [r] = await namer.cdk_many(["LEAK"])
+    assert title(r) == str(before)  # the answer came from the old process, and was delivered
+    await until(lambda: namer.pid not in (None, before))
+
+
+async def test_a_cdk_call_cancelled_mid_flight_cannot_leave_a_stale_reply_for_the_next_call(
+    namer: ProcessNamer,
+) -> None:
+    before = await cdk_pid_of(namer)
+    task = asyncio.create_task(namer.cdk_many(["SLOW"]))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    [r] = await bounded(namer.cdk_many(["fresh"]))
+    assert title(r) == "fresh@0.70"  # not the cancelled call's answer
+    assert await cdk_pid_of(namer) != before
+
+
+async def test_names_and_cdk_batches_take_turns_for_the_one_process(namer: ProcessNamer) -> None:
+    names, cdk, more = await asyncio.gather(
+        namer.name_many(["n1", "n2"]), namer.cdk_many(["c1", "c2"]), namer.name_many(["n3"])
+    )
+    assert [r.name.split("@")[0] for r in names if r.name] == ["n1", "n2"]
+    assert [title(r).split("@")[0] for r in cdk] == ["c1", "c2"]
+    assert [r.name.split("@")[0] for r in more if r.name] == ["n3"]
+    assert namer.hard_kills == 0
+
+
+# --- the wire for CDK: JSON only, exactly two fields, a molblock or a reason -------------------
+
+MOL = fake_molfile(3, 2)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"molfile": 5, "reason": None},
+        {"molfile": MOL, "reason": ["a"]},
+        {"molfile": MOL},  # a key missing
+        {"molfile": MOL, "reason": None, "extra": 1},
+        {"name": "x", "tier": None, "verified": None, "reason": None},  # a names result
+        {"molfile": MOL, "reason": "invalid_smiles"},  # a molblock and a reason
+        {"molfile": None, "reason": None},  # neither
+        {"molfile": "this is not a molblock", "reason": None},
+        {"molfile": MOL.replace("V2000", "V3000"), "reason": None},
+        {"molfile": fake_molfile(3, 2, title="\ud800"), "reason": None},  # not UTF-8
+        {"molfile": None, "reason": "\udfff"},
+        ["not", "a", "dict"],
+        None,
+    ],
+    ids=[
+        "number",
+        "list-reason",
+        "key-missing",
+        "extra-key",
+        "names-result",
+        "both",
+        "neither",
+        "not-a-molblock",
+        "v3000",
+        "surrogate-molfile",
+        "surrogate-reason",
+        "list",
+        "none",
+    ],
+)
+def test_the_parent_accepts_only_a_molblock_or_a_reason(payload: Any) -> None:
+    assert supervisor.parse_cdk_result(payload) is None
+
+
+def test_the_parent_accepts_a_molblock_or_a_decline() -> None:
+    assert supervisor.parse_cdk_result({"molfile": MOL, "reason": None}) == CdkResult(MOL, None)
+    assert supervisor.parse_cdk_result({"molfile": None, "reason": "too_large"}) == CdkResult(
+        None, "too_large"
+    )
+
+
+def test_the_size_cap_on_a_molblock_is_exact() -> None:
+    padding = MAX_MOLFILE_BYTES - len(fake_molfile(3, 2, title="").encode())
+    at_cap = fake_molfile(3, 2, title="t" * padding)
+    assert len(at_cap.encode()) == MAX_MOLFILE_BYTES
+    assert supervisor.parse_cdk_result({"molfile": at_cap, "reason": None}) is not None
+    over = fake_molfile(3, 2, title="t" * (padding + 1))
+    assert supervisor.parse_cdk_result({"molfile": over, "reason": None}) is None
+
+
+def test_the_size_cap_counts_utf8_bytes_not_characters() -> None:
+    padding = MAX_MOLFILE_BYTES - len(fake_molfile(3, 2, title="").encode())
+    wide = fake_molfile(3, 2, title="\u00e9" * (padding // 2 + 1))  # 2 bytes each: over the cap
+    assert len(wide) < MAX_MOLFILE_BYTES < len(wide.encode())
+    assert supervisor.parse_cdk_result({"molfile": wide, "reason": None}) is None
+
+
+@pytest.mark.parametrize(
+    "request_text",
+    ["BADFIELD", "BOTH", "NEITHER", "NOTMOL", "OVERCAP", "HUGE", "SURROGATE"],
+)
+async def test_a_cdk_reply_that_is_not_an_answer_from_a_real_process_is_an_engine_error(
+    namer: ProcessNamer, request_text: str
+) -> None:
+    before = await cdk_pid_of(namer)
+    [r] = await bounded(namer.cdk_many([request_text]))
+    assert r == CdkResult(None, "engine_error")
+    await until(lambda: namer.pid not in (None, before))  # and the process is not trusted again
+
+
+def test_the_fake_molblocks_are_over_the_cap_where_the_test_says_so() -> None:
+    assert MAX_MOLFILE_BYTES < len(fake_molfile(3000, 3000).encode()) < supervisor.MAX_MESSAGE_BYTES
+    assert len(fake_molfile(30000, 30000).encode()) > supervisor.MAX_MESSAGE_BYTES
+
+
+def good_cdk(request: list[Any]) -> bytes:
+    payload = {"molfile": fake_molfile(3, 2, title=f"{request[2]}-ok"), "reason": None}
+    return json.dumps(["cdk_result", request[1], payload, False]).encode()
+
+
+def cdk_reply(tag: str = "cdk_result", rid_offset: int = 0, **fields: Any) -> Reply:
+    def reply(request: list[Any]) -> bytes:
+        payload = {"molfile": fake_molfile(3, 2), "reason": None, **fields}
+        return json.dumps([tag, request[1] + rid_offset, payload, False]).encode()
+
+    return reply
+
+
+BROKEN_CDK_REPLIES = {
+    "a names reply to a cdk request": cdk_reply(tag="result"),
+    "the wrong id": cdk_reply(rid_offset=1),
+    "a number": raw(b"5"),
+    "null": raw(b"null"),
+    "an array of the wrong length": raw(b'["cdk_result", 1]'),
+    "a names payload": lambda request: json.dumps(
+        [
+            "cdk_result",
+            request[1],
+            {"name": "n", "tier": None, "verified": None, "reason": None},
+            False,
+        ]
+    ).encode(),
+    "a molblock and a reason": cdk_reply(reason="invalid_smiles"),
+    "a molblock too big for the cap": cdk_reply(molfile=fake_molfile(3000, 3000)),
+    "bytes that are not JSON": raw(b"\xff\xfe\x00"),
+}
+
+
+@pytest.mark.parametrize("reply", BROKEN_CDK_REPLIES.values(), ids=BROKEN_CDK_REPLIES.keys())
+async def test_a_cdk_reply_that_makes_no_sense_costs_that_structure_only_and_the_process_changes(
+    reply: Reply,
+) -> None:
+    n = scripted_namer(good_cdk, reply)
+    try:
+        results = await bounded(n.cdk_many(["a", "b", "c"]))
+        # the molblock already made is kept, the broken answer is that structure's engine_error, and
+        # the next structure is served by the replacement: never a failed request
+        assert title(results[0]) == "a-ok"
+        assert results[1] == CdkResult(None, "engine_error")
+        assert title(results[2]) == "c@0.70"
+        assert n.pid != _AliveProcess.pid
+    finally:
+        await n.stop()
+
+
+async def test_a_cdk_reply_to_a_names_request_is_refused_too() -> None:
+    n = scripted_namer(good, cdk_reply())
+    try:
+        results = await bounded(n.name_many(["a", "b", "c"]))
+        assert [r.name for r in results] == ["a-ok", None, "c@0.50"]
+        assert results[1].reason == "engine_error"
     finally:
         await n.stop()

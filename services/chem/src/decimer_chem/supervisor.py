@@ -14,6 +14,11 @@ whole service with it. So the engine, and the one JVM it starts, live in a child
   does not pay for the JVM start; a request waits for a replacement only as long as its budget;
 * the JVM is started once per child, when the child starts, never per request.
 
+The child does two things, for two kinds of request: it names a structure (Orthonym, `name`) and it
+lays a structure out for a molblock (CDK, `cdk`, the D4 fallback). Both run one at a time on the
+same pipe, under the same deadlines, with the same failure rules: whatever goes wrong with one
+structure is that structure's result, and a killed, crashed or retired child is replaced.
+
 The parent and child talk over a pipe, one message each way per structure. **The messages are
 JSON, never pickle**: a pickle imports whatever class it names, and Orthonym's names can be `str`
 subclasses that drag Orthonym and RDKit into the web process (42 MB to 104 MB); and a pickle from
@@ -48,8 +53,11 @@ from .logs import RedactOrthonym, log_failure
 from .results import (
     ENGINE_ERROR_REASON,
     ENGINE_UNAVAILABLE_REASON,
+    MAX_MOLFILE_BYTES,
     TIMEOUT_REASON,
+    CdkResult,
     NameResult,
+    looks_like_molfile,
 )
 from .settings import Settings
 
@@ -60,12 +68,17 @@ DEFAULT_FACTORY = "decimer_chem.engine:OrthonymEngine"
 _TIMEOUT = NameResult(None, None, None, TIMEOUT_REASON)
 _ENGINE_ERROR = NameResult(None, None, None, ENGINE_ERROR_REASON)
 _UNAVAILABLE = NameResult(None, None, None, ENGINE_UNAVAILABLE_REASON)
+_CDK_TIMEOUT = CdkResult(None, TIMEOUT_REASON)
+_CDK_ENGINE_ERROR = CdkResult(None, ENGINE_ERROR_REASON)
+_CDK_UNAVAILABLE = CdkResult(None, ENGINE_UNAVAILABLE_REASON)
 
 #: Relative paths in these are made absolute before the child changes into its scratch directory.
 _PATH_ENV = ("ORTHONYM_JAR_DIR", "ORTHONYM_CACHE_DIR", "XDG_CACHE_HOME", "JAVA_HOME")
 
-#: The largest message either end will read. A SMILES is at most 2000 characters and a name a few
-#: hundred; anything near a megabyte is a bug or worse, and is refused without reading it.
+#: The largest message either end will read. A request is a SMILES of at most 2000 characters; a
+#: reply is a name (a few hundred characters) or a molblock (at most `MAX_MOLFILE_BYTES`, 256 KiB,
+#: about 28 KB for the 300 atoms CDK is given); anything near a megabyte is a bug or worse, and is
+#: refused without reading it.
 MAX_MESSAGE_BYTES = 1 << 20
 
 #: Two crashes in a row inside one request: the engine is not coming back for this request.
@@ -89,6 +102,38 @@ class Engine(Protocol):
     def name(self, smiles: str, timeout_s: float) -> NameResult:
         """Name one structure within `timeout_s` (a soft limit). Any exception is that structure's
         `engine_error`. An engine may set `recycle_requested` to have its process replaced."""
+
+    def cdk(self, smiles: str, timeout_s: float) -> CdkResult:
+        """Lay one structure out as a V2000 molblock within `timeout_s`, or decline. The same
+        rules as `name`."""
+
+
+class _Result(Protocol):
+    @property
+    def reason(self) -> str | None: ...
+
+    def as_dict(self) -> dict[str, str | None]: ...
+
+
+@dataclass(frozen=True)
+class _Operation[R: _Result]:
+    """One kind of request. `request` is its tag on the pipe and the name of the engine method that
+    serves it; `reply` is the tag of its answer; `parse` accepts a reply's payload or refuses it;
+    `limit` is the soft limit for one structure; the three results are what a structure that timed
+    out, hit an engine error or could not be tried with no process available gets."""
+
+    request: str
+    reply: str
+    parse: Callable[[object], R | None]
+    limit: Callable[[Settings], float]
+    timeout: R
+    engine_error: R
+    unavailable: R
+    #: After the first `timeout` in a batch, answer the rest of it with `timeout` without calling
+    #: the engine. For CDK a timeout means a runaway Java thread and a replaced process (about 3.5 s
+    #: for the next JVM), so each further structure of a slow batch would cost another replacement
+    #: and hold the one process, and every name waiting for it, for the whole request budget.
+    give_up_after_timeout: bool = False
 
 
 # --- the child ---------------------------------------------------------------------------
@@ -157,16 +202,19 @@ def worker_main(conn: Connection, factory: str, settings: Settings, scratch: str
             return  # the parent is gone, or no longer speaks to us
         if message[0] == "stop":
             return
+        operation = _OPERATIONS.get(message[0])
+        if operation is None:
+            return  # the parent no longer speaks our protocol
         _, rid, smiles, timeout_s = message
         try:
-            result = engine.name(smiles, timeout_s)
+            result = getattr(engine, operation.request)(smiles, timeout_s)
         except Exception as exc:
-            # One structure's failure (a bug in Orthonym, say) is that structure's answer. Only the
-            # exception's type and frames are logged: its message can carry the SMILES.
+            # One structure's failure (a bug in Orthonym or CDK, say) is that structure's answer.
+            # Only the exception's type and frames are logged: its message can carry the SMILES.
             log_failure(log, "engine raised", exc, error_id=uuid.uuid4().hex[:12])
-            result = _ENGINE_ERROR
+            result = operation.engine_error
         recycle = bool(getattr(engine, "recycle_requested", False))
-        if not _send(conn, ("result", rid, result.as_dict(), recycle)) or recycle:
+        if not _send(conn, (operation.reply, rid, result.as_dict(), recycle)) or recycle:
             return  # a recycled process leaves after its answer; the parent starts the next one
 
 
@@ -224,6 +272,50 @@ def parse_result(payload: object) -> NameResult | None:
     if any(value is not None and not _encodes(value) for value in payload.values()):
         return None  # a lone surrogate ("\\ud800") is valid JSON but cannot be written as UTF-8
     return NameResult(payload["name"], payload["tier"], payload["verified"], payload["reason"])
+
+
+def parse_cdk_result(payload: object) -> CdkResult | None:
+    """A `CdkResult` from a reply, or None unless it is exactly two plain strings or nulls, exactly
+    one of them set, and a molblock (if there is one) that has the shape of a V2000 file, encodes as
+    UTF-8 and is within `MAX_MOLFILE_BYTES`."""
+    if not isinstance(payload, dict) or set(payload) != {"molfile", "reason"}:
+        return None
+    molfile, reason = payload["molfile"], payload["reason"]
+    if any(value is not None and type(value) is not str for value in (molfile, reason)):
+        return None
+    if (molfile is None) == (reason is None):
+        return None  # a molblock and a reason, or neither: not an answer
+    if reason is not None and not _encodes(reason):
+        return None
+    if molfile is not None and (
+        not _encodes(molfile)
+        or len(molfile.encode("utf-8")) > MAX_MOLFILE_BYTES
+        or not looks_like_molfile(molfile)
+    ):
+        return None
+    return CdkResult(molfile, reason)
+
+
+_NAME = _Operation(
+    "name",
+    "result",
+    parse_result,
+    lambda s: s.name_timeout_s,
+    _TIMEOUT,
+    _ENGINE_ERROR,
+    _UNAVAILABLE,
+)
+_CDK = _Operation(
+    "cdk",
+    "cdk_result",
+    parse_cdk_result,
+    lambda s: s.cdk_timeout_s,
+    _CDK_TIMEOUT,
+    _CDK_ENGINE_ERROR,
+    _CDK_UNAVAILABLE,
+    give_up_after_timeout=True,
+)
+_OPERATIONS: dict[str, _Operation[Any]] = {op.request: op for op in (_NAME, _CDK)}
 
 
 @dataclass
@@ -305,39 +397,52 @@ class ProcessNamer:
             shutil.rmtree(scratch, ignore_errors=True)
 
     async def name_many(self, smiles: Sequence[str]) -> list[NameResult]:
-        """One result per SMILES, in order; see `_name_one` for what each failure becomes.
+        """One result per SMILES, in order; see `_call_one` for what each failure becomes.
 
         Raises EngineUnavailable only when no structure at all could be tried.
         """
+        return await self._batch(_NAME, smiles)
+
+    async def cdk_many(self, smiles: Sequence[str]) -> list[CdkResult]:
+        """One CDK result per SMILES, in order (a molblock or a decline), under the same rules as
+        `name_many`; the two take turns for the one process."""
+        return await self._batch(_CDK, smiles)
+
+    async def _batch[R: _Result](self, op: _Operation[R], smiles: Sequence[str]) -> list[R]:
         async with self._lock:
             self._active += 1
             try:
-                return await self._run_batch(smiles)
+                return await self._run_batch(op, smiles)
             finally:
                 self._active -= 1
 
-    async def _run_batch(self, smiles: Sequence[str]) -> list[NameResult]:
+    async def _run_batch[R: _Result](self, op: _Operation[R], smiles: Sequence[str]) -> list[R]:
         budget_ends = time.monotonic() + self._settings.batch_timeout_s
-        results: list[NameResult] = []
+        results: list[R] = []
         crashes = 0
         unavailable: str | None = None
+        gave_up = False
         for item in smiles:
             if unavailable is not None:
-                results.append(_UNAVAILABLE)
+                results.append(op.unavailable)
+                continue
+            if gave_up:
+                results.append(op.timeout)  # an earlier structure timed out: not even tried
                 continue
             remaining = budget_ends - time.monotonic()
             if remaining <= 0:
-                results.append(_TIMEOUT)  # the budget is spent: not even tried
+                results.append(op.timeout)  # the budget is spent: not even tried
                 continue
             try:
-                result, crashed = await self._name_one(
-                    item, min(self._settings.name_timeout_s, remaining), remaining
+                result, crashed = await self._call_one(
+                    op, item, min(op.limit(self._settings), remaining), remaining
                 )
             except EngineUnavailable as exc:
                 unavailable = str(exc)
-                results.append(_UNAVAILABLE)
+                results.append(op.unavailable)
                 continue
             results.append(result)
+            gave_up = op.give_up_after_timeout and result.reason == TIMEOUT_REASON
             crashes = crashes + 1 if crashed else 0
             if crashes >= MAX_CONSECUTIVE_CRASHES:
                 unavailable = "the naming process crashed twice in a row"
@@ -347,20 +452,20 @@ class ProcessNamer:
 
     # -- one structure --
 
-    async def _name_one(
-        self, smiles: str, limit_s: float, remaining_s: float
-    ) -> tuple[NameResult, bool]:
+    async def _call_one[R: _Result](
+        self, op: _Operation[R], smiles: str, limit_s: float, remaining_s: float
+    ) -> tuple[R, bool]:
         """(result, the process crashed). A timeout, a crash and an engine error are each that
         structure's result; the process is replaced in the background after a kill or a crash."""
         worker = await self._acquire(remaining_s)
         if worker is None:
-            return _TIMEOUT, False  # the replacement is still starting and the budget is gone
+            return op.timeout, False  # the replacement is still starting and the budget is gone
         self._rid += 1
         rid = self._rid
         wait_s = limit_s + self._settings.kill_grace_s
         try:
             reply = await asyncio.to_thread(
-                _exchange, worker.conn, ("name", rid, smiles, limit_s), wait_s
+                _exchange, worker.conn, (op.request, rid, smiles, limit_s), wait_s
             )
         except EngineFailure as exc:
             # The reason is one of the fixed texts above: no structure, no engine message.
@@ -369,7 +474,7 @@ class ProcessNamer:
                 extra={"pid": worker.process.pid, "reason": str(exc)},
             )
             self._replace()
-            return _ENGINE_ERROR, True
+            return op.engine_error, True
         except BaseException:
             # Cancelled mid-flight: never leave a reply in the pipe for the next call to mistake
             # for its own.
@@ -382,12 +487,12 @@ class ProcessNamer:
                 extra={"pid": worker.process.pid, "deadline_s": round(wait_s, 2)},
             )
             self._replace()
-            return _TIMEOUT, False
-        result = parse_result(reply[2]) if len(reply) == 4 and reply[0] == "result" else None
+            return op.timeout, False
+        result = op.parse(reply[2]) if len(reply) == 4 and reply[0] == op.reply else None
         if result is None or reply[1] != rid:
             log.error("naming process broke the protocol", extra={"pid": worker.process.pid})
             self._replace()
-            return _ENGINE_ERROR, True
+            return op.engine_error, True
         if reply[3]:  # the engine asked to be replaced (its state could not be restored)
             log.warning("naming process asked to be replaced", extra={"pid": worker.process.pid})
             self._replace()

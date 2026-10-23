@@ -8,7 +8,8 @@
 #   seg    deploy/weights/seg/DECIMER-Segmentation_model/mask_rcnn_molecule.h5
 #   ocsr   deploy/weights/ocsr/DECIMER-V2/{DECIMER_model,DECIMER_HandDrawn_model}/
 #          (both: import DECIMER loads both, owner decision D15)
-#   chem   deploy/weights/chem/{opsin-cli-2.9.0-jar-with-dependencies.jar,centres-cli-1.2.1.jar}
+#   chem   deploy/weights/chem/{opsin-cli-2.9.0-jar-with-dependencies.jar,centres-cli-1.2.1.jar,
+#          cdk-2.8.jar}
 #   cls    nothing to fetch: the weights ship inside the pip package; cls.Dockerfile checks the
 #          installed files against the cls/ lines of SHA256SUMS at build time
 #
@@ -21,7 +22,7 @@
 #   zenodo   https://zenodo.org/records/{10663579,8300489,10781330}, each download also checked
 #            against the MD5 Zenodo publishes for the file (below), the zips against the SHA-256 in
 #            services/ocsr/README.md, then every file against SHA256SUMS.
-#   github   the two chem jars, from the OPSIN and centres releases.
+#   github   the three chem jars, from the OPSIN, centres and CDK (cdk-2.8) releases.
 #   default  the archive where it has the files, the network for the rest. --zenodo forces Zenodo for
 #            all of seg and ocsr; --archive DIR picks another archive.
 # Every download is https only (also across redirects). --force fetches again even when what is there
@@ -45,9 +46,11 @@ MODELS_SHA256=8ebc7db18fffac7e71a2cf8487708053620d124846bc9502eddac1283b431d2b
 HAND_URL='https://zenodo.org/records/10781330/files/DECIMER_HandDrawn_model.zip?download=1'
 HAND_MD5=1fece9813549417440f7c45d0c51603a
 HAND_SHA256=91c70fee79b7d64c09d433ff82e2216d16070e4d098b83da2c13d34c52439fde
-# chem: the file is checked against SHA256SUMS afterwards; the URLs are the releases Orthonym pins.
+# chem: the file is checked against SHA256SUMS afterwards; the first two URLs are the releases Orthonym
+# pins, the third is the CDK 2.8 bundle that legacy uses (the same bytes: see SHA256SUMS).
 OPSIN_URL='https://github.com/dan2097/opsin/releases/download/2.9.0/opsin-cli-2.9.0-jar-with-dependencies.jar'
 CENTRES_URL='https://github.com/SiMolecule/centres/releases/download/1.2.1/centres.jar'
+CDK_URL='https://github.com/cdk/cdk/releases/download/cdk-2.8/cdk-2.8.jar'
 
 die() { echo "fetch: $*" >&2; exit 1; }
 say() { echo "fetch: $*"; }
@@ -129,6 +132,7 @@ fetch_chem() {
     mkdir -p "$dest"
     download "$OPSIN_URL" "$dest/opsin-cli-2.9.0-jar-with-dependencies.jar"
     download "$CENTRES_URL" "$dest/centres-cli-1.2.1.jar"
+    download "$CDK_URL" "$dest/cdk-2.8.jar"
     chmod 644 "$dest"/*.jar   # Orthonym's own downloads are 0600; the service user must be able to read them
 }
 

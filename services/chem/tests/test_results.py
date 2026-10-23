@@ -202,3 +202,56 @@ def test_as_dict_is_plain_strs_whatever_the_result_holds() -> None:
     result = NameResult(Tagged("n"), Tagged("t"), Tagged("v"), Tagged("r"))  # built by hand
     for value in result.as_dict().values():
         assert type(value) is str
+
+
+# --- the CDK result (owner decision D4, TODO) ----------------------------------------
+
+
+def test_the_cdk_reason_words_and_limits() -> None:
+    assert results.LAYOUT_FAILED_REASON == "layout_failed"
+    assert results.TOO_LARGE_REASON == "too_large"
+    assert results.MAX_SMILES_CHARS == 2000  # the same cap as the names
+    assert results.MAX_MOLFILE_BYTES == 256 * 1024  # a V2000 file of 999 atoms is about 92 KB
+
+
+def test_a_cdk_result_has_exactly_two_plain_fields() -> None:
+    assert results.CdkResult("mol", None).as_dict() == {"molfile": "mol", "reason": None}
+    assert results.CdkResult(None, "timeout").as_dict() == {"molfile": None, "reason": "timeout"}
+    held = results.CdkResult(Tagged("m"), Tagged("r"))  # built by hand from str subclasses
+    assert all(type(value) is str for value in held.as_dict().values())
+
+
+MOLBLOCK = "\n  CDK\n\n  1  0  0  0  0  0  0  0  0  0999 V2000\n    0.0 0.0 0.0 C\nM  END\n"
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (MOLBLOCK, True),
+        (MOLBLOCK.replace("\n", "\r\n"), True),  # another line ending is still a molblock
+        (MOLBLOCK + "\n", True),  # trailing blank lines do not matter
+        (MOLBLOCK.replace("V2000", "V3000"), False),  # the service writes V2000 only
+        (MOLBLOCK.replace("M  END", ""), False),
+        ("this is not a molblock", False),
+        ("", False),
+        ("M  END\n", False),
+        (None, False),
+        (5, False),
+        (b"mol", False),
+    ],
+    ids=[
+        "ok",
+        "crlf",
+        "blank-tail",
+        "v3000",
+        "no-end",
+        "text",
+        "empty",
+        "only-end",
+        "none",
+        "number",
+        "bytes",
+    ],
+)
+def test_looks_like_molfile(text: object, expected: bool) -> None:
+    assert results.looks_like_molfile(text) is expected
