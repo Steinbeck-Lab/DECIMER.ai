@@ -130,6 +130,14 @@ class WorkerSettings(BaseSettings):
     seg_input_max_pixels: int = Field(default=25_000_000, gt=0)
     seg_input_max_bytes: int = Field(default=36 * MIB, gt=0)
 
+    # --- single pasted image ---
+    # A job made of exactly one uploaded image (not a PDF) in which seg finds exactly ONE structure
+    # whose box covers at least this fraction of the image: the whole image goes to ocsr and cls
+    # instead of seg's crop (and is the reported box). Such an image is already a tight crop, and
+    # seg's box, grown from its mask, can clip the drawing's edge. Several structures, or a small
+    # one in a big image, keep seg's crops. 1 means the box must cover the whole image.
+    single_image_whole_fraction: float = Field(default=0.6, gt=0, le=1)
+
     # --- chemistry ---
     # Names are asked for in batches of at most this many structures (chem takes 20).
     chem_batch_size: int = Field(default=20, gt=0, le=20)

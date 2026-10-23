@@ -13,6 +13,10 @@ are exactly those of running the four stages one after the other:
   settled (segmented, failed or not rendered): the prefix rule of `overlap.PrefixNumbering`. A
   later page that seg answers first waits for its predecessors; nothing is ever renumbered.
 * Every page is still segmented, also those beyond the cap, because `structuresFound` counts them.
+* A job of exactly one uploaded image (one page: the numbering above is untouched) where seg finds
+  exactly one structure covering at least `SINGLE_IMAGE_WHOLE_FRACTION` of the image recognises
+  the whole image instead of seg's crop: the image is already a tight crop and seg's box can clip
+  its edge. The result's box is then the whole image, as for the zero-structure fallback below.
 * The names (chem) are asked for in the same batches as before, once every structure is checked.
   So is CDK: once every structure is checked, the SMILES that RDKit refused go
   to chem's `POST /cdk` in one batch (chunks of at most 20), before the names are asked for. A
@@ -116,7 +120,7 @@ from ..models import (
 from ..molfile import MolfileError, MolfileTooBig
 from ..settings import Settings
 from ..store import JobStore
-from .crops import PART_PATTERN, CropRef, PageParts, Scaling, write_parts
+from .crops import PART_PATTERN, CropRef, PageParts, Scaling, page_boxes, write_parts
 from .errors import (
     INPUT_MISSING,
     INTERNAL_ERROR,
@@ -136,7 +140,7 @@ from .fragments import trim_fragments
 from .overlap import PrefixNumbering, Released, StageTracker
 from .render import Renderer
 from .replicas import Lease
-from .services import OcsrAnswer, Services
+from .services import OcsrAnswer, Segment, Services
 from .settings import WorkerSettings
 
 log = logging.getLogger("decimer_api.worker")
@@ -564,6 +568,14 @@ class _Run:
             )
             del fitted  # the image that was sent is not needed any more
         segments = sorted(answer.segments, key=lambda segment: segment.index)
+        if self.single_image:
+            # Decided before seg's crops are cut, so that a fired rule never decodes and encodes
+            # a crop of a big page it is going to replace with the page itself.
+            whole = await asyncio.to_thread(
+                self._whole_image_if_it_fills_the_frame, page, segments, scaling
+            )
+            if whole is not None:
+                return whole
         return await asyncio.to_thread(
             write_parts,
             self.folder,
@@ -571,6 +583,33 @@ class _Run:
             segments=segments,
             keep=self.deps.settings.max_structures,
             source=scaling,
+        )
+
+    def _whole_image_if_it_fills_the_frame(
+        self, page: Page, segments: list[Segment], scaling: Scaling | None
+    ) -> PageParts | None:
+        """A pasted image that is already a tight crop: seg's box is expanded from its mask and can
+        clip the edge of the drawing (a methoxy group, a ring), so the whole image is sent to
+        ocsr and cls instead. Only when seg found exactly one structure and its box covers at least
+        `SINGLE_IMAGE_WHOLE_FRACTION` of the image; anything else (None) keeps what seg cut out.
+        The box reported is then the whole image, as for the zero-structure fallback. Synchronous
+        (a thread): it links a file."""
+        boxes = page_boxes(segments, scaling)
+        if len(boxes) != 1:  # found, not kept: with MAX_STRUCTURES=1 two found are still two
+            return None
+        ((number, (x0, y0, x1, y1)),) = boxes
+        covered = (x1 - x0) * (y1 - y0)
+        if covered < self.worker.single_image_whole_fraction * page.width * page.height:
+            return None
+        log.debug(
+            "job %s: the one structure covers %.0f%% of the image: recognised whole",
+            self.job.id,
+            100 * covered / (page.width * page.height),
+        )
+        part = self.folder / f"seg-{page.index}-{number}.part"
+        link_or_copy(page.path, part)  # what `_finalise` renames to crop-<n>.png
+        return PageParts(
+            found=1, refs=[CropRef(page_index=page.index, bbox=_whole(page), part=part)]
         )
 
     def _page_not_searched(self, page: Page, error: Exception) -> None:
@@ -633,7 +672,7 @@ class _Run:
         page = self._pages[0]
         path = self.folder / "crop-0.png"
         link_or_copy(page.path, path)
-        return Crop(0, page.index, (0, 0, page.width, page.height), path)
+        return Crop(0, page.index, _whole(page), path)
 
     # --- recognise and check, a crop at a time ---
 
@@ -902,6 +941,10 @@ class _Run:
 
 
 # --- helpers -------------------------------------------------------------------------------------
+
+
+def _whole(page: Page) -> tuple[int, int, int, int]:
+    return (0, 0, page.width, page.height)
 
 
 def _find_inputs(input_dir: Path) -> _Inputs:

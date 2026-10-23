@@ -44,6 +44,23 @@ class PageParts:
     refs: list[CropRef]  # the first `keep` of them, in seg's order
 
 
+def page_boxes(
+    segments: list[Segment], source: Scaling | None
+) -> list[tuple[int, tuple[int, int, int, int]]]:
+    """(place in seg's answer, box in pixels of the page) of every structure with something left
+    on the page: a box scaled back from a smaller copy can fall off it, and is not a structure."""
+    boxes = []
+    for number, segment in enumerate(segments):
+        box = segment.bbox
+        if source is not None:
+            scaled = scale_box(box, sent=source.sent, full=source.full)
+            if scaled is None:
+                continue
+            box = scaled
+        boxes.append((number, box))
+    return boxes
+
+
 def write_parts(
     folder: Path,
     *,
@@ -55,27 +72,18 @@ def write_parts(
     """Write the first `keep` crops of a page into `folder` (synchronous: run it in a thread)."""
     from PIL import Image
 
-    found = 0
+    boxes = page_boxes(segments, source)
     refs: list[CropRef] = []
     full_page = Image.open(source.page) if source is not None else None
     try:
-        for number, segment in enumerate(segments):
-            box = segment.bbox
-            if source is not None:
-                scaled = scale_box(box, sent=source.sent, full=source.full)
-                if scaled is None:
-                    continue
-                box = scaled
-            found += 1
-            if len(refs) >= keep:
-                continue
+        for number, box in boxes[:keep]:
             part = folder / f"seg-{page_index}-{number}.part"
             if full_page is not None:
                 full_page.crop(box).save(part, format="PNG")
             else:
-                part.write_bytes(segment.png)
+                part.write_bytes(segments[number].png)
             refs.append(CropRef(page_index=page_index, bbox=box, part=part))
     finally:
         if full_page is not None:
             full_page.close()
-    return PageParts(found=found, refs=refs)
+    return PageParts(found=len(boxes), refs=refs)

@@ -1,0 +1,15 @@
+file,page,region_px,kind,contains,labels
+n01_number_cmpd1.png,3,301 1792 752 2293,structure+number,"compound 1 with its number and the (2R,3R,16R) caption",1
+n02_number_cmpd11_caption_band.png,3,1178 2770 1754 3163,structure+number,"compound 11, its number, the grey caption band and the edge of compound 12",11
+n03_number_cmpd5.png,3,326 2344 752 2719,structure+number,compound 5 with its number,5
+n04_arrow_trp.png,7,263 927 664 1191,structure+arrow,"tryptophan, a dashed reaction arrow and the enzyme label ShnA",S1
+n05_arrow_succinimide.png,7,1729 902 2231 1228,structure+arrow,"the succinimide intermediate, a dashed arrow with -H2O, the previous structure edge",S5
+n06_dashedbox_cmpd1.png,7,276 2118 602 2514,structure+box,compound 1 in its red dashed box with its number,S9
+n07_dashedbox_cmpd2.png,7,1855 1441 2181 1830,structure+box,compound 2 in its red dashed box with its number,S8
+n08_arrow_prenyltrp.png,7,639 952 1053 1228,structure+arrow,"reverse-prenylated tryptophan, a dashed arrow and ShnC, the edges of its neighbours",S2
+n09_two_5_6.png,3,326 2344 1203 2719,two structures,compounds 5 and 6 side by side,5;6
+n10_two_9_10.png,3,326 2770 1203 3083,two structures,compounds 9 and 10 side by side,9;10
+n11_two_1_2.png,3,301 1792 1203 2293,two structures,compounds 1 and 2 side by side,1;2
+n12_text_above_cmpd1.png,3,238 1366 752 2293,structure+text,the last lines of the left text column above compound 1 (structure under 40% of it),1
+n13_text_beside_cmpd3.png,3,1241 1366 1729 2231,structure+text,"the right text column, cut mid-sentence, above compound 3 and the edge of compound 4",3
+n14_table_above_cmpd11.png,4+3,276 627 1216 1053 over 1178 2770 1754 3095,structure+table,"COMPOSITE: rows of Table 1 (page 4) above compound 11 (page 3), 60 px apart",11
