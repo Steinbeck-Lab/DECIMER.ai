@@ -1,4 +1,4 @@
-import type { ExportFormat, ExportRequest, Job, Result } from '../api/contract';
+import { STAGE_ORDER, type ExportFormat, type ExportRequest, type Job, type Result, type StageName, type StageState } from '../api/contract';
 import type { EditEntry, Filter, State, Status } from './model';
 
 /** Below this the model is not confident and the result goes to "review". */
@@ -193,4 +193,33 @@ export function hasWork(edits: Record<number, EditEntry>): boolean {
 /** Page indexes are 0-based in the API; people count from 1. */
 export function pageNumber(view: Pick<ResultView, 'result'>): number {
   return view.result.pageIndex + 1;
+}
+
+export interface StageProgress {
+  /** Each stage's own state. The worker overlaps its stages, so several can be active at once. */
+  states: Record<StageName, StageState>;
+  /** Index in `STAGE_ORDER` of the stage the page speaks of: the latest one that is active, else the first one that is not done. */
+  current: number;
+  /** Indexes of the stages that are active now, in pipeline order (`current` is the last of them, when there are any). */
+  active: number[];
+  /** The active stages other than the current one: what runs alongside it. */
+  alongside: StageName[];
+  doneCount: number;
+}
+
+/**
+ * Where a running job is. A stage is done only when every stage before it is (the API's rule), so the done
+ * stages are a prefix of `STAGE_ORDER`; the active ones follow, one or several. Before the job exists the
+ * first stage is the current one.
+ */
+export function stageProgress(job: Pick<Job, 'stages'> | null): StageProgress {
+  const states = Object.fromEntries(
+    STAGE_ORDER.map((name) => [name, job?.stages.find((s) => s.name === name)?.state ?? 'pending']),
+  ) as Record<StageName, StageState>;
+  if (!job) return { states, current: 0, active: [], alongside: [], doneCount: 0 };
+  const doneCount = STAGE_ORDER.filter((name) => states[name] === 'done').length;
+  const activeNames = STAGE_ORDER.filter((name) => states[name] === 'active');
+  const active = STAGE_ORDER.flatMap((name, i) => (states[name] === 'active' ? [i] : []));
+  const current = active.at(-1) ?? Math.min(doneCount, STAGE_ORDER.length - 1);
+  return { states, current, active, alongside: activeNames.slice(0, -1), doneCount };
 }

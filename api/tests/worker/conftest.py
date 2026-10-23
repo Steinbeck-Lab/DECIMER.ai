@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import io
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,7 +13,7 @@ import httpx
 import pytest
 from PIL import Image
 
-from decimer_api.models import Job, JobStatus, JobWarning, StageState, new_job_id
+from decimer_api.models import Job, JobStatus, JobWarning, StageName, StageState, new_job_id
 from decimer_api.settings import Settings
 from decimer_api.store import Admission, JobStore
 from decimer_api.worker.pipeline import Deps, run_pipeline
@@ -201,6 +201,42 @@ def states(job: Job) -> list[str]:
 
 def all_done(job: Job) -> bool:
     return all(stage.state is StageState.DONE for stage in job.stages)
+
+
+def stage_state(job: Job, name: StageName) -> StageState:
+    return next(stage.state for stage in job.stages if stage.name is name)
+
+
+_STATE_RANK = {"pending": 0, "active": 1, "done": 2}
+
+
+def assert_legal_progress(saves: Sequence[Job]) -> list[tuple[str, ...]]:
+    """The stages the worker may show while the stages overlap, checked over every save of a
+    running job (in the order they were made): a stage never shows done before every stage
+    before it is done, never shows active or done before the stage before it has started, never
+    goes back, and results are in the record only once the last stage is done. Returns the
+    stage states (render, segment, recognise, check) after each change."""
+    seen: list[tuple[str, ...]] = []
+    for job in saves:
+        if job.status is not JobStatus.RUNNING:
+            continue
+        assert job.stages[0].state is StageState.DONE  # upload
+        states = tuple(stage.state.value for stage in job.stages[1:])
+        for position, state in enumerate(states):
+            assert state != "done" or all(s == "done" for s in states[:position]), states
+            assert state == "pending" or all(s != "pending" for s in states[:position]), states
+        if job.results:
+            assert states[-1] == "done", states
+        if seen:
+            assert all(
+                _STATE_RANK[b] >= _STATE_RANK[a] for a, b in zip(seen[-1], states, strict=True)
+            ), (
+                seen[-1],
+                states,
+            )
+        if not seen or seen[-1] != states:
+            seen.append(states)
+    return seen
 
 
 async def wait_until(predicate: Callable[[], bool], timeout: float = 2.0) -> None:

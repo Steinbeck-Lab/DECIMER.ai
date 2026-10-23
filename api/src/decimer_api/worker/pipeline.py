@@ -3,11 +3,29 @@
 `run_pipeline(job_id, deps)` is everything the worker does with one job; the arq function
 `process_job` and the in-process development mode are thin wrappers around it.
 
+The stages OVERLAP: a page goes to seg as soon as it is rendered, and a crop goes to
+ocsr and cls (and then to the RDKit check) as soon as its place in the job is known. The results
+are exactly those of running the four stages one after the other:
+
+* Crops are numbered in document order (page by page, seg's order within a page) and only the
+  first `MAX_STRUCTURES` are recognised. A crop's index is the number of structures on all
+  earlier pages plus its place on its page, so it is known only when every earlier page has been
+  settled (segmented, failed or not rendered): the prefix rule of `overlap.PrefixNumbering`. A
+  later page that seg answers first waits for its predecessors; nothing is ever renumbered.
+* Every page is still segmented, also those beyond the cap, because `structuresFound` counts them.
+* The names (chem) are asked for in the same batches as before, once every structure is checked.
+* `results` are filled in at once, when the check is done (never earlier). `structuresFound` is
+  set when the last page has been segmented; a job that fails before that has 0.
+* The warnings are kept in the order of the stages that raise them (`_WARNING_RANK`), as they
+  read when the stages ran one after the other, not in the order things happened.
+
 Contract with the API (see "Worker contract" in the project README):
 
 * `store.mark_running` first; a job whose record is gone or already finished is skipped.
-* `store.save` after every stage (and at least every `HEARTBEAT_SECONDS`), so the frontend can
-  poll the stages and a running record never expires under a busy worker.
+* `store.save` whenever a stage changes state (and at least every `HEARTBEAT_SECONDS`), so the
+  frontend can poll the stages and a running record never expires under a busy worker. Stages can
+  be active at the same time. A stage turns active when its first piece of work starts and done
+  when its last ends AND every stage before it is done (`overlap.StageTracker`).
 * `store.finish` exactly once, in a `finally`, whatever happened: done, a failure that is
   explained to the user, or a bug. The one exception is cancellation (arq stops the worker):
   arq runs a cancelled job again after the restart, so the job is left running and the next run
@@ -53,7 +71,9 @@ record; it goes to the log.
 from __future__ import annotations
 
 import asyncio
+import bisect
 import contextlib
+import functools
 import logging
 import os
 import re
@@ -62,10 +82,8 @@ from collections.abc import (
     Awaitable,
     Callable,
     Coroutine,
-    Iterable,
     Iterator,
     Mapping,
-    Sequence,
 )
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -80,7 +98,6 @@ from ..models import (
     JobWarning,
     Result,
     StageName,
-    StageState,
     initial_stages,
     is_valid_job_id,
 )
@@ -103,6 +120,7 @@ from .errors import (
 )
 from .files import Fitted, fit_png, link_or_copy, png_file_size
 from .fragments import trim_fragments
+from .overlap import PrefixNumbering, Released, StageTracker
 from .render import Renderer
 from .replicas import Lease
 from .services import OcsrAnswer, Services
@@ -259,6 +277,61 @@ def _fail(job: Job, failure: Failure) -> None:
 
 # --- one run -------------------------------------------------------------------------------------
 
+# Where a warning goes among the others: by the stage that raises it, so that the list reads as it
+# did when the stages ran one after the other (the API's own warnings, rank 0, come first).
+_WARNING_RANK = {
+    StageName.RENDER: 1,
+    StageName.SEGMENT: 2,
+    StageName.RECOGNISE: 3,
+    StageName.CHECK: 4,
+}
+
+Render = Callable[[], Awaitable[Page | None]]
+
+
+class _Limit:
+    """At most `capacity()` pieces of work of one job at a time, where the capacity (the calls a
+    service takes over all its replicas) is looked up each time a piece asks to start and each time
+    one ends, not once for the run: a replica that joins while the job runs is used from the next
+    piece on, as the dispatcher of `replicas.py` already does for the calls themselves. Waiting
+    pieces usually start in the order they asked; a newcomer can take a slot between a wake-up
+    and the woken piece's re-check (that only changes which page seg sees first, never a
+    result)."""
+
+    def __init__(self, capacity: Callable[[], Awaitable[int]]) -> None:
+        self._capacity = capacity
+        self._running = 0
+        self._waiting: list[asyncio.Future[None]] = []
+
+    @contextlib.asynccontextmanager
+    async def __call__(self) -> AsyncIterator[None]:
+        await self._enter()
+        try:
+            yield
+        finally:
+            self._running -= 1
+            self._wake()
+
+    async def _enter(self) -> None:
+        while True:
+            limit = await self._capacity()
+            if self._running < limit:  # checked and counted with no await in between
+                self._running += 1
+                return
+            waiter: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+            self._waiting.append(waiter)
+            try:
+                await waiter
+            finally:
+                if waiter in self._waiting:
+                    self._waiting.remove(waiter)
+
+    def _wake(self) -> None:
+        waiting, self._waiting = self._waiting, []
+        for waiter in waiting:
+            if not waiter.done():
+                waiter.set_result(None)
+
 
 class _Run:
     def __init__(self, job: Job, deps: Deps) -> None:
@@ -274,33 +347,49 @@ class _Run:
         self.ocsr_timeouts = 0
         self.names_warned = False
         self.single_image = False
-        self.pages: list[Page] = []
-        self.crops: list[Crop] = []
-        self.recognitions: list[Recognition] = []
+        self.crops: list[Crop] = []  # numbered crops, as they were released: result order
+        self.recognitions: dict[int, Recognition] = {}  # by crop index
+        self.chemistry: dict[int, Chemistry] = {}
         # One save at a time: the heartbeat and a stage can both want to save, and the record
         # written last must be the one saved last.
         self._saving = asyncio.Lock()
+        self._stages = StageTracker()
+        self._ranks = [0] * len(job.warnings)  # the rank of each warning, in step with the list
+        # The overlap (see the module doc). `execute` sets the limits once it knows the replicas.
+        self._group: asyncio.TaskGroup | None = None
+        self._render_slots = asyncio.Semaphore(self.worker.render_concurrency)
+        # As many pages of this job at seg as it takes in all (its replicas), as many crops at
+        # ocsr and cls as the one of them with more room takes: no more, the rest of their queues
+        # belongs to other jobs.
+        self._seg_slots = _Limit(lambda: self.services.capacity("seg"))
+        self._crop_slots = _Limit(self._crop_capacity)
+        self._analysis_slots = asyncio.Semaphore(CHEMISTRY_THREADS)
+        self._numbering = PrefixNumbering[CropRef](0, 0)
+        self._ordering = asyncio.Lock()  # one page is released at a time
+        self._pages: dict[int, Page] = {}  # rendered pages, by position
+        self._rendering = 0  # pages whose render has not ended
+        self._segmented = 0  # pages seg answered for
+        self._segmentation_done = False
+        self._recognising = 0  # crops numbered whose recognition has not ended
 
     # --- bookkeeping ---
 
-    def warn(self, code: str, message: str) -> None:
-        self.job.warnings.append(JobWarning(code=code, message=message))
+    def warn(self, stage: StageName, code: str, message: str) -> None:
+        rank = _WARNING_RANK[stage]
+        at = bisect.bisect_right(self._ranks, rank)
+        self._ranks.insert(at, rank)
+        self.job.warnings.insert(at, JobWarning(code=code, message=message))
 
     async def save(self) -> None:
         async with self._saving:
             await self.deps.store.save(self.job)
 
-    def _set_stage(self, name: StageName, state: StageState) -> None:
-        for stage in self.job.stages:
-            if stage.name is name:
-                stage.state = state
-
-    async def _stage(self, name: StageName, work: Callable[[], Awaitable[None]]) -> None:
-        self._set_stage(name, StageState.ACTIVE)
-        await self.save()
-        await work()
-        self._set_stage(name, StageState.DONE)
-        await self.save()
+    async def _publish(self, *, force: bool = False) -> None:
+        """Bring the stage states of the record up to date and save it if one changed (or
+        `force`): a stage's change of state is when the frontend hears of it."""
+        changed = self._stages.apply(self.job.stages)
+        if changed or force:
+            await self.save()
 
     @contextlib.asynccontextmanager
     async def heartbeat(self) -> AsyncIterator[None]:
@@ -323,38 +412,78 @@ class _Run:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
 
+    # --- the run ---
+
     async def execute(self) -> None:
-        await self._stage(StageName.RENDER, self._render)
-        await self._stage(StageName.SEGMENT, self._segment)
-        await self._stage(StageName.RECOGNISE, self._recognise)
-        await self._stage(StageName.CHECK, self._check)
+        self._stages.start(StageName.RENDER)
+        await self._publish()
+        inputs = await asyncio.to_thread(_find_inputs, self.folder / "input")
+        await asyncio.to_thread(_remove_parts, self.folder)  # left by a run that was cancelled
+        renders = self._renders(inputs)
+        if not renders:
+            raise PipelineFailure(RENDER_FAILED)
+        self._rendering = len(renders)
+        self._numbering = PrefixNumbering(len(renders), self.deps.settings.max_structures)
+        # One task group for everything in flight, so that a failure, the job's deadline or a
+        # stopping worker cancels all of it, and the `async with` blocks give every slot back.
+        try:
+            async with asyncio.TaskGroup() as group:
+                self._group = group
+                for position, render in enumerate(renders):
+                    group.create_task(self._page(position, render))
+        except ExceptionGroup as failures:
+            raise _chosen(failures) from None
+        await self._finish_check()
+
+    async def _crop_capacity(self) -> int:
+        return max(await self.services.capacity("ocsr"), await self.services.capacity("cls"))
+
+    def _renders(self, inputs: _Inputs) -> list[Render]:
+        if inputs.pdf is not None:
+            pdf = inputs.pdf
+            return [
+                functools.partial(self._render_pdf_page, pdf, index)
+                for index in range(self.job.pages_processed)
+            ]
+        self.single_image = len(inputs.images) == 1
+        return [
+            functools.partial(self._copy_image, index, source)
+            for index, source in enumerate(inputs.images)
+        ]
+
+    async def _page(self, position: int, render: Render) -> None:
+        """One page from start to finish: render it, have seg search it, settle its place."""
+        async with self._render_slots:
+            page = await render()
+        self._rendering -= 1
+        if page is not None:
+            self._pages[position] = page
+            self._stages.start(StageName.SEGMENT)
+        if self._rendering == 0:
+            if not self._pages:
+                raise PipelineFailure(RENDER_FAILED)
+            self._stages.finish(StageName.RENDER)
+        await self._publish()
+        parts: PageParts | None = None
+        if page is not None:
+            async with self._seg_slots():
+                parts = await self._segment_page(page)
+        await self._settle(position, parts)
+
+    def _spawn(self, work: Coroutine[Any, Any, None]) -> None:
+        if self._group is None:
+            raise RuntimeError("no task group: only the pages in flight can send a crop on")
+        self._group.create_task(work)
 
     # --- render ---
 
-    async def _render(self) -> None:
-        inputs = await asyncio.to_thread(_find_inputs, self.folder / "input")
-        pages: list[Page | None]
-        if inputs.pdf is not None:
-            pdf = inputs.pdf
-            pages = await _map(
-                range(self.job.pages_processed),
-                lambda index: self._render_pdf_page(pdf, index),
-                limit=self.worker.render_concurrency,
-            )
-        else:
-            pages = await _map(
-                list(enumerate(inputs.images)),
-                lambda item: self._copy_image(*item),
-                limit=self.worker.render_concurrency,
-            )
-            self.single_image = len(inputs.images) == 1
-        self.pages = [page for page in pages if page is not None]
-        if not self.pages:
-            raise PipelineFailure(RENDER_FAILED)
-
     def _page_not_rendered(self, index: int, error: Exception) -> None:
         log.warning("job %s: page %d: %s", self.job.id, index, error)
-        self.warn("page_render_failed", f"Page {index + 1} could not be rendered and was skipped.")
+        self.warn(
+            StageName.RENDER,
+            "page_render_failed",
+            f"Page {index + 1} could not be rendered and was skipped.",
+        )
 
     async def _render_pdf_page(self, pdf: Path, index: int) -> Page | None:
         out = self.folder / f"page-{index}.png"
@@ -381,41 +510,6 @@ class _Run:
         return Page(index, out, width, height)
 
     # --- segment ---
-
-    async def _segment(self) -> None:
-        await asyncio.to_thread(_remove_parts, self.folder)  # left by a run that was cancelled
-        # As many pages at once as seg takes (all its replicas), no more: a page waiting for a
-        # slot holds its image in memory, and the rest of the queue belongs to other jobs.
-        limit = await self.services.capacity("seg")
-        outcomes = await _map(self.pages, self._segment_page, limit=limit)
-        if all(outcome is None for outcome in outcomes):
-            raise PipelineFailure(SEGMENTATION_FAILED)
-
-        parts = [outcome for outcome in outcomes if outcome is not None]
-        total = sum(part.found for part in parts)
-        refs = [ref for part in parts for ref in part.refs]
-        cap = self.deps.settings.max_structures
-        if total == 0 and self.single_image:
-            # Only one uploaded image, and nothing found on it: the image is the structure.
-            self.crops = await asyncio.to_thread(self._whole_page_crop)
-            total = 1
-        else:
-            self.crops = await asyncio.to_thread(_finalise, self.folder, refs, cap)
-        self.job.structures_found = total
-        self.job.structures_dropped = total - len(self.crops)
-        if self.job.structures_dropped:
-            self.job.truncated = True
-            self.warn(
-                "structures_truncated",
-                f"{total} structures were found. Only the first {len(self.crops)} were processed.",
-            )
-
-    def _whole_page_crop(self) -> list[Crop]:
-        """The single-image fallback: the crop is another name for the page file (a hard link)."""
-        page = self.pages[0]
-        path = self.folder / "crop-0.png"
-        link_or_copy(page.path, path)
-        return [Crop(0, page.index, (0, 0, page.width, page.height), path)]
 
     async def _segment_page(self, page: Page) -> PageParts | None:
         settings = self.worker
@@ -465,15 +559,85 @@ class _Run:
     def _page_not_searched(self, page: Page, error: Exception) -> None:
         log.warning("job %s: page %d: %s", self.job.id, page.index, error)
         self.warn(
+            StageName.SEGMENT,
             "page_segmentation_failed",
             f"Page {page.index + 1} could not be searched for structures.",
         )
 
-    # --- recognise ---
+    async def _settle(self, position: int, parts: PageParts | None) -> None:
+        """A page is done (a page that failed has no `parts`). Its crops get their places, and
+        are sent on to recognition, once every earlier page is done as well (the prefix rule)."""
+        if parts is not None:
+            self._segmented += 1
+        found = parts.found if parts is not None else 0
+        refs = parts.refs if parts is not None else []
+        async with self._ordering:
+            for released in self._numbering.settle(position, found, refs):
+                await self._release(released)
+            if self._numbering.complete:
+                await self._segmentation_complete()
 
-    async def _recognise(self) -> None:
-        limit = max(await self.services.capacity("ocsr"), await self.services.capacity("cls"))
-        self.recognitions = await _map(self.crops, self._recognise_crop, limit=limit)
+    async def _release(self, released: Released[CropRef]) -> None:
+        crops = await asyncio.to_thread(_finalise, self.folder, released)
+        for crop in crops:
+            self._send_on(crop)
+
+    def _send_on(self, crop: Crop) -> None:
+        self.crops.append(crop)
+        self._recognising += 1
+        self._spawn(self._crop(crop))
+
+    async def _segmentation_complete(self) -> None:
+        """Every page is segmented, failed or skipped: what seg found in all is known."""
+        if self._segmented == 0:
+            raise PipelineFailure(SEGMENTATION_FAILED)
+        total, kept = self._numbering.total, self._numbering.kept
+        if total == 0 and self.single_image:
+            # Only one uploaded image, and nothing found on it: the image is the structure.
+            self._send_on(await asyncio.to_thread(self._whole_page_crop))
+            total = kept = 1
+        self.job.structures_found = total
+        self.job.structures_dropped = total - kept
+        if self.job.structures_dropped:
+            self.job.truncated = True
+            self.warn(
+                StageName.SEGMENT,
+                "structures_truncated",
+                f"{total} structures were found. Only the first {kept} were processed.",
+            )
+        self._segmentation_done = True
+        self._stages.finish(StageName.SEGMENT)
+        self._recognition_may_be_done()
+        self._stages.apply(self.job.stages)
+        await self.save()  # always: this is where the structure count first reaches the record
+
+    def _whole_page_crop(self) -> Crop:
+        """The single-image fallback: the crop is another name for the page file (a hard link)."""
+        page = self._pages[0]
+        path = self.folder / "crop-0.png"
+        link_or_copy(page.path, path)
+        return Crop(0, page.index, (0, 0, page.width, page.height), path)
+
+    # --- recognise and check, a crop at a time ---
+
+    def _recognition_may_be_done(self) -> None:
+        if self._segmentation_done and self._recognising == 0:
+            self._stages.finish(StageName.RECOGNISE)
+
+    async def _crop(self, crop: Crop) -> None:
+        """One crop from its place to its check: ocsr and cls, then RDKit."""
+        async with self._crop_slots():
+            self._stages.start(StageName.RECOGNISE)
+            await self._publish()
+            recognition = await self._recognise_crop(crop)
+        self.recognitions[crop.index] = recognition
+        self._recognising -= 1
+        self._recognition_may_be_done()
+        await self._publish()
+        async with self._analysis_slots:
+            self._stages.start(StageName.CHECK)
+            await self._publish()
+            self.chemistry[crop.index] = await self._analyse(recognition)
 
     async def _recognise_crop(self, crop: Crop) -> Recognition:
         number = crop.index + 1
@@ -494,7 +658,11 @@ class _Run:
                 png = await asyncio.to_thread(prepare)
             except (OSError, ValueError) as error:
                 log.warning("job %s: structure %d: %s", self.job.id, number, error)
-                self.warn("recognition_failed", f"Structure {number} could not be recognised.")
+                self.warn(
+                    StageName.RECOGNISE,
+                    "recognition_failed",
+                    f"Structure {number} could not be recognised.",
+                )
                 return Recognition(smiles=None, confidence=0.0, is_structure=None)
             ocsr, is_structure = await _both(
                 self._ocsr(crop, png, lease), self._classify(crop, png)
@@ -515,6 +683,7 @@ class _Run:
                 "job %s: structure %d: %r trimmed to %r", self.job.id, number, smiles, trimmed
             )
             self.warn(
+                StageName.RECOGNISE,
                 "fragments_trimmed",
                 f"Structure {number}: the prediction had several fragments. "
                 "Only the first was kept.",
@@ -542,7 +711,11 @@ class _Run:
                 raise PipelineFailure(SERVICE_UNAVAILABLE) from error
         except ServiceError as error:
             log.warning("job %s: structure %d: %s", self.job.id, number, error)
-        self.warn("recognition_failed", f"Structure {number} could not be recognised.")
+        self.warn(
+            StageName.RECOGNISE,
+            "recognition_failed",
+            f"Structure {number} could not be recognised.",
+        )
         return None
 
     async def _classify(self, crop: Crop, png: bytes) -> bool | None:
@@ -556,43 +729,22 @@ class _Run:
             if "cls" not in self.down:
                 self.down.add("cls")
                 self.warn(
+                    StageName.RECOGNISE,
                     "classifier_unavailable",
                     "The classifier is unavailable, so the structures were not checked.",
                 )
         except ServiceError as error:
             log.warning("job %s: structure %d: %s", self.job.id, number, error)
-            self.warn("classification_failed", f"Structure {number} could not be classified.")
+            self.warn(
+                StageName.RECOGNISE,
+                "classification_failed",
+                f"Structure {number} could not be classified.",
+            )
         return None
 
     # --- check ---
 
-    async def _check(self) -> None:
-        pairs = list(zip(self.crops, self.recognitions, strict=True))
-        chemistry = await _map(pairs, self._analyse, limit=CHEMISTRY_THREADS)
-        names = await self._names(chemistry)
-        self.job.results = [
-            Result(
-                index=crop.index,
-                page_index=crop.page_index,
-                bbox=crop.bbox,
-                smiles=chem.smiles,
-                inchikey=chem.inchikey,
-                valid=chem.valid,
-                is_structure=recognition.is_structure,
-                confidence=recognition.confidence,
-                name=name,
-                name_tier=tier,
-                name_verified=verified,
-                svg=chem.svg,
-                molfile=chem.molfile,
-            )
-            for (crop, recognition), chem, (name, tier, verified) in zip(
-                pairs, chemistry, names, strict=True
-            )
-        ]
-
-    async def _analyse(self, item: tuple[Crop, Recognition]) -> Chemistry:
-        recognition = item[1]
+    async def _analyse(self, recognition: Recognition) -> Chemistry:
         if recognition.smiles is None:
             return Chemistry(smiles="", inchikey="", valid=False, molfile="", svg="")
         chemistry = await asyncio.to_thread(analyse_smiles, recognition.smiles)
@@ -604,6 +756,33 @@ class _Run:
         except Exception:
             log.warning("job %s: CDK fallback failed", self.job.id, exc_info=True)
             return chemistry
+
+    async def _finish_check(self) -> None:
+        """Every crop is recognised and checked: name them, fill in the results, finish."""
+        crops = sorted(self.crops, key=lambda crop: crop.index)
+        chemistry = [self.chemistry[crop.index] for crop in crops]
+        names = await self._names(chemistry)
+        self.job.results = [
+            Result(
+                index=crop.index,
+                page_index=crop.page_index,
+                bbox=crop.bbox,
+                smiles=chem.smiles,
+                inchikey=chem.inchikey,
+                valid=chem.valid,
+                is_structure=self.recognitions[crop.index].is_structure,
+                confidence=self.recognitions[crop.index].confidence,
+                name=name,
+                name_tier=tier,
+                name_verified=verified,
+                svg=chem.svg,
+                molfile=chem.molfile,
+            )
+            for crop, chem, (name, tier, verified) in zip(crops, chemistry, names, strict=True)
+        ]
+        # No await between the results and the stage: a save never shows one without the other.
+        self._stages.finish(StageName.CHECK)
+        await self._publish()
 
     async def _names(self, chemistry: list[Chemistry]) -> list[Name]:
         """IUPAC names from chem, one batch per `chem_batch_size` structures (a job has 20, so
@@ -637,7 +816,7 @@ class _Run:
     def _names_unavailable(self, message: str) -> None:
         if not self.names_warned:
             self.names_warned = True
-            self.warn("names_unavailable", message)
+            self.warn(StageName.CHECK, "names_unavailable", message)
 
 
 # --- helpers -------------------------------------------------------------------------------------
@@ -664,40 +843,17 @@ def _remove_parts(folder: Path) -> None:
         part.unlink(missing_ok=True)
 
 
-def _finalise(folder: Path, refs: list[CropRef], cap: int) -> list[Crop]:
-    """Give the first `cap` part files their final names, `crop-<n>.png`, and delete the rest."""
+def _finalise(folder: Path, released: Released[CropRef]) -> list[Crop]:
+    """Give the part files of a page that are inside the cap their final names, `crop-<n>.png`,
+    and delete the rest."""
     crops: list[Crop] = []
-    for index, ref in enumerate(refs[:cap]):
+    for index, ref in released.kept:
         path = folder / f"crop-{index}.png"
         os.replace(ref.part, path)
         crops.append(Crop(index, ref.page_index, ref.bbox, path))
-    for ref in refs[cap:]:
+    for ref in released.dropped:
         ref.part.unlink(missing_ok=True)
     return crops
-
-
-async def _map[T, R](
-    items: Iterable[T], work: Callable[[T], Awaitable[R]], *, limit: int
-) -> list[R]:
-    """`work(item)` for every item, at most `limit` at a time, results in the order of `items`.
-    The first failure cancels the rest and is raised as itself (a `PipelineFailure` wins)."""
-    slots = asyncio.Semaphore(limit)
-
-    async def one(item: T) -> R:
-        async with slots:
-            return await work(item)
-
-    return await _gather([one(item) for item in items])
-
-
-async def _gather[R](coroutines: Sequence[Coroutine[Any, Any, R]]) -> list[R]:
-    tasks: list[asyncio.Task[R]] = []
-    try:
-        async with asyncio.TaskGroup() as group:
-            tasks = [group.create_task(coroutine) for coroutine in coroutines]
-    except ExceptionGroup as failures:
-        raise _chosen(failures) from None
-    return [task.result() for task in tasks]
 
 
 async def _both[A, B](first: Coroutine[Any, Any, A], second: Coroutine[Any, Any, B]) -> tuple[A, B]:

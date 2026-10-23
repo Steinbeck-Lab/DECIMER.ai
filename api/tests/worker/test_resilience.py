@@ -8,10 +8,10 @@ from collections.abc import Callable
 import httpx
 import pytest
 
-from decimer_api.models import Job, JobStatus, JobWarning
+from decimer_api.models import Job, JobStatus, JobWarning, StageName, StageState
 from decimer_api.worker import errors
 from decimer_api.worker.pipeline import run_pipeline
-from tests.worker.conftest import Rig, wait_until
+from tests.worker.conftest import Rig, stage_state, wait_until
 from tests.worker.fakes import FakeBackend, crop_id
 
 RigFactory = Callable[..., Rig]
@@ -151,9 +151,23 @@ async def test_a_seg_timeout_loses_that_page_only(make_rig: RigFactory) -> None:
 
 
 async def _interrupt_in_recognition(rig: Rig, job: Job) -> Job:
-    """Start the job, cancel it once ocsr is being asked, and return the record it left."""
+    """Start the job, cancel it once ocsr is being asked and the segmentation is in the STORED
+    record (the stages overlap: ocsr is asked about the first page while the others are still
+    being searched), and return the record it left."""
     task = asyncio.create_task(run_pipeline(job.id, rig.deps))
-    await wait_until(lambda: rig.backend.count("ocsr") >= 1)
+
+    async def segmentation_is_stored() -> None:
+        while True:
+            stored = await rig.store.get(job.id)
+            if (
+                rig.backend.count("ocsr") >= 1
+                and stored is not None
+                and stage_state(stored, StageName.SEGMENT) is StageState.DONE
+            ):
+                return
+            await asyncio.sleep(0.005)
+
+    await asyncio.wait_for(segmentation_is_stored(), 10)
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task

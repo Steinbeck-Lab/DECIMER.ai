@@ -41,6 +41,13 @@ test('working screen', async ({ page }) => {
   await audit(page, 'working');
 });
 
+test('working screen with several stages running at once', async ({ page }) => {
+  await page.goto('./?mockStepMs=4000');
+  await page.locator('input[type=file]').setInputFiles(fixtureImage());
+  await page.getByText(/^Also running: /).waitFor({ timeout: 30_000 });
+  await audit(page, 'working, stages overlapping');
+});
+
 test('results screen, idle and with a structure open (editor not yet loaded and loaded)', async ({ page }) => {
   test.setTimeout(120_000);
   await results(page);

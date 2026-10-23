@@ -3,6 +3,17 @@ import { LIMITS } from './api/contract';
 import type { ApiErrorCode, StageName } from './api/contract';
 
 const plural = (n: number, one: string, other: string) => (n === 1 ? one : other);
+const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
+const andList = new Intl.ListFormat('en', { style: 'long', type: 'conjunction' });
+
+/** What the working view calls each stage of the pipeline. */
+const STAGE_LABELS = {
+  upload: 'Uploading your files',
+  render: 'Reading the pages',
+  segment: 'Finding structures on each page',
+  recognise: 'Recognising each structure',
+  check: 'Checking the results',
+} satisfies Record<StageName, string>;
 
 export const strings = {
   appName: 'DECIMER.ai',
@@ -101,18 +112,17 @@ export const strings = {
     stepOf: (n: number, total: number) => `Step ${n} of ${total}`,
     next: (label: string) => `Next: ${label}.`,
     last: 'This is the last step.',
+    /** The stages that run at the same time as the one in the heading: "Also running: reading the pages and finding structures on each page." */
+    alongside: (stages: readonly StageName[]) =>
+      `Also running: ${andList.format(stages.map((stage) => lowerFirst(STAGE_LABELS[stage])))}.`,
+    /** The progress bar's value text: it says what its value, the number of stages done, says. */
+    stepsDone: (done: number, total: number) => `${done} of ${total} steps done`,
     elapsed: (time: string) => `Elapsed ${time}`,
     pages: (done: number, total: number) => `Page ${done} of ${total}`,
     found: (n: number) => `${n} ${plural(n, 'structure', 'structures')} found`,
     slowNote: 'A 10-page PDF can take a minute or more.',
     progressLabel: 'Progress',
-    stage: {
-      upload: 'Uploading your files',
-      render: 'Reading the pages',
-      segment: 'Finding structures on each page',
-      recognise: 'Recognising each structure',
-      check: 'Checking the results',
-    } satisfies Record<StageName, string>,
+    stage: STAGE_LABELS,
     sourcePreview: (name: string) => `Preview of ${name}`,
     failedHeading: 'The job did not finish',
     failedGeneric: 'Something went wrong while processing your file. Please try again.',

@@ -196,8 +196,9 @@ and uses `JobStore` (`decimer_api.store`):
 
 1. `mark_running(job_id)` when it starts (takes the job off the waiting queue). If the record is gone
    (it expired while waiting), skip the job.
-2. `save(job)` after every stage. A running job's record lives `RUNNING_JOB_TTL_SECONDS` (20 min) after
-   its **last save**, so a stage that can take longer than that must save in between.
+2. `save(job)` whenever a stage changes state (stages overlap, see "What one job does"). A running job's
+   record lives `RUNNING_JOB_TTL_SECONDS` (20 min) after its **last save**, so a stage that can take longer
+   than that must save in between.
 3. Write `crop-<index>.png` and `page-<index>.png` into `DATA_DIR/<job id>/`.
 4. `finish(job)` exactly once, with status `done` or `failed`, **in a `finally`**: it frees the client's
    slot and starts the `JOB_TTL_SECONDS` countdown. A worker that dies without it frees the slot only
@@ -255,20 +256,33 @@ below) and refuses to start otherwise.
 
 ### What one job does
 
-| Stage (saved after each) | What happens |
+The four stages **overlap**: a page is sent to seg as soon as it is rendered, and a crop goes
+to ocsr and cls, and then to the RDKit check, as soon as its place in the job is known; the results are
+exactly those of running the stages one after the other. A crop's number is the number of structures on all
+earlier pages plus its place on its own page, so it is known only once every earlier page has been segmented,
+failed or skipped (the **prefix rule**, `worker/overlap.py`): a later page that seg answers first waits for
+the pages before it, and nothing is ever renumbered. Every page is still segmented, also those beyond the
+cap, because `structuresFound` counts them. The **stage states** in the record are each stage's own: a stage
+is `active` from the moment its first piece of work starts and `done` when its last piece ends **and every
+stage before it is done**, so several stages can be active at once and a stage is never done before an
+earlier one. The record is saved when a stage changes state (and by the heartbeat), not per page or crop.
+`results` are filled in at once, when the check is done. The `warnings` list keeps the order of the
+stages (render, segment, recognise, check), not the order in which things happened.
+
+| Stage (its state is saved when it changes) | What happens |
 |---|---|
 | `render` | PDF: page `i` rendered with pypdfium2 at **exactly 300 DPI** to `page-<i>.png`, one child process per page (deadline, memory and CPU limits, no secrets in its environment; the worker never imports pdfium). Images: `input/000N.png` becomes `page-<N-1>.png` (hard link, else copy), in upload order. A page that cannot be rendered is skipped with a warning; if none can, the job fails. |
 | `segment` | seg is called once per page. A page above 25 MP or 36 MiB (seg takes 40 MP and 40 MiB; a B2 page is 49 MP) is sent as a smaller copy; the boxes seg returns are scaled back to the page and the crops are **cut from the full-resolution page** (not from seg's answer: those are the copy's pixels, white outside seg's mask). The crops of a page are written to part files as its answer arrives, only the first `MAX_STRUCTURES` of a page, and read back later, so no crop is held in memory. They are put in reading order (page by page, seg's order within a page) and cut at `MAX_STRUCTURES` (20): `structuresFound` is the total, the rest is `structuresDropped`, `truncated` is set and the warning `structures_truncated` added. **Single-image fallback:** only for a job made of exactly one uploaded image (not a PDF, not several images), and only when seg answered and found nothing: the whole image is the one structure (bbox = the page, `crop-0.png` a hard link to `page-0.png`). seg's answer is checked against what was sent: the echoed page index and image size, every box inside the image. |
-| `recognise` | Each kept crop is read, cut down for the models, and sent to ocsr and cls (together). The models look at 512 px (ocsr) and 224 px (cls), so a crop above 4 MP or 4096 px on a side is downscaled (and re-encoded until under 19 MiB); the crop file keeps its size. ocsr's SMILES goes through **legacy's fragment filter**: more than four `.`-separated fragments, or a first fragment shorter than all the others together, keeps only the first fragment (warning `fragments_trimmed`; the raw prediction is in the debug log only). |
-| `check` | RDKit (`chemistry.py`): canonical SMILES, validity, full InChIKey, V2000 molfile with 2D coordinates and wedge bonds, an SVG that starts with `<svg`. Then IUPAC names: one `POST /names` per job to chem (20 structures per request) if `CHEM_URL` is set, else `name`, `nameTier` and `nameVerified` are null. |
+| `recognise` | Each kept crop, as soon as its number is known, is read, cut down for the models, and sent to ocsr and cls (together), at most as many crops at once as the replicas of the two services take. The models look at 512 px (ocsr) and 224 px (cls), so a crop above 4 MP or 4096 px on a side is downscaled (and re-encoded until under 19 MiB); the crop file keeps its size. ocsr's SMILES goes through **legacy's fragment filter**: more than four `.`-separated fragments, or a first fragment shorter than all the others together, keeps only the first fragment (warning `fragments_trimmed`; the raw prediction is in the debug log only). |
+| `check` | A crop goes through RDKit as soon as it is recognised; the names are asked for once every crop is through. RDKit (`chemistry.py`): canonical SMILES, validity, full InChIKey, V2000 molfile with 2D coordinates and wedge bonds, an SVG that starts with `<svg`. Then IUPAC names: one `POST /names` per job to chem (20 structures per request) if `CHEM_URL` is set, else `name`, `nameTier` and `nameVerified` are null. |
 
 `name`, `nameTier` and `nameVerified` come from chem's `name`, `tier` and `verified` (how the name was checked,
 e.g. `opsin`); all three are null together, and chem's `reason` is not stored (a `timeout` reason gives the
 `names_unavailable` warning, any other decline is just "no name"). `Result.name_verified` is a field added to
 `models.py`.
 
-`results` appear in the record when `check` is done (an earlier poll shows `structuresFound` but no
-results). `confidence` is ocsr's `mean_confidence`. An invalid SMILES keeps its raw text with empty
+`results` appear in the record when `check` is done (an earlier poll shows `structuresFound`, once every page
+has been segmented, but no results; a job that fails before that has `structuresFound` 0). `confidence` is ocsr's `mean_confidence`. An invalid SMILES keeps its raw text with empty
 `inchikey`, `molfile` and `svg`. CXSMILES extensions are refused, not honoured.
 
 **R groups.** DECIMER writes the R groups of a scheme as `[R]`, `[R1]`, `[R2]`, and RDKit has no element
@@ -323,6 +337,26 @@ only the warnings the API added. If arq's own `job_timeout` ever cuts a run (it 
 plus 60 s, so the pipeline's own deadline normally comes first and explains itself) the worker logs an
 error saying so; the record is then left running until it expires.
 
+**What a failed job's record holds (the stages overlap).** It holds what was known when the job failed, which is
+not always what a run with the stages one after the other would have known:
+
+* `status: failed`, `error`, no `results`, and the failure's own warning **last**, after any warning raised
+  before it. Every stage that had started and not finished is still `active` in `stages`; none after the failing
+  one is `done`.
+* `structuresFound` and `structuresDropped` are filled in when the last page has been segmented (the same moment as
+  the segment stage's `done`). A job that fails earlier, typically `OCSR_MAX_TIMEOUTS` timeouts of ocsr on the first
+  pages while seg is still busy with the later ones, has `structuresFound: 0`, `structuresDropped: 0`, `truncated`
+  as the API set it (the page limit), and neither the `structures_truncated` warning nor a `page_segmentation_failed`
+  for a page seg had not yet answered about.
+* The warnings of crops that were recognised before the failure stay (`recognition_failed`,
+  `classification_failed`, `fragments_trimmed`, `classifier_unavailable`), also when the failure is seg's: if seg
+  turns out to be unreachable for page 2 after a crop of page 1 failed in ocsr, the record has that
+  `recognition_failed` and then `service_unavailable` (with the stages one after the other, seg's failure came first
+  and the record had only `service_unavailable`).
+
+A successful job's record is exactly the sequential one: results, numbering, counts, the cap warning, and the order
+of the warnings (render, segment, recognise, check).
+
 `isStructure` is `bool | null` in the model (a change in `models.py`): null means the classifier gave no
 answer. The frontend must not read null as "not a structure".
 
@@ -353,7 +387,9 @@ again after a replica may have started on it, an input that crashes the service 
 
 **No blocking, no starvation.** Several jobs run at once (`WORKER_MAX_JOBS`) and share the replicas. A job asks
 for as many calls at once as its service takes in all (replicas x `*_CONCURRENCY`; so a lone job fills every
-replica and keeps the lone-job timing of the deploy README). When a slot frees, the waiting calls of that service
+replica and keeps the lone-job timing of the deploy README). The number is looked up each time a page or crop is
+about to start, not once per job, so a replica that joins while a job runs is used from the next page or crop on
+(a page or crop already waiting is moved up when one of the job's pages or crops ends). When a slot frees, the waiting calls of that service
 are served in this order: calls of a **small job** first (`Settings.is_small_job`: at most `SMALL_JOB_MAX_PAGES`
 processed pages, the same rule in the api and the worker, so nothing about size is stored on the record);
 among the jobs of one size class the one served longest ago, so the crops of two big jobs interleave; and after
@@ -364,7 +400,10 @@ for an image that is not a structure), including a call of the other worker proc
 a time for both); the calls of other small jobs ahead of it in the turn order; and the one slot in
 `SMALL_FIRST_BURST + 1` that goes to a large call while one is waiting. A large job gets at least one slot in
 `SMALL_FIRST_BURST + 1`. Rendering is one page at a time per job through a shared semaphore, which already takes
-turns between jobs.
+turns between jobs. Since the stages overlap, a large job has ocsr calls running while it is still
+segmenting its later pages, so a pasted image that arrives then can find one of that job's ocsr calls on a replica and
+wait for it: at most one call per replica, within the bound above (a call is never interrupted), only reached
+earlier in the large job's life than before.
 
 **Memory.** A page is read, decoded and held as a PNG (up to 36 MiB for a 50 MP page) only once the job has a seg
 slot, and a crop only once it has an ocsr slot (`ServiceCaller.slot`, then `post(lease=...)`), so what a worker
