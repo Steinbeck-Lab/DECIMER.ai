@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { keepKetcherLabelled, labelKetcher } from './labels';
+import { keepKetcherFixed, labelKetcher, skipScrollArrows } from './labels';
 
 // The markup of Ketcher 3.18.0 that Lighthouse flags (button-name, label): two dropdown triangles of the top
-// toolbar, each beside the button it belongs to, and the clipboard textarea.
+// toolbar, each beside the button it belongs to, and the clipboard textarea. And the scroll arrows of a toolbar
+// (ArrowScroll): plain buttons after its last button, drawn only while an end of the toolbar is out of view.
 const TRIANGLE = 'copy-button-dropdown-triangle';
+const RIGHT = 'arrow-scroll-right-button';
+const LEFT = 'arrow-scroll-left-button';
 
 function ketcherMarkup(): string {
   return `
@@ -54,10 +57,15 @@ function host(html = ''): HTMLElement {
   return el;
 }
 const keep = (el: HTMLElement) => {
-  const stop = keepKetcherLabelled(el);
+  const stop = keepKetcherFixed(el);
   stops.push(stop);
   return stop;
 };
+/** A left toolbar of Ketcher: its buttons, then the scroll arrows. */
+function toolbarMarkup(scrollArrows = `<button data-testid="${RIGHT}">▼</button><button data-testid="${LEFT}">▲</button>`): string {
+  return `<div class="Ketcher-root"><div class="LeftToolbar"><button title="Add Image" data-testid="images"></button>${scrollArrows}</div></div>`;
+}
+const arrows = (el: ParentNode) => [...el.querySelectorAll<HTMLElement>(`[data-testid^="arrow-scroll-"]`)];
 const triangles = (el: ParentNode) => [...el.querySelectorAll<HTMLElement>(`[data-testid="${TRIANGLE}"]`)];
 /** MutationObserver callbacks run as microtasks. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -142,4 +150,45 @@ test('each label is written once: the observer does not feed itself', async () =
   keep(el);
   await settle();
   expect(writes).toBe(3); // two triangles and the textarea
+});
+
+test('the toolbars\' scroll arrows are taken out of the tab order, and the buttons next to them are not', () => {
+  const el = host(toolbarMarkup());
+  skipScrollArrows(el);
+  expect(arrows(el).map((a) => [a.getAttribute('data-testid'), a.getAttribute('tabindex')])).toEqual([
+    [RIGHT, '-1'],
+    [LEFT, '-1'],
+  ]);
+  expect(el.querySelector('[data-testid="images"]')?.hasAttribute('tabindex')).toBe(false);
+});
+
+test('only Ketcher\'s arrows: a control of ours with the same test id is left alone, and so is a tabindex Ketcher sets itself', () => {
+  const el = host(`<button data-testid="${RIGHT}"></button>` + toolbarMarkup(`<button data-testid="${LEFT}" tabindex="0"></button>`));
+  skipScrollArrows(el);
+  expect(el.querySelector(':scope > button')?.hasAttribute('tabindex')).toBe(false);
+  expect(arrows(el).find((a) => a.closest('.Ketcher-root'))?.getAttribute('tabindex')).toBe('0');
+});
+
+test('an arrow that Ketcher draws later, or draws again after React replaced it, is out of the tab order at once', async () => {
+  const el = host(toolbarMarkup(''));
+  keep(el);
+  await settle();
+  expect(arrows(el)).toEqual([]); // the end of the toolbar is in view: no arrow
+
+  const toolbar = el.querySelector('.LeftToolbar')!;
+  toolbar.insertAdjacentHTML('beforeend', `<button data-testid="${RIGHT}">▼</button>`); // the user scrolled away from the end
+  await settle();
+  expect(arrows(el).map((a) => a.getAttribute('tabindex'))).toEqual(['-1']);
+
+  arrows(el)[0]!.remove(); // the end is in view again ...
+  toolbar.insertAdjacentHTML('beforeend', `<button data-testid="${RIGHT}">▼</button>`); // ... and out of view again: a fresh node
+  await settle();
+  expect(arrows(el).map((a) => a.getAttribute('tabindex'))).toEqual(['-1']);
+});
+
+test('each arrow is written once: the observer does not feed itself', async () => {
+  const el = host(toolbarMarkup());
+  keep(el);
+  await settle();
+  expect(writes).toBe(2);
 });
