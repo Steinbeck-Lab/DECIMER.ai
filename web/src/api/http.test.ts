@@ -1,7 +1,8 @@
 import { describe, expect, test, vi } from 'vitest';
-import { API_ERROR_CODES, ApiError } from './contract';
+import { API_ERROR_CODES, ApiError, SERVER_ERROR_CODES } from './contract';
 import type { components } from './generated';
 import { HttpApiClient, parseRetryAfter } from './http';
+import schema from './openapi.json';
 
 type JobView = components['schemas']['JobView'];
 
@@ -196,6 +197,12 @@ describe('error mapping', () => {
     [503, 'queue_full'],
     [503, 'unavailable'],
     [404, 'not_found'],
+    [413, 'processing_limit'],
+    [503, 'busy'],
+    [409, 'no_results'],
+    [405, 'method_not_allowed'],
+    [418, 'http_error'],
+    [500, 'internal_error'],
   ])('%i %s: the API\'s code, status and message', async (status, code) => {
     const { api } = clientWith(() => json(detail(code), { status }));
     const error = await api.createJob([new File(['x'], 'a.png')]).catch((e: unknown) => e);
@@ -203,10 +210,10 @@ describe('error mapping', () => {
     expect(error).toMatchObject({ status, code, serverMessage: `message for ${code}` });
   });
 
-  test('every code of the API\'s error shape is one the UI has a sentence for', () => {
-    for (const code of ['empty_upload', 'too_many_files', 'unsupported', 'mixed_upload', 'multiple_pdfs', 'corrupt_file', 'encrypted_pdf', 'too_many_pixels', 'too_large', 'invalid_request', 'rate_limited', 'queue_full', 'unavailable', 'not_found']) {
-      expect(API_ERROR_CODES).toContain(code);
-    }
+  test('the codes the client reads are exactly the schema\'s ErrorCode enum (the committed openapi.json)', () => {
+    const documented = schema.components.schemas.ErrorCode.enum;
+    expect([...SERVER_ERROR_CODES].sort()).toEqual([...documented].sort());
+    expect([...API_ERROR_CODES].sort()).toEqual([...documented, 'network', 'unknown'].sort());
   });
 
   test('a code from a newer API falls back to what the status says, and keeps the message', async () => {
@@ -308,9 +315,33 @@ describe('parseRetryAfter', () => {
   });
 });
 
-// ---- PROVISIONAL calls: the paths are agreed, the shapes are contract.ts's ---------
+// ---- validate, export, report, delete -----------------------------------
 
-describe('validate, export and report (provisional)', () => {
+describe('delete', () => {
+  test('sends DELETE to the job\'s path and resolves on 204', async () => {
+    const { api, fetchMock } = clientWith(() => new Response(null, { status: 204 }));
+    const controller = new AbortController();
+    await expect(api.deleteJob(JOB_ID, controller.signal)).resolves.toBeUndefined();
+    const { url, init } = call(fetchMock);
+    expect(url).toBe(`/api/jobs/${JOB_ID}`);
+    expect(init.method).toBe('DELETE');
+    expect(init.body).toBeUndefined();
+    expect(init.signal).toBe(controller.signal);
+  });
+
+  test('an id is escaped into the path, and a base URL goes in front', async () => {
+    const { api, fetchMock } = clientWith(() => new Response(null, { status: 204 }), '/beta');
+    await api.deleteJob('a/b c');
+    expect(call(fetchMock).url).toBe('/beta/api/jobs/a%2Fb%20c');
+  });
+
+  test('a job that is already gone is a not_found error, which the caller may ignore', async () => {
+    const { api } = clientWith(() => json({ detail: { code: 'not_found', message: 'Not found.' } }, { status: 404 }));
+    await expect(api.deleteJob(JOB_ID)).rejects.toMatchObject({ status: 404, code: 'not_found' });
+  });
+});
+
+describe('validate, export and report', () => {
   test('validate posts the molfile to the result\'s own path, n being the 0-based index', async () => {
     const { api, fetchMock } = clientWith(() => json({ smiles: 'CCO', inchikey: 'LFQSCWFLJHTTHZ-UHFFFAOYSA-N', svg: '<svg/>', valid: true, name: 'ethanol', nameTier: 'pin_verified', nameVerified: 'opsin' }));
     const controller = new AbortController();
@@ -334,12 +365,28 @@ describe('validate, export and report (provisional)', () => {
       () => new Response('ZIPBYTES', { headers: { 'Content-Type': 'application/zip', 'Content-Disposition': 'attachment; filename="decimer-abc.zip"' } }),
     );
     const out = await api.exportJob(JOB_ID, { format: 'zip', molfiles: { 2: 'EDIT-2', 7: 'EDIT-7' } });
-    const { url, init } = call(fetchMock);
+    const { url, init, headers } = call(fetchMock);
     expect(url).toBe(`/api/jobs/${JOB_ID}/export`);
     expect(init.method).toBe('POST');
+    expect(headers.get('Content-Type')).toBe('application/json');
     expect(JSON.parse(init.body as string)).toEqual({ format: 'zip', molfiles: { '2': 'EDIT-2', '7': 'EDIT-7' } });
     expect(out.filename).toBe('decimer-abc.zip');
     expect(await out.blob.text()).toBe('ZIPBYTES');
+  });
+
+  test('export asks for the kind of file it is getting, not for JSON', async () => {
+    const { api, fetchMock } = clientWith(() => new Response('x'));
+    await api.exportJob(JOB_ID, { format: 'zip', molfiles: {} });
+    await api.exportJob(JOB_ID, { format: 'sdf', molfiles: {} });
+    await api.exportJob(JOB_ID, { format: 'csv', molfiles: {} });
+    expect([0, 1, 2].map((n) => call(fetchMock, n).headers.get('Accept'))).toEqual(['application/zip', 'chemical/x-mdl-sdfile', 'text/csv']);
+  });
+
+  test('an export the server refuses (409 no results, 413, 422, 429) is an ApiError with the server\'s code', async () => {
+    for (const [status, code] of [[409, 'no_results'], [413, 'too_large'], [422, 'invalid_request'], [429, 'rate_limited']] as const) {
+      const { api } = clientWith(() => json({ detail: { code, message: 'no' } }, { status }));
+      await expect(api.exportJob(JOB_ID, { format: 'zip', molfiles: {} })).rejects.toMatchObject({ status, code });
+    }
   });
 
   // RFC 6266 and RFC 8187: `filename*` is percent-encoded with a charset, `filename` is literal text. A name that
@@ -390,6 +437,14 @@ describe('validate, export and report (provisional)', () => {
     expect((await api.exportJob(JOB_ID, { format: 'csv', molfiles: {} })).filename).toBe(`decimer-${JOB_ID}.csv`);
   });
 
+  test('validate sends nothing but the molfile, and a 429 or 413 is an ApiError with its code', async () => {
+    const { api, fetchMock } = clientWith(() => json({ detail: { code: 'rate_limited', message: 'slow down' } }, { status: 429, headers: { 'Retry-After': '12' } }));
+    await expect(api.validate(JOB_ID, 1, 'M')).rejects.toMatchObject({ status: 429, code: 'rate_limited', retryAfterMs: 12000 });
+    expect(Object.keys(JSON.parse(call(fetchMock).init.body as string) as object)).toEqual(['molfile']);
+    const big = clientWith(() => json({ detail: { code: 'too_large', message: 'big' } }, { status: 413 }));
+    await expect(big.api.validate(JOB_ID, 1, 'M')).rejects.toMatchObject({ status: 413, code: 'too_large' });
+  });
+
   test('report posts the result index', async () => {
     const { api, fetchMock } = clientWith(() => new Response(null, { status: 204 }));
     await expect(api.report(JOB_ID, 5)).resolves.toBeUndefined();
@@ -397,6 +452,7 @@ describe('validate, export and report (provisional)', () => {
     expect(url).toBe(`/api/jobs/${JOB_ID}/report`);
     expect(init.method).toBe('POST');
     expect(JSON.parse(init.body as string)).toEqual({ index: 5 });
+    expect(Object.keys(JSON.parse(init.body as string) as object)).toEqual(['index']); // nothing else is sent: the server has the result
   });
 
   test('errors of these calls are mapped like the others', async () => {

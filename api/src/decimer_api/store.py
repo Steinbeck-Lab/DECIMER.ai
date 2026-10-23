@@ -8,6 +8,11 @@ Keys (all under the `decimer:` prefix):
                         (`r-<token>`). Its size is the client's slot count.
 * `queue`               sorted set of the ids waiting for a worker, scored by arrival number.
 * `queue:seq`           the counter that hands out those numbers.
+* `cancelled:<id>`      set by `cancel()` (DELETE /api/jobs/<id>), with a TTL: the job is gone, a
+                        worker that still runs it must stop, and `save()` writes nothing for it.
+* `cancelling:<id>`     set by `cancel()` for a job that was *running*: holds the client's slot (as
+                        the member `c-<id>` of `active:`) for its whole TTL,
+                        `cancelling_slot_seconds`. Its value is the client's hash.
 
 A slot or a queue entry can never outlive its job. Every read of `active:` checks the job
 records (and reservation markers) and drops members that are gone, finished or unreadable;
@@ -22,6 +27,17 @@ frees a reservation whose upload failed.
 Worker contract: `mark_running(id)` when a job starts, `save(job)` after each stage
 (each save of a running job pushes its expiry out by `running_job_ttl_seconds`), and
 `finish(job)` exactly once with a terminal status, in a `finally`.
+
+Cancelling: `cancel(job)` deletes the record and leaves the `cancelled:<id>` marker. A
+worker that is running the job finds out by asking `is_cancelled(id)` (`worker/cancel.py` does,
+every `CANCEL_POLL_SECONDS`, and stops the run); until then its `save()` and `finish()` write
+nothing, so the record cannot come back. A job that is only queued is taken off the queue and its
+slot is freed at once: the worker finds no record and skips it. A job that is *running* keeps the
+client's slot as a `cancelling:<id>` member for the member's whole TTL (`cancelling_slot_seconds`)
+and nothing gives it back early, not even the worker's own cleanup: when the worker stops a run it
+only cancels its own calls, and the model services go on computing the ones it abandoned (a call
+cannot be taken back from a TensorFlow model that is in the middle of it). A client that deletes
+and uploads again in a loop must not get more work running than its limit.
 """
 
 from __future__ import annotations
@@ -30,10 +46,11 @@ import asyncio
 import json
 import logging
 import secrets
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from typing import cast
 
 from pydantic import ValidationError
 from redis.asyncio import Redis
@@ -46,6 +63,15 @@ log = logging.getLogger("decimer_api.store")
 
 PREFIX = "decimer:"
 RESERVATION_MEMBER = "r-"  # job ids are 32 hex characters, so no job id starts like this
+CANCELLING_MEMBER = "c-"  # nor this
+
+# Write a job record unless the job was cancelled, in one step: a save that checked the marker and
+# then wrote could bring back a record that `cancel` deleted in between. KEYS: marker, record.
+SAVE_UNLESS_CANCELLED = """
+if redis.call('EXISTS', KEYS[1]) == 1 then return 0 end
+redis.call('SET', KEYS[2], ARGV[1], 'EX', ARGV[2])
+return 1
+"""
 ADMIT_ATTEMPTS = 25
 PRUNE_INTERVAL_SECONDS = 1.0
 
@@ -105,6 +131,14 @@ class JobStore:
     def active_key(ip_hash: str) -> str:
         return f"{PREFIX}active:{ip_hash}"
 
+    @staticmethod
+    def cancel_key(job_id: str) -> str:
+        return f"{PREFIX}cancelled:{job_id}"
+
+    @staticmethod
+    def cancelling_key(job_id: str) -> str:
+        return f"{PREFIX}cancelling:{job_id}"
+
     queue_key = f"{PREFIX}queue"
     queue_seq_key = f"{PREFIX}queue:seq"
 
@@ -127,10 +161,23 @@ class JobStore:
         return self.settings.queued_job_ttl_seconds
 
     async def save(self, job: Job) -> None:
-        """Write the record. Its TTL, and `expires_at`, follow the status."""
+        """Write the record. Its TTL, and `expires_at`, follow the status. A cancelled job is
+        not written: the worker may still be running it for a moment."""
         ttl = self._ttl(job.status)
         job.expires_at = self._clock() + timedelta(seconds=ttl)
-        await self.redis.set(self.job_key(job.id), job.model_dump_json(by_alias=True), ex=ttl)
+        # redis-py types `eval` for both the sync and the async client.
+        written = cast(
+            "Awaitable[int]",
+            self.redis.eval(
+                SAVE_UNLESS_CANCELLED,
+                2,
+                self.cancel_key(job.id),
+                self.job_key(job.id),
+                job.model_dump_json(by_alias=True),
+                str(ttl),
+            ),
+        )
+        await written
 
     async def read(self, job_id: str) -> Job | None:
         """The record, expired or not. None when absent; `CorruptRecord` when unreadable."""
@@ -160,6 +207,37 @@ class JobStore:
     async def delete_record(self, job_id: str) -> None:
         await self.redis.delete(self.job_key(job_id))
 
+    async def is_cancelled(self, job_id: str) -> bool:
+        return bool(await self.redis.exists(self.cancel_key(job_id)))
+
+    async def cancel(self, job: Job) -> None:
+        """Delete a job on its owner's request, whatever state it is in: the marker first (so that
+        no save of a running worker can bring the record back), then the slot, then the record.
+        The marker lives as long as a run can: `running_job_ttl_seconds` is longer than the
+        worker's own deadline (`WorkerSettings.check_against`).
+
+        The client's slot goes at once for a job that was still queued (taking it off the queue is
+        what proves no worker has it) and for one that has finished. A job that may be running
+        keeps it, as a `cancelling:` member, for `cancelling_slot_seconds`: the whole time, and
+        nothing shortens it."""
+        await self.redis.set(self.cancel_key(job.id), "1", ex=self.settings.running_job_ttl_seconds)
+        taken_off_the_queue = int(await self.redis.zrem(self.queue_key, job.id)) > 0
+        active = self.active_key(job.client_ip_hash)
+        if taken_off_the_queue or job.status.terminal:
+            await self.redis.srem(active, job.id)  # type: ignore[misc]
+        else:
+            async with self.redis.pipeline(transaction=True) as pipe:
+                pipe.srem(active, job.id)
+                pipe.sadd(active, f"{CANCELLING_MEMBER}{job.id}")
+                pipe.expire(active, self.settings.queued_job_ttl_seconds)
+                pipe.set(
+                    self.cancelling_key(job.id),
+                    job.client_ip_hash,
+                    ex=self.settings.cancelling_slot_seconds,
+                )
+                await pipe.execute()
+        await self.delete_record(job.id)
+
     # --- worker seams ---
 
     async def mark_running(self, job_id: str) -> Job | None:
@@ -169,6 +247,8 @@ class JobStore:
         job.status = JobStatus.RUNNING
         await self.save(job)
         await self.redis.zrem(self.queue_key, job_id)
+        if await self.is_cancelled(job_id):  # deleted while this was happening: do not start it
+            return None
         return job
 
     async def finish(self, job: Job) -> None:
@@ -196,25 +276,27 @@ class JobStore:
         if not members:
             return []
         ordered = sorted(members)
-        keys = [
-            f"{PREFIX}reservation:{member.removeprefix(RESERVATION_MEMBER)}"
-            if member.startswith(RESERVATION_MEMBER)
-            else self.job_key(member)
-            for member in ordered
-        ]
+        keys = [self._member_key(member) for member in ordered]
         values = await self.redis.mget(keys)
         live: list[str] = []
         stale: list[str] = []
         for member, value in zip(ordered, values, strict=True):
-            if value is None or (
-                not member.startswith(RESERVATION_MEMBER) and _is_finished_or_unreadable(value)
-            ):
+            is_job = not member.startswith((RESERVATION_MEMBER, CANCELLING_MEMBER))
+            if value is None or (is_job and _is_finished_or_unreadable(value)):
                 stale.append(member)
             else:
                 live.append(member)
         if stale:
             await self.redis.srem(key, *stale)  # type: ignore[misc]
         return live
+
+    def _member_key(self, member: str) -> str:
+        """The key whose existence says a slot holder is still real."""
+        if member.startswith(RESERVATION_MEMBER):
+            return f"{PREFIX}reservation:{member.removeprefix(RESERVATION_MEMBER)}"
+        if member.startswith(CANCELLING_MEMBER):
+            return self.cancelling_key(member.removeprefix(CANCELLING_MEMBER))
+        return self.job_key(member)
 
     async def active_count(self, ip_hash: str) -> int:
         return len(await self._live_active_members(ip_hash))

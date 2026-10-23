@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     # A client's slot is held from the moment its upload starts. If the request dies without
     # releasing it, the reservation expires after this long.
     reservation_ttl_seconds: int = Field(default=600, gt=0)
+    # A client that deletes a job that is *running* keeps its slot for this long, whatever the
+    # worker does: `CANCEL_POLL_SECONDS` (the worker looks that often) plus the longest read
+    # timeout of a model service (seg, 180 s), the time a call abandoned by the worker can go on
+    # computing in the service. `WorkerSettings.check_against` refuses a worker whose numbers add
+    # up to more.
+    cancelling_slot_seconds: int = Field(default=185, gt=0)
     # The sweep never touches a folder younger than this (an upload may still be in flight).
     sweep_grace_seconds: int = Field(default=900, gt=0)
 
@@ -103,6 +109,46 @@ class Settings(BaseSettings):
     media_stream_direct: bool = False
     media_accel_prefix: str = "/_protected/jobs"
 
+    # --- validate, export, report ---
+    # The chem service (IUPAC names), base URL. Empty: every name is null ("no verified name").
+    chem_url: str | None = None
+    # The most validate and export spend on chem (waiting for the api's one place included) before
+    # answering without a name. The worker has priority on chem: see `names`.
+    names_timeout_seconds: float = Field(default=4.0, gt=0)
+    # A molfile sent by the client, in bytes (a 900-atom V2000 structure is about 65 KB). A request
+    # body is cut off at a multiple of this (see `guards`); nginx lets 1 MB through.
+    max_molfile_bytes: int = Field(default=64 * 1024, gt=0)
+    # Molfiles RDKit reads at the same time (validate, and each edit of an export), and ZIP
+    # downloads streamed at the same time (each holds a file open per crop). The next request is
+    # refused with 503 busy; nothing queues (see `capacity`).
+    max_concurrent_analyses: int = Field(default=2, gt=0)
+    max_concurrent_downloads: int = Field(default=8, gt=0)
+    # ... of which one client address may hold this many (429 beyond), and for this long at most: a
+    # download that is still going on after it is aborted and its place and files are freed.
+    max_downloads_per_client: int = Field(default=2, gt=0)
+    download_timeout_seconds: float = Field(default=120.0, gt=0)
+    # Client molfiles are read in child processes (`analysis_pool`), as many as the analyses above.
+    # A child may allocate this much beyond what it uses once RDKit is loaded (RLIMIT_AS), is given
+    # this long for one molfile (an export's edits one after the other), this long to start, and is
+    # replaced after this many molfiles.
+    analysis_memory_mb: int = Field(default=384, gt=0)
+    analysis_timeout_seconds: float = Field(default=5.0, gt=0)
+    analysis_batch_seconds: float = Field(default=20.0, gt=0)
+    analysis_startup_seconds: float = Field(default=30.0, gt=0)
+    analysis_recycle_after: int = Field(default=500, gt=0)
+    # Requests per client address (a fixed window), counted before the body is read. 429 beyond.
+    validate_rate_per_minute: int = Field(default=60, gt=0)
+    export_rate_per_minute: int = Field(default=10, gt=0)
+    report_rate_per_hour: int = Field(default=30, gt=0)
+    # Problem reports: a private directory (a volume that only the api mounts), one folder per
+    # reported result. At most this many folders, and the crop image is left out above the size.
+    reports_dir: Path = Path("/data/reports")
+    max_reports: int = Field(default=5000, gt=0)
+    # The bytes of all the reports together (counted from the disk, so a restart does not forget
+    # them). Beyond it a report is refused with 503, and a warning is logged at 80 %.
+    reports_max_bytes: int = Field(default=2 * 1024**3, gt=0)
+    max_report_image_bytes: int = Field(default=4 * MIB, gt=0)
+
     # --- serving (python -m decimer_api) ---
     host: str = "127.0.0.1"
     port: int = Field(default=8000, ge=1, le=65535)
@@ -116,6 +162,13 @@ class Settings(BaseSettings):
                 return [ip_network(item, strict=False) for item in items]
             except ValueError as error:
                 raise ValueError(f"TRUSTED_PROXY_CIDR: {error}") from error
+        return value
+
+    @field_validator("chem_url", mode="before")
+    @classmethod
+    def _empty_chem_url_is_none(cls, value: Any) -> Any:
+        if isinstance(value, str) and not value.strip():
+            return None
         return value
 
     @field_validator("worker_queue_name", "worker_fast_queue_name")

@@ -18,7 +18,7 @@ test('the codes named by the API (errors.py, ingest.py, routes.py) are all known
   for (const code of [
     'mixed_upload', 'multiple_pdfs', 'too_many_files', 'corrupt_file', 'encrypted_pdf', 'too_many_pixels',
     'unavailable', 'invalid_request', 'empty_upload', 'rate_limited', 'queue_full', 'too_large',
-    'unsupported', 'not_found',
+    'unsupported', 'not_found', 'processing_limit', 'busy', 'no_results', 'internal_error',
   ]) {
     expect(API_ERROR_CODES, code).toContain(code);
   }

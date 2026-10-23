@@ -195,6 +195,10 @@ export class MockApiClient implements ApiClient {
     return structuredClone(jobAt(job.spec, this.now() - job.createdAt, this.stepMs));
   }
 
+  async deleteJob(id: string): Promise<void> {
+    if (!this.jobs.delete(id)) throw new ApiError(404, 'not_found', `no job ${id}`);
+  }
+
   async validate(jobId: string, index: number, molfile: string, signal?: AbortSignal): Promise<ValidateResponse> {
     await delay(this.latencyMs, signal);
     const result = this.jobs.get(jobId)?.spec.results.find((r) => r.index === index);

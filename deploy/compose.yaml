@@ -43,8 +43,9 @@
 #            subnet is the API's TRUSTED_PROXY_CIDR (derived from APP_SUBNET: one variable, no copy).
 #   backend  internal: redis, api, worker, sweep.
 #   models   internal: the worker and seg, cls, ocsr, chem. Only the worker calls them. The api is NOT
-#            on it: it calls no model service yet. When POST /validate lands it needs chem and nothing
-#            else: see the commented chem-api network at the end.
+#            on it: the one model service it calls is chem (validate, export: IUPAC names of edited
+#            structures), over the chem-api network.
+#   chem-api internal: the api and chem, nothing else.
 #   There is no network with egress for the api or worker: nothing needs it until error reporting
 #   (Sentry or GlitchTip, TODO) exists. Then add a plain bridge network, `egress`, to api and
 #   worker only.
@@ -287,6 +288,10 @@ services:
     build:
       context: ..
       dockerfile: deploy/chem.Dockerfile
+    # models (the worker) and chem-api (the api: validate and export name edited structures).
+    networks:
+      - models
+      - chem-api
     mem_limit: 1536m
     memswap_limit: 1536m
     cpus: 2
@@ -299,8 +304,15 @@ services:
   # makes itself non-dumpable so its ingest children, same user, cannot read it).
   # The api spawns its ingest children (python -I -m decimer_api.ingest_worker) inside this container:
   # up to INGEST_CONCURRENCY (2), each allowed INGEST_MEMORY_MB (1536) of address space beyond its
-  # start-up size, so 2 x 1.5 GB + the API itself and the request bodies it spools = 3.5 GB. Raise it
-  # with INGEST_CONCURRENCY or INGEST_MEMORY_MB.
+  # start-up size. It also keeps MAX_CONCURRENT_ANALYSES (2) long-lived children that read client molfiles
+  # with RDKit (decimer_api.analysis_worker, same user and minimal environment as the ingest children):
+  # about 70 MB resident each, at most about 450 MB at their ANALYSIS_MEMORY_MB limit (384 beyond the
+  # 70 MB RDKit maps). The ceiling, with every child at its limit at the same moment:
+  #     api itself and the request bodies it spools   0.5 GB  (about 100 MB resident)
+  #   + 2 ingest children x 1536 MB                   3.0 GB
+  #   + 2 analysis children x about 450 MB            0.9 GB
+  #   = about 4.4 GB (4484 MiB), so 4608m (4.5 GiB). It was 3584m before the analysis children.
+  # Raise it with INGEST_CONCURRENCY, INGEST_MEMORY_MB, MAX_CONCURRENT_ANALYSES or ANALYSIS_MEMORY_MB.
   # This is NOT the final design: the ingest sidecar (deploy/README.md) is required before cutover.
   # Writable root file system on purpose: starlette spools uploads over 1 MB to a temp file under
   # /tmp, and a RAM-backed /tmp would count those 100 MB against the memory limit.
@@ -327,8 +339,11 @@ services:
       # Required: without it counters reset at every restart. `openssl rand -hex 32`. Lives in deploy/.env.
       # Only the api gets it (the worker and the sweep have it blanked below).
       IP_HASH_SECRET: ${IP_HASH_SECRET:?set IP_HASH_SECRET in deploy/.env (openssl rand -hex 32)}
-      # TODO: the variable name of the problem-report directory is a guess until that lands.
+      # The private problem-report volume: `REPORTS_DIR` is the api's own setting.
       REPORTS_DIR: /data/reports
+      # The api names an edited structure (validate, export) through chem, alone of the model services, over
+      # the `chem-api` network. `-` and not `:-`: `CHEM_URL=` in .env really is empty and switches names off.
+      CHEM_URL: ${CHEM_URL-http://chem:8004}
       # The two arq queues: the api sends a small job to the fast queue only while a fast worker's
       # health-check key (<WORKER_FAST_QUEUE_NAME>:health-check) exists in Redis, so while worker-fast is
       # not running (stopped, starting, scaled to 0) every job goes to the default queue and the default
@@ -341,14 +356,22 @@ services:
     networks:
       - app
       - backend
+      - chem-api
     depends_on:
       redis:
         condition: service_healthy
     # An upload in flight can take INGEST_WAIT_SECONDS (20) + INGEST_TIMEOUT_SECONDS (30) + the
     # request's own time: 70 s lets running requests finish on `docker stop`.
     stop_grace_period: 70s
-    mem_limit: 3584m
-    memswap_limit: 3584m
+    # A ZIP download holds a file open per crop while the client reads (MAX_CONCURRENT_DOWNLOADS, 8, at
+    # most MAX_STRUCTURES, 20, each = 160) on top of sockets and the ingest children's pipes. The container's
+    # default limit is the daemon's; this one is explicit, so that slow readers cannot run the process out.
+    ulimits:
+      nofile:
+        soft: 4096
+        hard: 4096
+    mem_limit: 4608m
+    memswap_limit: 4608m
     cpus: 2
     pids_limit: 256
 
@@ -529,10 +552,10 @@ networks:
     internal: true
   models:
     internal: true
-  # TODO: when POST /api/jobs/{id}/results/{n}/validate calls chem from the api, add this network
-  # (uncomment it) and put it in the `networks:` of both api and chem. Nothing else of the models.
-  #chem-api:
-  #  internal: true
+  # POST /api/jobs/{id}/results/{n}/validate and /export call chem from the api: this network
+  # holds the api and chem and nothing else, so the api reaches no other model service.
+  chem-api:
+    internal: true
 
 volumes:
   # Job files: written by api, worker (and swept by sweep), read by edge (X-Accel-Redirect). Lives

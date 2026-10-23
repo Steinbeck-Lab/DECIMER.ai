@@ -29,6 +29,7 @@ from ..hardening import make_undumpable
 from ..queue import PROCESS_JOB, watch_fast_lane
 from ..settings import Settings
 from ..store import JobStore
+from .cancel import run_cancellable
 from .pipeline import Deps, run_pipeline
 from .runtime import build_deps
 from .settings import ARQ_TIMEOUT_MARGIN_SECONDS, WorkerSettings
@@ -53,7 +54,14 @@ async def process_job(ctx: dict[str, Any], job_id: str) -> None:
     limit = deps.worker.pipeline_timeout_seconds + ARQ_TIMEOUT_MARGIN_SECONDS
     started = time.monotonic()
     try:
-        await run_pipeline(job_id, deps)
+        # A job its owner deletes (DELETE /api/jobs/<id>) is stopped here, see `cancel.py`.
+        await run_cancellable(
+            job_id,
+            deps.store,
+            run_pipeline(job_id, deps),
+            poll_seconds=deps.worker.cancel_poll_seconds,
+            folder=deps.settings.data_dir / job_id,
+        )
     except asyncio.CancelledError:
         elapsed = time.monotonic() - started
         if elapsed >= TIMEOUT_CANCEL_SHARE * limit:

@@ -123,10 +123,10 @@ are never pulled (`pull_policy: never`): there is no registry namespace somebody
 * **Networks.** `public` is the edge alone with the published port (docker cannot publish from an internal
   network, so it is the one network with a route out; nothing but nginx is on it). `app` (internal) is
   edge + api with a pinned subnet; `backend` (internal) is redis, api, worker, sweep; `models` (internal)
-  is the worker and the model services. **The api is not on `models`**: it calls no model service yet;
-  when `POST .../validate` lands it needs chem and nothing else, and `compose.yaml` ends with a commented
-  chem-only network for that. There is no `egress` network until error reporting exists (then: a plain
-  bridge for api and worker only). So the model services, redis and the sweep have no route to the
+  is the worker and the model services. **The api is not on `models`**: the one model service it calls is
+  chem (the IUPAC name of an edited structure, for `validate` and `export`), over `chem-api` (internal), a
+  network of the api and chem alone. There is no `egress` network until error reporting exists (then: a
+  plain bridge for api and worker only). So the model services, redis and the sweep have no route to the
   internet, and the api cannot reach seg, cls or ocsr.
 * **Trusted proxies, one variable per hop.** The API's peer is the edge on `app`, so the API trusts
   exactly `APP_SUBNET` (derived from the variable that defines the network, not typed twice). The edge
@@ -177,8 +177,18 @@ are never pulled (`pull_policy: never`): there is no registry namespace somebody
    reads the input from it and writes the result back into it, and the api moves the result into
    `DATA_DIR/<job id>/input/` itself. Then a compromised parser sees one upload. The API calls it through
    the `IngestRunner` seam (`create_app(..., ingest_runner=...)`) instead of spawning a child; its limit
-   shrinks to about 0.5 GB. This needs an API change; until then `api` has 3.5 GB and the beta carries
+   shrinks to about 0.5 GB. This needs an API change; until then `api` has 4.5 GB and the beta carries
    the risk, which is acceptable for a beta and not for the cutover.
+   **The molfile-reading children move into the sidecar too.** The API reads a client's molfile (validate,
+   and the edits of an export) in two long-lived children of its own container (`analysis_worker`: RDKit's
+   parser on text the client chose; the text gate, an address-space limit and a timeout keep it cheap, but
+   a parser bug is a parser bug). They run as the API's user in the API's container exactly as the ingest
+   children do, so a compromised one has the same reach: **`DATA_DIR`** and **`REPORTS_DIR`** (every user's
+   uploads and the reports kept for analysis) read and written, the **`backend`** network (Redis, behind its
+   password), **chem** over `chem-api`, and the API's identity towards the **edge**. They need none of
+   it: a molfile in, a JSON answer out. So the sidecar runs both kinds of worker (it is the same image and
+   the same protocol over a socket instead of a pipe), with no volume and no route to Redis, chem or the
+   edge, and the memory they need (2 x about 450 MB) moves with the ingest memory.
 4. **nginx:** `proxy_request_buffering on` for `/api/` (uploads are buffered to the `edge-cache` volume,
    disk, not RAM, and removed when the edge starts), `disable_symlinks on;` on the internal
    `/_protected/jobs/` location, and `proxy_read_timeout` taken from the same
@@ -352,23 +362,24 @@ Per replica (limits are per container; resident from the READMEs): seg 3 GB / ab
 | cls | 2 x 2.5 = 5.0 / 2.0 | 3 x 2.5 = 7.5 / 3.0 |
 | chem | 1.5 / 0.4 | 1.5 / 0.4 |
 | **models** | **24.5 / 16.0** | **45.0 / 29.8** |
-| api (INGEST_CONCURRENCY x INGEST_MEMORY_MB + base) | 3.5 / 0.4 | 3.5 / 0.4 |
+| api (base 0.5 + 2 ingest children x 1.5 + 2 molfile children x 0.45; resident 0.4 + 0.15) | 4.5 / 0.5 | 4.5 / 0.5 |
 | worker (`WORKER_MEM_LIMIT`: 2 g, after cutover 3 g with 8 jobs and 2 renders) | 2.0 / 0.5 | 3.0 / 1.0 |
 | worker-fast (`WORKER_FAST_MEM_LIMIT`: 1 g; only small jobs, 2 at a time) | 1.0 / 0.3 | 1.0 / 0.3 |
 | redis, sweep, edge | 0.8 / 0.2 | 0.8 / 0.2 |
-| **whole stack** | **31.8 / 17.4** | **53.3 / 31.7** |
-| plus what the VM already uses (legacy about 22.2 until cutover, the rest of the host about 2.6) | 56.8 / 42.4 of 62.8 | legacy gone: 55.9 / 34.3 of 62.8 |
+| **whole stack** | **32.8 / 17.5** | **54.3 / 31.8** |
+| plus what the VM already uses (legacy about 22.2 until cutover, the rest of the host about 2.6) | 57.8 / 42.5 of 62.8 | legacy gone: 56.9 / 34.4 of 62.8 |
 
 * **Beside legacy the new stack is about 17 GB resident**: the models alone 16.0 (seg 4.0, ocsr 9.6, cls 2.0, chem
-  0.4), the whole stack 17.4. D18 first said "about 17 GB of models", about 1 GB above the models' 16.0; D18 now
-  says 16. The resident figures come from the service READMEs; the api, worker and redis rows are estimates. **The ceilings are higher** (31.8 GB: ocsr's 6 GB limit
+  0.4), the whole stack 17.5. D18 first said "about 17 GB of models", about 1 GB above the models' 16.0; D18 now
+  says 16. The resident figures come from the service READMEs; the api, worker and redis rows are estimates. **The ceilings are higher** (32.8 GB: ocsr's 6 GB limit
   x 2 is most of it). The 62.8 GiB VM already uses about 25 GiB besides the new stack (legacy about 22.2, the
-  rest of the host about 2.6), so the ceilings together make 31.8 + 25.0 = 56.8 GiB: about 6 GiB of headroom for
-  the kernel and page cache (it was 7 before `worker-fast` became part of the default start). If memory gets
+  rest of the host about 2.6), so the ceilings together make 32.8 + 25.0 = 57.8 GiB: about 5 GiB of headroom for
+  the kernel and page cache (it was 6 before the api's limit grew by 1 GiB for its molfile-reading children,
+  and 7 before `worker-fast` became part of the default start). If memory gets
   tight, `OCSR_REPLICAS=1` takes 6 GB off the ceiling and 4.8 GB off the resident total, and running without
   `worker-fast` (`$DC up -d --scale worker-fast=0`, safe: see "Two queues") takes 1 GB.
 * **After cutover** about 32 GB resident (29.8 GB of it models, D18's "about 30 GB") and
-  a 53.3 GB ceiling; with the host's 2.6 GiB that is 55.9 of 62.8 GiB, since legacy is gone. The limits are
+  a 54.3 GB ceiling; with the host's 2.6 GiB that is 56.9 of 62.8 GiB, since legacy is gone. The limits are
   ceilings: a container over its limit is OOM-killed and restarted, never swapped (`memswap_limit` equals
   `mem_limit`).
 * **The worker's pages in memory.** A page is read, decoded and held as a PNG (2-4 MB for an A4 page at 300
@@ -623,7 +634,7 @@ door that does not strip the prefix.
 | TODO | Where | What is needed |
 |---|---|---|
 | pyproject patches | `patches/` | Apply `apply-pyproject-patches.sh` and commit the services' lock files; check seg, ocsr, cls and chem still pass `uv run pytest` and the slow tests |
-| ingest sidecar | `compose.yaml`, API | Required before cutover (see above); needs an API change (an `IngestRunner` that calls the sidecar, per-request scratch) |
+| ingest sidecar | `compose.yaml`, API | Required before cutover (see above), for the ingest children and the molfile-reading children; needs an API change (an `IngestRunner` that calls the sidecar, per-request scratch, an `Analysis` that calls it) |
 | seg page downscaling | worker | P3-04: downscale pages above 40 MP for seg; seg's cap stays |
 | replica and thread numbers | `.env`, compose | Verify the model's estimates (P3-13: golden paper and a stress case at 2/2/2 and 6/3/3, `docker stats`); the ocsr thread sensitivity is the weakest input |
 | first `up` with replicas | the VM | `up` was not run: confirm N containers per service and the DNS check; check the worker's log shows `replica ... joined` once per replica (P3-04b is tested against fake replicas only); Compose v2.3.3 and v2.39.2 both parse the file |
@@ -631,8 +642,8 @@ door that does not strip the prefix.
 | child oom_score_adj | API, worker | Ingest and render children lower their own `oom_score_adj` (1000); compose cannot do it per process |
 | `TRUSTED_PROXY_CIDR` | `.env` | The campus proxy's address(es) and what it does to `X-Forwarded-For` (Q3) |
 | campus proxy hostname | front door | Can it route `/beta/` and `/api/`, or provide `beta.decimer.ai` (Q3) |
-| chem in the api | `compose.yaml` | When `/validate` lands: the `chem-api` network for api and chem |
-| reports volume | `compose.yaml` | The real variable name for the report directory (P3-08; `REPORTS_DIR` is a guess) and the backup |
+| chem in the api | `compose.yaml` | Done in P3-06: the `chem-api` network and the api's `CHEM_URL`; check on the VM that the api reaches `chem:8004` and not seg, cls or ocsr |
+| reports volume | `compose.yaml` | `REPORTS_DIR` is the api's setting (P3-08, done); the backup is still open |
 | cls soak | `compose.yaml` | A few thousand requests, watch RSS, confirm 2.5 GB |
 | memory limits per replica | `compose.yaml` | seg 3 GB, ocsr 6 GB, cls 2.5 GB come from the READMEs; measure on the VM |
 | Sentry or GlitchTip | `.env`, compose | Decide which; then an `egress` network for api and worker, and the SPA's CSP `connect-src` |

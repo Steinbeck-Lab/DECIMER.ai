@@ -134,3 +134,19 @@ def test_the_dispatching_settings_come_from_the_environment(
     worker = WorkerSettings()
     assert (worker.replica_refresh_seconds, worker.replica_cooldown_seconds) == (3, 20)
     assert (worker.small_first_burst, worker.fast_lane_rescue_seconds) == (7, 0)
+
+
+def test_a_slot_kept_for_a_deleted_job_must_outlast_the_poll_and_the_slowest_service() -> None:
+    """A client's slot is held after DELETE until the worker stops the run, or this long; it must
+    not go before the models are free of the abandoned call (seg may take its 180 s)."""
+    settings = Settings()
+    worker = WorkerSettings(seg_timeout_seconds=180, cancel_poll_seconds=2)
+    assert settings.cancelling_slot_seconds >= 180 + 2
+    worker.check_against(settings)
+    with pytest.raises(ValueError, match="CANCELLING_SLOT_SECONDS"):
+        WorkerSettings(seg_timeout_seconds=300).check_against(settings)
+    with pytest.raises(ValueError, match="CANCELLING_SLOT_SECONDS"):
+        WorkerSettings(chem_timeout_seconds=400).check_against(settings)
+    WorkerSettings(seg_timeout_seconds=300).check_against(Settings(cancelling_slot_seconds=310))
+    with pytest.raises(ValueError, match="CANCELLING_SLOT_SECONDS"):
+        WorkerSettings(cancel_poll_seconds=10).check_against(Settings(cancelling_slot_seconds=185))

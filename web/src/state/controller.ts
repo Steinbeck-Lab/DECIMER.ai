@@ -42,6 +42,27 @@ function failureKind(error: ApiError | null): FailureKind {
   return 'unexpected';
 }
 
+/** The longest a busy answer's Retry-After is waited for before the one retry. */
+const MAX_BUSY_WAIT_MS = 5_000;
+
+/**
+ * The service answered 503 `busy`: every place for this kind of request is taken for a moment, and `Retry-After` says
+ * when to ask again. Asks once more after that (at most 5 s), and returns what the second try gives, an error
+ * included: a second "busy", a 429, any other answer is the caller's to show. `signal` ends the wait early when the
+ * request is no longer wanted (a newer edit has taken its place), and then the first answer is thrown.
+ */
+async function retryWhenBusy<T>(call: () => Promise<T>, signal: AbortSignal): Promise<T> {
+  try {
+    return await call();
+  } catch (error) {
+    const busy = error instanceof ApiError && error.status === 503 && error.code === 'busy' && error.retryAfterMs !== null;
+    if (!busy) throw error;
+    await sleep(Math.min(error.retryAfterMs ?? 0, MAX_BUSY_WAIT_MS), signal);
+    if (signal.aborted) throw error;
+    return call();
+  }
+}
+
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     if (signal.aborted) return resolve();
@@ -178,7 +199,14 @@ export class AppController {
     return Math.min(interval * 2 ** (count - 1), MAX_BACKOFF_MS);
   }
 
+  /**
+   * Back to the empty screen. A job the server still has is deleted, so that it stops counting against the
+   * user's limit of active jobs at once, a running one is stopped and its files go now, not in an hour. Nothing
+   * waits for the answer and nothing depends on it: a failed delete (the network, a job that is already gone)
+   * leaves a job that ends and expires by itself.
+   */
   startOver(): void {
+    const jobId = this.store.getState().jobId;
     this.generation++;
     this.pollAbort?.abort();
     this.submitAbort?.abort();
@@ -190,6 +218,7 @@ export class AppController {
     this.validateAborts.clear();
     this.revokePreviews();
     this.store.dispatch({ type: 'startOver' });
+    if (jobId) void this.api.deleteJob(jobId).catch(() => undefined);
   }
 
   dismissProblem(): void {
@@ -254,7 +283,7 @@ export class AppController {
     const abort = new AbortController();
     this.validateAborts.set(index, abort);
     try {
-      const derived = await this.api.validate(jobId, index, molfile, abort.signal);
+      const derived = await retryWhenBusy(() => this.api.validate(jobId, index, molfile, abort.signal), abort.signal);
       this.store.dispatch({ type: 'validated', index, molfile, derived });
     } catch {
       // An aborted request is not a failed one: a newer edit has taken its place.
@@ -293,7 +322,8 @@ export class AppController {
       const { job, edits } = this.store.getState();
       if (!job) return;
       const request = buildExportRequest(job, edits, format);
-      const { blob, filename } = await this.api.exportJob(job.id, request);
+      // A download that finds the service busy is tried once more after Retry-After; nothing ends the wait early.
+      const { blob, filename } = await retryWhenBusy(() => this.api.exportJob(job.id, request), new AbortController().signal);
       this.save(blob, filename);
       this.showNotice('info', strings.results.downloadStarted);
     } catch {

@@ -1,6 +1,6 @@
 import type { ApiClient } from './client';
 import {
-  API_ERROR_CODES,
+  SERVER_ERROR_CODES,
   ApiError,
   type ApiErrorCode,
   type CreateJobResponse,
@@ -8,13 +8,14 @@ import {
   type ExportRequest,
   type ExportResponse,
   type Job,
+  type ValidateRequest,
   type ValidateResponse,
 } from './contract';
 import type { components } from './generated';
 import { parseJob, parseValidate } from './normalise';
 
-/** The codes the API's error shape can carry. The other two of `API_ERROR_CODES` are the client's own. */
-const SERVER_CODES: ReadonlySet<string> = new Set(API_ERROR_CODES.filter((c) => c !== 'network' && c !== 'unknown'));
+/** The codes the API's error shape can carry (the schema's `ErrorCode`). The two others of `ApiErrorCode` are the client's own. */
+const SERVER_CODES: ReadonlySet<string> = new Set(SERVER_ERROR_CODES);
 
 /** What a status means when the body does not say (a proxy's HTML page, a code from a newer API). */
 function codeForStatus(status: number): ApiErrorCode {
@@ -148,6 +149,8 @@ function filenameFrom(disposition: string | null): string | null {
 }
 
 const EXTENSION: Record<ExportFormat, string> = { zip: 'zip', sdf: 'sdf', csv: 'csv' };
+/** What each export is, for the `Accept` header (the API answers by `format`, whatever this says). */
+const ACCEPT: Record<ExportFormat, string> = { zip: 'application/zip', sdf: 'chemical/x-mdl-sdfile', csv: 'text/csv' };
 
 export interface HttpApiClientOptions {
   /** In front of every path, for an API on another origin. Empty: the same origin as the page. */
@@ -160,10 +163,8 @@ export interface HttpApiClientOptions {
 /**
  * The ApiClient over the job API's real endpoints (selected by `VITE_API=http`).
  *
- * Built and tested against the API as it is today: `POST /api/jobs` and `GET /api/jobs/{id}`, with the media
- * URLs as the job returns them. The calls that come with P3-06 (validate), P3-07 (export) and P3-08 (report) use
- * the agreed paths and the request and response shapes of `contract.ts`. They are PROVISIONAL until those
- * endpoints exist and their types are generated.
+ * Every call is one of the API's endpoints (`openapi.json`): the request and response shapes are the generated
+ * types, through `contract.ts`. The media URLs are used as the job returns them.
  *
  * Every failure is an `ApiError` (the API's `{"detail": {"code", "message"}}`, or the status when the body is
  * not that), except an abort, which stays an `AbortError`: whoever aborted knows.
@@ -210,10 +211,10 @@ export class HttpApiClient implements ApiClient {
     return response;
   }
 
-  private postJson(path: string, body: unknown, signal?: AbortSignal): Promise<Response> {
+  private postJson(path: string, body: unknown, signal?: AbortSignal, accept?: string): Promise<Response> {
     return this.send(path, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(accept ? { Accept: accept } : {}) },
       body: JSON.stringify(body),
       signal,
     });
@@ -240,21 +241,28 @@ export class HttpApiClient implements ApiClient {
     return parseJob((await readBody(response, (r) => r.json())) as components['schemas']['JobView'], this.resolveMedia);
   }
 
-  /** PROVISIONAL: `POST /api/jobs/{id}/results/{n}/validate`, n the 0-based result index. */
-  async validate(jobId: string, index: number, molfile: string, signal?: AbortSignal): Promise<ValidateResponse> {
-    const response = await this.postJson(`/api/jobs/${encodeURIComponent(jobId)}/results/${index}/validate`, { molfile }, signal);
-    return parseValidate((await readBody(response, (r) => r.json())) as Partial<ValidateResponse>);
+  /** `DELETE /api/jobs/{id}`: stops the job, frees the client's slot and removes its files. 204; a job that is already gone is a 404 `not_found`. */
+  async deleteJob(id: string, signal?: AbortSignal): Promise<void> {
+    await this.send(`/api/jobs/${encodeURIComponent(id)}`, { method: 'DELETE', signal });
   }
 
-  /** PROVISIONAL: `POST /api/jobs/{id}/export`. */
+  /** `POST /api/jobs/{id}/results/{n}/validate`, n the 0-based result index. */
+  async validate(jobId: string, index: number, molfile: string, signal?: AbortSignal): Promise<ValidateResponse> {
+    const body: ValidateRequest = { molfile };
+    const response = await this.postJson(`/api/jobs/${encodeURIComponent(jobId)}/results/${index}/validate`, body, signal);
+    return parseValidate((await readBody(response, (r) => r.json())) as components['schemas']['ValidateView']);
+  }
+
+  /** `POST /api/jobs/{id}/export`: the ZIP, SDF or CSV, named by the server (`Content-Disposition`). */
   async exportJob(jobId: string, request: ExportRequest, signal?: AbortSignal): Promise<ExportResponse> {
-    const response = await this.postJson(`/api/jobs/${encodeURIComponent(jobId)}/export`, request, signal);
+    const response = await this.postJson(`/api/jobs/${encodeURIComponent(jobId)}/export`, request, signal, ACCEPT[request.format]);
     const filename = filenameFrom(response.headers.get('Content-Disposition')) ?? `decimer-${jobId}.${EXTENSION[request.format]}`;
     return { blob: await readBody(response, (r) => r.blob()), filename };
   }
 
-  /** PROVISIONAL: `POST /api/jobs/{id}/report`. */
+  /** `POST /api/jobs/{id}/report`: a problem report for one result. The server keeps its own copy of the result and its image; only the index is sent. 204. */
   async report(jobId: string, index: number, signal?: AbortSignal): Promise<void> {
-    await this.postJson(`/api/jobs/${encodeURIComponent(jobId)}/report`, { index }, signal);
+    const body: components['schemas']['ReportRequest'] = { index };
+    await this.postJson(`/api/jobs/${encodeURIComponent(jobId)}/report`, body, signal);
   }
 }

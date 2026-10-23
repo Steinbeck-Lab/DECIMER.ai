@@ -1,4 +1,6 @@
-"""The job endpoints: POST /api/jobs, GET /api/jobs/{id}, GET /api/jobs/{id}/media/{name}."""
+"""The job endpoints: POST /api/jobs, GET and DELETE /api/jobs/{id} and the media files.
+
+What works on a finished job's results (validate, export, report) is in `result_routes`."""
 
 from __future__ import annotations
 
@@ -126,7 +128,8 @@ async def _read_form(request: Request, settings: Settings) -> FormData:
         raise ApiError(400, "invalid_request", "The upload could not be read.") from error
 
 
-def _client_hash(request: Request) -> str:
+def client_key(request: Request) -> str:
+    """The keyed hash of the client's address that every per-client limit counts against."""
     deps = request.app.state.deps
     peer = request.client.host if request.client else None
     forwarded = request.headers.getlist("x-forwarded-for")
@@ -165,7 +168,7 @@ def _warn_if_proxy_is_not_trusted(deps: Any, peer: str) -> None:
 async def create_job(request: Request, response: Response) -> JobView:
     deps = request.app.state.deps
     settings: Settings = deps.settings
-    client_hash = _client_hash(request)
+    client_hash = client_key(request)
 
     # Take the client's slot first, before a byte of the body is read: a client over its limit
     # costs one Redis round trip, however many uploads it starts at once.
@@ -260,6 +263,29 @@ async def get_job(job_id: str, request: Request, response: Response) -> JobView:
     position = await store.queue_position(job_id) if job.status is JobStatus.QUEUED else None
     response.headers["Cache-Control"] = "no-store"
     return JobView.from_job(job, position)
+
+
+@router.delete(
+    "/jobs/{job_id}",
+    status_code=204,
+    response_class=Response,
+    responses={404: {"model": ErrorResponse, "description": "Unknown or expired job"}},
+    summary="Delete a job: stop it, free the client's slot, remove its files",
+)
+async def delete_job(job_id: str, request: Request) -> Response:
+    """For a user who starts over: the job stops counting against the client's limit at once. A
+    queued job is never started; a running one is stopped by its worker within a few seconds
+    (`worker/cancel.py`); a finished one loses its files before the hour is up. The job answers
+    404 from then on."""
+    deps = request.app.state.deps
+    if not is_valid_job_id(job_id):
+        raise not_found()
+    job = await deps.store.get(job_id)
+    if job is None:
+        raise not_found()
+    await deps.store.cancel(job)
+    await asyncio.to_thread(shutil.rmtree, deps.settings.data_dir / job_id, True)
+    return Response(status_code=204)
 
 
 @router.get(

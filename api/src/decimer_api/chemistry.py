@@ -25,6 +25,13 @@ R groups), and the molfile carries `R#` atoms with an `M  RGP` line, which Ketch
 R2. `[Rb]`, `[Rh]`, `[Ra]`, `[Re]`, `[Ru]` are elements and are left alone; `[R1a]`, `[R+]` and
 the like stay invalid.
 
+`analyse_molfile` does the same for a molfile that came from the editor (`/validate`, `/export`).
+A text that is not a molfile at all raises `MolfileError`; one that is a molfile but not a valid
+structure (an impossible valence, no atoms) is `valid=False`, like an invalid SMILES.
+`clean_molfile` is what a client's molfile must pass before it is stored, written to a file or
+parsed. It also refuses, from the text alone and before RDKit sees a byte, a molfile that is cheap
+to write and ruinous to read, or too ambiguous to count the way RDKit will (see `molfile.py`).
+
 The functions are synchronous and CPU-bound (milliseconds); async callers use `asyncio.to_thread`.
 """
 
@@ -37,6 +44,8 @@ from dataclasses import dataclass
 from rdkit import Chem, RDLogger
 from rdkit.Chem import rdDepictor
 from rdkit.Chem.Draw import rdMolDraw2D
+
+from .molfile import MolfileError, clean_molfile
 
 log = logging.getLogger("decimer_api.chemistry")
 
@@ -155,3 +164,23 @@ def _svg(mol: Chem.Mol) -> str:
     # RDKit starts with an XML declaration, which is not wanted when the SVG is inlined in HTML.
     start = text.find("<svg")
     return text[start:].strip() if start >= 0 else ""
+
+
+def analyse_molfile(molfile: str) -> Chemistry:
+    """Parse a molfile and describe it. It goes through `clean_molfile` again (cheap, and a no-op
+    on a molfile that was cleaned), so that no caller can hand RDKit what the cost gate would have
+    refused. Raises `MolfileError` when RDKit cannot read it as a molfile; a structure it reads but
+    cannot sanitize, and one with no atoms, come back with `valid=False` and empty values."""
+    molfile = clean_molfile(molfile)
+    try:
+        mol = Chem.MolFromMolBlock(molfile, sanitize=False, removeHs=False, strictParsing=False)
+    except Exception as error:  # RDKit raises ValueError and RuntimeError for some inputs
+        raise MolfileError("it cannot be read as a molfile") from error
+    if mol is None:
+        raise MolfileError("it cannot be read as a molfile")
+    try:
+        Chem.SanitizeMol(mol)
+        mol = Chem.RemoveHs(mol)
+    except Exception:
+        return _invalid("")
+    return describe(mol)
