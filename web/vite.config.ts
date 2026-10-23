@@ -3,15 +3,16 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 
 // The CSP the production nginx will send. Preview serves it too, so the
-// e2e tests run under the real policy.
+// e2e tests run under the real policy. matomo.nfdi4chem.de is the visit counter (src/analytics/matomo.ts): its script,
+// its tracking image and its beacon.
 export const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
-  "script-src 'self' 'wasm-unsafe-eval'",
+  "script-src 'self' 'wasm-unsafe-eval' https://matomo.nfdi4chem.de",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
+  "img-src 'self' data: blob: https://matomo.nfdi4chem.de",
   "font-src 'self' data:",
   "worker-src 'self' blob:",
-  "connect-src 'self'",
+  "connect-src 'self' https://matomo.nfdi4chem.de",
   "object-src 'none'",
   "base-uri 'self'",
   "frame-ancestors 'none'",
@@ -28,6 +29,8 @@ export default defineConfig({
   server: process.env.VITE_API_PROXY ? { proxy: { '/api': process.env.VITE_API_PROXY } } : {},
   preview: {
     headers: { 'Content-Security-Policy': CONTENT_SECURITY_POLICY },
+    // e2e/matomo.spec.ts opens the built app under this name, because the counter starts only on a real host.
+    allowedHosts: ['decimer.test'],
   },
   test: {
     environment: 'jsdom',

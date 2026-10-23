@@ -182,9 +182,9 @@ async def test_a_larger_limit_makes_two_page_jobs_small(make_rig: Callable[..., 
 
 async def test_a_lone_pdf_uses_every_replica_of_every_stage(make_rig: Callable[..., Rig]) -> None:
     hosts, resolver = fleet(seg=2, ocsr=2, cls=2)
-    backend = FakeBackend(
-        layout={page: 2 for page in range(6)}, hosts=hosts, delay=0.005
-    )  # 6 pages, 12 crops
+    # 6 pages, 12 crops. The calls take much longer than rendering a page, so that the next page
+    # (and the next crop) is there before the call before it is answered.
+    backend = FakeBackend(layout={page: 2 for page in range(6)}, hosts=hosts, delay=0.1)
     rig = make_rig(backend=backend, resolver=resolver)
     job = await rig.pdf_job(6)
     stored = await rig.run(job)

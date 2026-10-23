@@ -1,13 +1,11 @@
 /**
  * The API contract the UI works with.
  *
- * What the API serves today (jobs, results, stages, warnings) is DERIVED from the
- * types generated from its OpenAPI schema (`generated.ts`, by `npm run gen:api`,
- * TODO), so a change in the API shows up as a type error here and in the
- * code that uses it. `contract.check.ts` pins what the UI assumes about those
- * types. The validate, export and report calls are not in
- * the schema yet and stay hand-written and PROVISIONAL: their shapes may change
- * when the API builds them.
+ * Everything the API serves (jobs, results, stages, warnings, the validate answer, the export
+ * request, the error codes) is DERIVED from the types generated from its OpenAPI schema
+ * (`generated.ts`, by `npm run gen:api`, TODO), so a change in the API shows up as a type
+ * error here and in the code that uses it. `contract.check.ts` pins what the UI assumes about
+ * those types.
  */
 import type { components } from './generated';
 
@@ -49,32 +47,26 @@ export interface CreateJobResponse {
   id: string;
 }
 
-/** PROVISIONAL. */
-export interface ValidateRequest {
-  molfile: string;
-}
+/** `POST /api/jobs/{id}/results/{n}/validate`, `n` the 0-based `Result.index`: the request body. */
+export type ValidateRequest = Schemas['ValidateRequest'];
 
-/** PROVISIONAL. `POST /api/jobs/{id}/results/{n}/validate`: values recomputed on the server. */
-export interface ValidateResponse {
-  smiles: string;
-  inchikey: string;
-  svg: string;
-  valid: boolean;
-  name: string | null;
-  nameTier: string | null;
-  /** How the name was checked; see `Result`. */
-  nameVerified: string | null;
-}
+/**
+ * The answer: values recomputed on the server for an edited molfile, the same ones a recognised structure has.
+ * `Required<>` as for `Result`: the API sends every field, and `parseValidate` fills the ones a server version
+ * might leave out. `name`, `nameTier` and `nameVerified` are null when chem is off, slow or declines.
+ */
+export type ValidateResponse = Required<Schemas['ValidateView']>;
 
-export type ExportFormat = 'zip' | 'sdf' | 'csv';
+export type ExportFormat = Schemas['ExportFormat'];
 
-/** PROVISIONAL. `POST /api/jobs/{id}/export`. */
+/** `POST /api/jobs/{id}/export`. */
 export interface ExportRequest {
   format: ExportFormat;
   /**
    * Edited molfiles keyed by `Result.index`. Results that were not edited are
    * absent: the server uses its own copy for those, and takes the order from
-   * the job's results (never from the client).
+   * the job's results (never from the client). A key that is not a result of
+   * the job, or a molfile the server cannot use, refuses the whole export.
    */
   molfiles: Record<number, string>;
 }
@@ -85,30 +77,45 @@ export interface ExportResponse {
 }
 
 /**
- * `detail.code` of the API's one error shape, `{"detail": {"code", "message"}}`
- * (api/src/decimer_api/errors.py, ingest.py, routes.py), plus two the client
- * makes up: `network` (no answer) and `unknown` (anything unexpected).
+ * `detail.code` of the API's one error shape, `{"detail": {"code", "message"}}`: the codes of the schema's
+ * `ErrorCode` enum (api/src/decimer_api/errors.py), plus two the client makes up: `network` (no answer) and
+ * `unknown` (anything unexpected).
+ *
+ * The list below must name every code of the schema and nothing else: `satisfies Record<ServerErrorCode, true>`
+ * is a type error for a code the API has and the list does not, and for one the list has and the API does not.
+ * So `npm run typecheck` fails after `npm run gen:api` brings a new code, until it is added here and given a
+ * sentence in `strings.ts`.
  */
-export const API_ERROR_CODES = [
-  'empty_upload',
-  'too_many_files',
-  'unsupported',
-  'mixed_upload',
-  'multiple_pdfs',
-  'corrupt_file',
-  'encrypted_pdf',
-  'too_many_pixels',
-  'too_large',
-  'invalid_request',
-  'rate_limited',
-  'queue_full',
-  'unavailable',
-  'not_found',
-  'network',
-  'unknown',
-] as const;
+export type ServerErrorCode = Schemas['ErrorDetail']['code'];
 
-export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
+const SERVER_CODES = {
+  empty_upload: true,
+  too_many_files: true,
+  unsupported: true,
+  mixed_upload: true,
+  multiple_pdfs: true,
+  corrupt_file: true,
+  encrypted_pdf: true,
+  too_many_pixels: true,
+  processing_limit: true,
+  too_large: true,
+  invalid_request: true,
+  rate_limited: true,
+  queue_full: true,
+  busy: true,
+  unavailable: true,
+  not_found: true,
+  no_results: true,
+  method_not_allowed: true,
+  http_error: true,
+  internal_error: true,
+} as const satisfies Record<ServerErrorCode, true>;
+
+export const SERVER_ERROR_CODES = Object.keys(SERVER_CODES) as readonly ServerErrorCode[];
+
+export const API_ERROR_CODES: readonly ApiErrorCode[] = [...SERVER_ERROR_CODES, 'network', 'unknown'];
+
+export type ApiErrorCode = ServerErrorCode | 'network' | 'unknown';
 
 export class ApiError extends Error {
   readonly status: number;

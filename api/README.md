@@ -9,7 +9,12 @@ POST /api/jobs ──► take the client's slot ► read the body ► classify (
                    ► ingest in a child process (limits, deadline) ► files in DATA_DIR/<id>/input/
                    ► Redis record ► arq queue
 GET  /api/jobs/<id> ──► status, progress, results
+DELETE /api/jobs/<id> ──► stop it, free the client's slot, remove its files
 GET  /api/jobs/<id>/media/<name> ──► X-Accel-Redirect to nginx (job-scoped)
+POST /api/jobs/<id>/results/<n>/validate ──► an edited molfile in, SMILES, InChIKey, SVG, IUPAC name out
+POST /api/jobs/<id>/export ──► ZIP, SDF or CSV of the structures with the user's edits
+POST /api/jobs/<id>/report ──► keep a result and its image on the private reports volume
+GET  /api/engines ──► the versions of the models and libraries behind the results
 ```
 
 ## Run
@@ -64,6 +69,16 @@ All come from environment variables of the same name (case-insensitive); `.env.e
 | `IP_HASH_SECRET` | empty | Key for hashing client addresses. Set it in production. When empty a random key is made at start, and per-IP counters reset on restart. |
 | `MEDIA_STREAM_DIRECT` | `false` | `true`: stream media files from the API (development). `false`: `X-Accel-Redirect`. |
 | `MEDIA_ACCEL_PREFIX` | `/_protected/jobs` | The internal nginx location, see below. |
+| `CHEM_URL` | empty | The chem service, for the IUPAC name of an edited structure (validate, export). Empty: names are null. The worker has its own `CHEM_URL` (see "Worker settings"). |
+| `NAMES_TIMEOUT_SECONDS` | `4` | The most validate and export spend on chem, with no retry. A name that is not there in time is null. The api has **one** call in flight to chem; a validate that finds it occupied answers with no name at once, only an export waits for it: the worker has priority on chem. |
+| `MAX_CONCURRENT_ANALYSES`, `MAX_CONCURRENT_DOWNLOADS` | `2`, `8` | Child processes reading client molfiles (one place each; one place for all the edits of an export), and ZIP downloads streamed at once. Nothing queues: the next request gets `503 busy` with `Retry-After`. |
+| `MAX_DOWNLOADS_PER_CLIENT`, `DOWNLOAD_TIMEOUT_SECONDS` | `2`, `120` | Of the ZIP downloads, what one client address may have going (`429` with `Retry-After` beyond it), and how long one may take: after that the stream is aborted (the client sees an incomplete file) and its place and files are freed. |
+| `ANALYSIS_MEMORY_MB`, `ANALYSIS_TIMEOUT_SECONDS`, `ANALYSIS_BATCH_SECONDS`, `ANALYSIS_STARTUP_SECONDS`, `ANALYSIS_RECYCLE_AFTER` | `384`, `5`, `20`, `30`, `500` | A molfile-reading child may allocate this much beyond what RDKit maps (address-space limit); one molfile may take this long, all the edits of an export this long; a child has this long to start; it is replaced after this many molfiles. |
+| `CANCELLING_SLOT_SECONDS` | `185` | A client that deletes a **running** job keeps its slot for this long, whatever the worker does (`CANCEL_POLL_SECONDS` plus the longest service read timeout: what an abandoned call can go on computing; the worker refuses to start with numbers that add up to more). |
+| `MAX_MOLFILE_BYTES` | `65536` | A molfile sent by the client. `413` above it. A request body is cut off at twice this (validate) or 1 MiB (export, as nginx does). |
+| `VALIDATE_RATE_PER_MINUTE`, `EXPORT_RATE_PER_MINUTE`, `REPORT_RATE_PER_HOUR` | `60`, `10`, `30` | Requests per client address, a fixed window counted in Redis before the body is read. `429` with `Retry-After` beyond it. |
+| `REPORTS_DIR` | `/data/reports` | The private volume of problem reports (only the api mounts it). |
+| `MAX_REPORTS`, `REPORTS_MAX_BYTES`, `MAX_REPORT_IMAGE_BYTES` | `5000`, `2147483648`, `4194304` | At most this many report folders and this many bytes in all (counted from the disk, so a restart does not forget them; `503` beyond, a warning at 80 % of either); a crop image over the size is left out of its report. |
 | `HOST`, `PORT` | `127.0.0.1`, `8000` | `python -m decimer_api` only. |
 
 ## Endpoints
@@ -72,19 +87,118 @@ All come from environment variables of the same name (case-insensitive); `.env.e
 |---|---|---|
 | `POST /api/jobs` multipart, one or more `file` parts | `202` job JSON, `Location: /api/jobs/<id>` | `400` mixed PDF and images, several PDFs, too many files, corrupt or encrypted file, no file; `413` too large, too many pixels, or a file the parser could not handle within its limits (`processing_limit`); `415` not a supported type, or not multipart; `429` client has `MAX_ACTIVE_JOBS_PER_IP` active jobs; `503` queue full or service busy (`Retry-After`), Redis or enqueue down |
 | `GET /api/jobs/{id}` | `200` job JSON (`queuePosition` while queued), `Cache-Control: no-store` | `404` unknown, expired or malformed id |
+| `DELETE /api/jobs/{id}` | `204`; the job is gone at once (see "Deleting a job") | `404` unknown, expired or malformed id, or already deleted |
+| `POST /api/jobs/{id}/results/{n}/validate` JSON `{"molfile"}`, `n` the 0-based result index | `200` `{smiles, inchikey, svg, valid, name, nameTier, nameVerified}` | `404` job or result; `413` molfile too large; `422` not a molfile; `429` |
+| `POST /api/jobs/{id}/export` JSON `{"format": "zip"\|"sdf"\|"csv", "molfiles": {"<index>": "<molfile>"}}` | `200` the file (`Content-Disposition: attachment`) | `404`; `409` `no_results`; `413`; `422` a key that is not a result of the job, a molfile that cannot be used, unknown fields; `429` |
+| `POST /api/jobs/{id}/report` JSON `{"index"}` | `204` | `404` job or result; `413`; `422`; `429`; `503` the volume is full or cannot be written |
+| `GET /api/engines` | `200` `{engines: [{id, name, role, version, revision}]}`, cacheable for 5 minutes | |
 | `GET /api/jobs/{id}/media/{name}` | `200`, empty body, `X-Accel-Redirect: /_protected/jobs/<id>/<name>` (or the file itself with `MEDIA_STREAM_DIRECT`) | `404` unknown job, name not `crop-<n>.png` or `page-<n>.png`, file missing, symlink, or traversal |
 | `GET /healthz` | `200` | |
 | `GET /readyz` | `200` when Redis answers and `DATA_DIR` is writable | `503` |
 | `GET /api/openapi.json` | the OpenAPI schema (the source for the generated TypeScript types, P3-10) | |
 
 Every error body has one shape, whatever produced it (our checks, an unknown path, a wrong method, a
-validation failure, a bug): `{"detail": {"code": "...", "message": "..."}}`. Codes: `rate_limited`,
-`queue_full`, `busy`, `too_large`, `too_many_pixels`, `processing_limit`, `unsupported`,
-`mixed_upload`, `multiple_pdfs`, `too_many_files`, `corrupt_file`, `encrypted_pdf`, `empty_upload`,
-`invalid_request`, `unavailable`, `not_found`, `method_not_allowed`, `internal_error`. A rejected
-upload never has a job id or a queue position.
+validation failure, a bug): `{"detail": {"code": "...", "message": "..."}}`. `code` is the enum
+`ErrorCode` (`errors.py`), so the OpenAPI schema lists every code and the web client's own list is
+checked against it: `rate_limited`, `queue_full`, `busy`, `too_large`, `too_many_pixels`,
+`processing_limit`, `unsupported`, `mixed_upload`, `multiple_pdfs`, `too_many_files`, `corrupt_file`,
+`encrypted_pdf`, `empty_upload`, `invalid_request`, `unavailable`, `not_found`, `no_results`,
+`method_not_allowed`, `http_error`, `internal_error`. An unknown code fails where an `ApiError` is
+raised. A rejected upload never has a job id or a queue position.
 
-Reserved for P3-06: `POST /api/jobs/{id}/results/{n}/validate`. Nothing in this project routes there.
+### Results: validate, export, report
+
+`result_routes.py`. The three POSTs are `@guarded` (`guards.py`): the client's rate limit is counted and
+the body size checked **before** the body is read (FastAPI would read it first, whatever its size).
+Everything the client sends is checked against the job's own record. No name, path or order comes from
+the request; unknown JSON fields are refused.
+
+* **validate.** The molfile goes through `clean_molfile` (control characters, a lone surrogate, a `$$$$`
+  line or no `M  END` line are `422`) and RDKit (`analyse_molfile`). **The byte cap does not bound what
+  RDKit costs** (44 dummy atoms joined each to each are 15 KB and take 5.7 s and 484 MB to parse, 60 take
+  46 s and 2.6 GB, with the GIL held), so `clean_molfile` first counts the structure **from its text,
+  before RDKit is asked anything**: the counts line (V2000) or `COUNTS` (V3000) checked against the atom and
+  bond lines that are there, and refuses (`422`) more than 300 atoms, 350 bonds, 40 independent rings
+  (bonds - atoms + pieces) or 8 bonds at one atom, a version line that disagrees with the body, or a bond
+  to an atom that is not there. **A gate is a copy of a parser, so it reads the version the way RDKit
+  does** (the counts line's field at columns 35-39; blank is V2000, anything but `V2000` and `V3000` is
+  refused; no `M  V30` line in a V2000 file, nothing but `M  V30` lines after the counts line of a V3000
+  one; plain continuation lines only; **everything from the counts line to `M  END` ASCII**, because RDKit
+  reads columns by byte and Python splits at Unicode spaces that RDKit does not; fields split at ASCII
+  spaces, no tabs) and `tests/test_molfile_fuzz.py` checks it against RDKit on 5000 seeded adversarial
+  molfiles, comparing which atoms each bond joins and not only the counts (zero disagreements at 400,000
+  seeds; the same fuzz finds the bypasses of the gates it replaced).
+  **Defence in depth:** the api process never runs RDKit's parser. Client molfiles are read by
+  `analysis_pool.AnalysisPool`: `MAX_CONCURRENT_ANALYSES` (2) long-lived child processes
+  (`analysis_worker`, started when the api starts), each reading one molfile at a time with an
+  address-space limit (`ANALYSIS_MEMORY_MB`, 384 beyond what RDKit itself maps, set in the child for
+  good), no file to write, and a wall-clock timeout (`ANALYSIS_TIMEOUT_SECONDS`, 5; an export's edits
+  share `ANALYSIS_BATCH_SECONDS`, 20). A child that is slow, out of memory, crashed or talking nonsense
+  is killed and replaced and the request is `422` "too complex to read"; if no child can be started it
+  is `503 unavailable`. A request that finds both children busy is `503 busy` with `Retry-After`
+  (`capacity.py`: no queue); an export takes one child for all its edits. The event loop never waits
+  for a molfile, so a bad one cannot stall the other requests (RDKit holds the GIL while it parses).
+  A child is replaced after `ANALYSIS_RECYCLE_AFTER` (500) molfiles. It gets the ingest child's
+  minimal environment and runs as the same user, with the api non-dumpable, as the ingest child does
+  (`ingest_runner.py`). **Memory:** about 70 MB resident per child idle, at most 70 + 384 MB at
+  the limit, so about 0.15 GB in normal use and 0.9 GB at the ceiling for two. The api container's
+  `mem_limit` is 4608m: the api and its spooled bodies 0.5 GB + two ingest children at 1.5 GB + two
+  molfile children at about 0.45 GB, every one at its ceiling at once (compose.yaml has the sum).
+  Structures the gate admits were measured at under 0.06 s and 72 MB. These limits are for
+  client molfiles; a stored one is only written to a file.
+  What comes back: the same canonical SMILES, full
+  InChIKey and SVG the worker computes for a recognised structure (`chemistry.py`). A molfile RDKit reads
+  but cannot sanitize, or with no atoms, is `valid: false` with empty values, not an error. The name
+  comes from chem (`names.py`) for a valid structure without a dummy atom; it is `null` when
+  `CHEM_URL` is empty, chem is down, slow (`NAMES_TIMEOUT_SECONDS`) or declines. A name is never an
+  error, and is never kept between requests (Orthonym can name one structure differently depending on
+  what it named before). The api has one call in flight to chem, and a validate that finds it occupied
+  answers with no name at once (the worker has priority on chem; an export waits for its turn).
+  *Seam for P3-06c:* the CDK fallback for a molfile RDKit rejects goes in the validate route, where the
+  comment is.
+* **export.** Rows are the job's results in order. `molfiles` holds only the edits: a molfile sent for
+  result `i` replaces the stored one, and that row's SMILES, InChIKey, validity and name are computed
+  from it (chem is asked for the edited, valid ones only); the others are as stored. A key that is not
+  `0`..`n-1` (no signs, no padding, no spaces) or a molfile that cannot be used refuses the whole export
+  with `422`, and one over `MAX_MOLFILE_BYTES` with `413`. The ZIP has `structure-NN.png` (the crop),
+  `structure-NN.mol` (the edit, verbatim up to `M  END`, or the stored molfile; left out when there is
+  none) for each structure and `results.smiles.txt`, `image<TAB>SMILES<TAB>IUPAC name`. File names are
+  made from the structure's number (zero-padded to the width of the largest). It is streamed: the crops
+  are opened before the first byte, so a job deleted or swept during the download cannot cut it short,
+  and at most `MAX_CONCURRENT_DOWNLOADS` (8) streams run at once (`503 busy` beyond), two per client
+  (`MAX_DOWNLOADS_PER_CLIENT`, `429`), each for at most `DOWNLOAD_TIMEOUT_SECONDS` (120; a client that does not
+  read is cut off); the places and the files are given back when the response ends, however it ends; compose gives the api `nofile` 4096).
+  The SDF has a record per structure with a molfile (`NUMBER`, `SMILES`, `INCHIKEY`, `NAME`, `EDITED`
+  data items), the CSV a row for every structure (`number,smiles,inchikey,valid,name,edited`). Text that
+  came from OCSR or chem is put on one line, cannot start an SDF record or data item, and a CSV cell that
+  starts like a formula gets a leading `'`.
+* **report.** Only `{"index"}` is sent. The api writes `REPORTS_DIR/<job id>-<index>/` with `crop.png`
+  (copied from the job, no symlinks; left out above `MAX_REPORT_IMAGE_BYTES`) and `result.json` (the
+  result as recognised, the job's page counts and warning codes, the engines' versions, the time):
+  folders `0700`, files `0600`, written under a temporary name (`.tmp-*`, not counted against
+  `MAX_REPORTS` or `REPORTS_MAX_BYTES`; `tidy` removes those older than an hour at start-up, and warns at 80 % of either cap) and
+  renamed into place, with the cap checked and the rename done under one lock. A result reported
+  twice is kept once (`204` both times). The folder name is built from a validated job id and an
+  integer; nothing from the client reaches a path. The privacy page's promise (kept until analysed, then
+  deleted) is kept by hand: delete the folder.
+* **engines.** The model versions are in `engines.py`, next to the pins in `services/*/uv.lock` that they
+  mirror (a test compares them); RDKit's is read from the installed package. No service is called.
+
+### Deleting a job
+
+`DELETE /api/jobs/{id}` (a user who starts over) calls `JobStore.cancel`: the `cancelled:<id>` marker
+(Redis, `RUNNING_JOB_TTL_SECONDS`) is set first, then the record is deleted and the job's folder removed.
+From then on the job is a `404` everywhere. The client's **slot** is freed at once only for a job that
+was still **queued** (taking it off the queue proves no worker has it) or has finished. For a job that
+may be **running** the slot is kept, as a `cancelling:<id>` member, for `CANCELLING_SLOT_SECONDS`
+(185), whatever the worker does, even once it has stopped the run: the model services are still
+computing the calls it abandoned, and upload, run, delete, upload must not pile up more work than `MAX_ACTIVE_JOBS_PER_IP`.
+A **queued** job is skipped by the worker (no record). A **running** job: until the worker stops,
+`JobStore.save` (one atomic Lua step: write unless the marker exists) and `finish` write nothing for it, so
+the record cannot come back, and
+`worker/cancel.py` (`run_cancellable`, around the pipeline in `arq_app.process_job` and the in-process
+mode) looks for the marker every `CANCEL_POLL_SECONDS` and cancels the run, then removes what the run
+wrote. The pipeline itself knows nothing about this. A finished job just loses its files early.
 
 JSON is camelCase. A job:
 
@@ -196,14 +310,17 @@ and uses `JobStore` (`decimer_api.store`):
 
 1. `mark_running(job_id)` when it starts (takes the job off the waiting queue). If the record is gone
    (it expired while waiting), skip the job.
-2. `save(job)` after every stage. A running job's record lives `RUNNING_JOB_TTL_SECONDS` (20 min) after
-   its **last save**, so a stage that can take longer than that must save in between.
+2. `save(job)` whenever a stage changes state (stages overlap, see "What one job does"). A running job's
+   record lives `RUNNING_JOB_TTL_SECONDS` (20 min) after its **last save**, so a stage that can take longer
+   than that must save in between.
 3. Write `crop-<index>.png` and `page-<index>.png` into `DATA_DIR/<job id>/`.
 4. `finish(job)` exactly once, with status `done` or `failed`, **in a `finally`**: it frees the client's
    slot and starts the `JOB_TTL_SECONDS` countdown. A worker that dies without it frees the slot only
    when the record expires.
 5. `process_job` returns `None` (arq keeps a function's return value as a result in Redis; the job
    record is the result here).
+6. A job whose owner deletes it (`DELETE /api/jobs/{id}`) is stopped and removed by `run_cancellable`
+   (see "Deleting a job"): `save` and `finish` write nothing for it, and `process_job` returns normally.
 
 ## Retention
 
@@ -255,20 +372,33 @@ below) and refuses to start otherwise.
 
 ### What one job does
 
-| Stage (saved after each) | What happens |
+The four stages **overlap**: a page is sent to seg as soon as it is rendered, and a crop goes
+to ocsr and cls, and then to the RDKit check, as soon as its place in the job is known; the results are
+exactly those of running the stages one after the other. A crop's number is the number of structures on all
+earlier pages plus its place on its own page, so it is known only once every earlier page has been segmented,
+failed or skipped (the **prefix rule**, `worker/overlap.py`): a later page that seg answers first waits for
+the pages before it, and nothing is ever renumbered. Every page is still segmented, also those beyond the
+cap, because `structuresFound` counts them. The **stage states** in the record are each stage's own: a stage
+is `active` from the moment its first piece of work starts and `done` when its last piece ends **and every
+stage before it is done**, so several stages can be active at once and a stage is never done before an
+earlier one. The record is saved when a stage changes state (and by the heartbeat), not per page or crop.
+`results` are filled in at once, when the check is done. The `warnings` list keeps the order of the
+stages (render, segment, recognise, check), not the order in which things happened.
+
+| Stage (its state is saved when it changes) | What happens |
 |---|---|
 | `render` | PDF: page `i` rendered with pypdfium2 at **exactly 300 DPI** to `page-<i>.png`, one child process per page (deadline, memory and CPU limits, no secrets in its environment; the worker never imports pdfium). Images: `input/000N.png` becomes `page-<N-1>.png` (hard link, else copy), in upload order. A page that cannot be rendered is skipped with a warning; if none can, the job fails. |
 | `segment` | seg is called once per page. A page above 25 MP or 36 MiB (seg takes 40 MP and 40 MiB; a B2 page is 49 MP) is sent as a smaller copy; the boxes seg returns are scaled back to the page and the crops are **cut from the full-resolution page** (not from seg's answer: those are the copy's pixels, white outside seg's mask). The crops of a page are written to part files as its answer arrives, only the first `MAX_STRUCTURES` of a page, and read back later, so no crop is held in memory. They are put in reading order (page by page, seg's order within a page) and cut at `MAX_STRUCTURES` (20): `structuresFound` is the total, the rest is `structuresDropped`, `truncated` is set and the warning `structures_truncated` added. **Single-image fallback:** only for a job made of exactly one uploaded image (not a PDF, not several images), and only when seg answered and found nothing: the whole image is the one structure (bbox = the page, `crop-0.png` a hard link to `page-0.png`). seg's answer is checked against what was sent: the echoed page index and image size, every box inside the image. |
-| `recognise` | Each kept crop is read, cut down for the models, and sent to ocsr and cls (together). The models look at 512 px (ocsr) and 224 px (cls), so a crop above 4 MP or 4096 px on a side is downscaled (and re-encoded until under 19 MiB); the crop file keeps its size. ocsr's SMILES goes through **legacy's fragment filter**: more than four `.`-separated fragments, or a first fragment shorter than all the others together, keeps only the first fragment (warning `fragments_trimmed`; the raw prediction is in the debug log only). |
-| `check` | RDKit (`chemistry.py`): canonical SMILES, validity, full InChIKey, V2000 molfile with 2D coordinates and wedge bonds, an SVG that starts with `<svg`. Then IUPAC names: one `POST /names` per job to chem (20 structures per request) if `CHEM_URL` is set, else `name`, `nameTier` and `nameVerified` are null. |
+| `recognise` | Each kept crop, as soon as its number is known, is read, cut down for the models, and sent to ocsr and cls (together), at most as many crops at once as the replicas of the two services take. The models look at 512 px (ocsr) and 224 px (cls), so a crop above 4 MP or 4096 px on a side is downscaled (and re-encoded until under 19 MiB); the crop file keeps its size. ocsr's SMILES goes through **legacy's fragment filter**: more than four `.`-separated fragments, or a first fragment shorter than all the others together, keeps only the first fragment (warning `fragments_trimmed`; the raw prediction is in the debug log only). |
+| `check` | A crop goes through RDKit as soon as it is recognised; the names are asked for once every crop is through. RDKit (`chemistry.py`): canonical SMILES, validity, full InChIKey, V2000 molfile with 2D coordinates and wedge bonds, an SVG that starts with `<svg`. Then IUPAC names: one `POST /names` per job to chem (20 structures per request) if `CHEM_URL` is set, else `name`, `nameTier` and `nameVerified` are null. |
 
 `name`, `nameTier` and `nameVerified` come from chem's `name`, `tier` and `verified` (how the name was checked,
 e.g. `opsin`); all three are null together, and chem's `reason` is not stored (a `timeout` reason gives the
 `names_unavailable` warning, any other decline is just "no name"). `Result.name_verified` is a field added to
 `models.py`.
 
-`results` appear in the record when `check` is done (an earlier poll shows `structuresFound` but no
-results). `confidence` is ocsr's `mean_confidence`. An invalid SMILES keeps its raw text with empty
+`results` appear in the record when `check` is done (an earlier poll shows `structuresFound`, once every page
+has been segmented, but no results; a job that fails before that has `structuresFound` 0). `confidence` is ocsr's `mean_confidence`. An invalid SMILES keeps its raw text with empty
 `inchikey`, `molfile` and `svg`. CXSMILES extensions are refused, not honoured.
 
 **R groups.** DECIMER writes the R groups of a scheme as `[R]`, `[R1]`, `[R2]`, and RDKit has no element
@@ -323,6 +453,26 @@ only the warnings the API added. If arq's own `job_timeout` ever cuts a run (it 
 plus 60 s, so the pipeline's own deadline normally comes first and explains itself) the worker logs an
 error saying so; the record is then left running until it expires.
 
+**What a failed job's record holds (the stages overlap).** It holds what was known when the job failed, which is
+not always what a run with the stages one after the other would have known:
+
+* `status: failed`, `error`, no `results`, and the failure's own warning **last**, after any warning raised
+  before it. Every stage that had started and not finished is still `active` in `stages`; none after the failing
+  one is `done`.
+* `structuresFound` and `structuresDropped` are filled in when the last page has been segmented (the same moment as
+  the segment stage's `done`). A job that fails earlier, typically `OCSR_MAX_TIMEOUTS` timeouts of ocsr on the first
+  pages while seg is still busy with the later ones, has `structuresFound: 0`, `structuresDropped: 0`, `truncated`
+  as the API set it (the page limit), and neither the `structures_truncated` warning nor a `page_segmentation_failed`
+  for a page seg had not yet answered about.
+* The warnings of crops that were recognised before the failure stay (`recognition_failed`,
+  `classification_failed`, `fragments_trimmed`, `classifier_unavailable`), also when the failure is seg's: if seg
+  turns out to be unreachable for page 2 after a crop of page 1 failed in ocsr, the record has that
+  `recognition_failed` and then `service_unavailable` (with the stages one after the other, seg's failure came first
+  and the record had only `service_unavailable`).
+
+A successful job's record is exactly the sequential one: results, numbering, counts, the cap warning, and the order
+of the warnings (render, segment, recognise, check).
+
 `isStructure` is `bool | null` in the model (a change in `models.py`): null means the classifier gave no
 answer. The frontend must not read null as "not a structure".
 
@@ -353,7 +503,9 @@ again after a replica may have started on it, an input that crashes the service 
 
 **No blocking, no starvation.** Several jobs run at once (`WORKER_MAX_JOBS`) and share the replicas. A job asks
 for as many calls at once as its service takes in all (replicas x `*_CONCURRENCY`; so a lone job fills every
-replica and keeps the lone-job timing of the deploy README). When a slot frees, the waiting calls of that service
+replica and keeps the lone-job timing of the deploy README). The number is looked up each time a page or crop is
+about to start, not once per job, so a replica that joins while a job runs is used from the next page or crop on
+(a page or crop already waiting is moved up when one of the job's pages or crops ends). When a slot frees, the waiting calls of that service
 are served in this order: calls of a **small job** first (`Settings.is_small_job`: at most `SMALL_JOB_MAX_PAGES`
 processed pages, the same rule in the api and the worker, so nothing about size is stored on the record);
 among the jobs of one size class the one served longest ago, so the crops of two big jobs interleave; and after
@@ -364,7 +516,10 @@ for an image that is not a structure), including a call of the other worker proc
 a time for both); the calls of other small jobs ahead of it in the turn order; and the one slot in
 `SMALL_FIRST_BURST + 1` that goes to a large call while one is waiting. A large job gets at least one slot in
 `SMALL_FIRST_BURST + 1`. Rendering is one page at a time per job through a shared semaphore, which already takes
-turns between jobs.
+turns between jobs. Since the stages overlap, a large job has ocsr calls running while it is still
+segmenting its later pages, so a pasted image that arrives then can find one of that job's ocsr calls on a replica and
+wait for it: at most one call per replica, within the bound above (a call is never interrupted), only reached
+earlier in the large job's life than before.
 
 **Memory.** A page is read, decoded and held as a PNG (up to 36 MiB for a 50 MP page) only once the job has a seg
 slot, and a crop only once it has an ocsr slot (`ServiceCaller.slot`, then `post(lease=...)`), so what a worker
@@ -425,6 +580,7 @@ Environment variables, read by `WorkerSettings` (`worker/settings.py`); `.env.ex
 | `OCSR_MAX_TIMEOUTS` | `3` | ocsr timeouts in one job after which the job gives up. |
 | `PIPELINE_TIMEOUT_SECONDS` | `1000` | One job, start to finish. arq's own limit is this plus 60 s. **Start-up check:** this plus 60 must be below `RUNNING_JOB_TTL_SECONDS` (1200), and `HEARTBEAT_SECONDS` at most a quarter of it; to allow longer jobs raise both. |
 | `HEARTBEAT_SECONDS` | `60` | A running record is saved at least this often. |
+| `CANCEL_POLL_SECONDS` | `2` | A running job is looked at this often for having been deleted by its owner; the run stops within this long. |
 | `BUSY_RETRIES`, `BUSY_RETRY_AFTER_DEFAULT_SECONDS`, `BUSY_RETRY_AFTER_MAX_SECONDS` | `3`, `5`, `30` | 503 handling. |
 | `CONNECT_RETRY_BUDGET_SECONDS`, `CONNECT_BACKOFF_SECONDS`, `CONNECT_BACKOFF_MAX_SECONDS` | `90`, `0.5`, `10` | Could-not-connect handling: doubling backoff, capped per wait, until the budget is spent. |
 | `SENT_RETRIES` | `1` | Retries after the connection broke once the request was sent. |

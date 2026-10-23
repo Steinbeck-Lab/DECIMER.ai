@@ -4,6 +4,23 @@
  */
 
 export interface paths {
+    "/api/engines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The versions of the models and libraries behind the results */
+        get: operations["get_engines_api_engines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/jobs": {
         parameters: {
             query?: never;
@@ -32,6 +49,30 @@ export interface paths {
         get: operations["get_job_api_jobs__job_id__get"];
         put?: never;
         post?: never;
+        /**
+         * Delete a job: stop it, free the client's slot, remove its files
+         * @description For a user who starts over: the job stops counting against the client's limit at once. A
+         *     queued job is never started; a running one is stopped by its worker within a few seconds
+         *     (`worker/cancel.py`); a finished one loses its files before the hour is up. The job answers
+         *     404 from then on.
+         */
+        delete: operations["delete_job_api_jobs__job_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Download a job's structures as a ZIP, an SDF or a CSV, with the user's edits */
+        post: operations["export_job_api_jobs__job_id__export_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -49,6 +90,49 @@ export interface paths {
         get: operations["get_media_api_jobs__job_id__media__name__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report a problem with one result
+         * @description Keeps the result and its crop image on the private reports volume until someone has looked
+         *     at them. Only the index comes from the client. A result reported twice is kept once.
+         */
+        post: operations["report_problem_api_jobs__job_id__report_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/jobs/{job_id}/results/{n}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recompute SMILES, InChIKey, drawing and IUPAC name for an edited molfile
+         * @description The structure the user drew in place of result `n`. The values are computed as the worker
+         *     computes them for a recognised structure. The name is null when chem is off, slow, or
+         *     declines. A molfile that is a molfile but not a valid structure answers `valid: false`.
+         */
+        post: operations["validate_api_jobs__job_id__results__n__validate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -93,16 +177,63 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** EngineView */
+        EngineView: {
+            /**
+             * Id
+             * @description Stable short name, e.g. decimer-segmentation.
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Revision
+             * @description Git commit the version was built from, when it is not a release.
+             */
+            revision?: string | null;
+            /**
+             * Role
+             * @description What it does here, e.g. segmentation, ocsr, naming.
+             */
+            role: string;
+            /** Version */
+            version: string;
+        };
+        /** EnginesView */
+        EnginesView: {
+            /** Engines */
+            engines: components["schemas"]["EngineView"][];
+        };
+        /**
+         * ErrorCode
+         * @enum {string}
+         */
+        ErrorCode: "empty_upload" | "too_many_files" | "unsupported" | "mixed_upload" | "multiple_pdfs" | "corrupt_file" | "encrypted_pdf" | "too_many_pixels" | "processing_limit" | "too_large" | "invalid_request" | "rate_limited" | "queue_full" | "busy" | "unavailable" | "not_found" | "no_results" | "method_not_allowed" | "http_error" | "internal_error";
         /** ErrorDetail */
         ErrorDetail: {
-            /** Code */
-            code: string;
+            code: components["schemas"]["ErrorCode"];
             /** Message */
             message: string;
         };
         /** ErrorResponse */
         ErrorResponse: {
             detail: components["schemas"]["ErrorDetail"];
+        };
+        /**
+         * ExportFormat
+         * @enum {string}
+         */
+        ExportFormat: "zip" | "sdf" | "csv";
+        /** ExportRequest */
+        ExportRequest: {
+            format: components["schemas"]["ExportFormat"];
+            /**
+             * Molfiles
+             * @description Edited molfiles keyed by result index (0-based, as a decimal string). A result that is not listed is exported as the server has it. The order of the export is the job's, never the request's.
+             */
+            molfiles?: {
+                [key: string]: string;
+            };
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -185,6 +316,14 @@ export interface components {
             code: string;
             /** Message */
             message: string;
+        };
+        /** ReportRequest */
+        ReportRequest: {
+            /**
+             * Index
+             * @description 0-based index of the result the problem is about.
+             */
+            index: number;
         };
         /**
          * ResultView
@@ -286,6 +425,56 @@ export interface components {
          * @enum {string}
          */
         StageState: "pending" | "active" | "done";
+        /** ValidateRequest */
+        ValidateRequest: {
+            /**
+             * Molfile
+             * @description The edited structure, as the editor writes it (V2000/V3000).
+             */
+            molfile: string;
+        };
+        /**
+         * ValidateView
+         * @description What the server computes for an edited structure: the same values the worker computes for a
+         *     recognised one, so the screen and the export agree (`chemistry.py`).
+         */
+        ValidateView: {
+            /**
+             * Inchikey
+             * @description Empty when the structure is not valid or has no InChI.
+             */
+            inchikey: string;
+            /**
+             * Name
+             * @description IUPAC name that passed the round trip; null when none.
+             */
+            name?: string | null;
+            /**
+             * Nametier
+             * @description Tier of `name`.
+             */
+            nameTier?: string | null;
+            /**
+             * Nameverified
+             * @description How `name` was checked.
+             */
+            nameVerified?: string | null;
+            /**
+             * Smiles
+             * @description Canonical SMILES. Empty when the structure is not valid.
+             */
+            smiles: string;
+            /**
+             * Svg
+             * @description RDKit depiction as an inline SVG string. Empty when not valid.
+             */
+            svg: string;
+            /**
+             * Valid
+             * @description RDKit accepts the structure and it has at least one atom.
+             */
+            valid: boolean;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -308,6 +497,26 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_engines_api_engines_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnginesView"];
+                };
+            };
+        };
+    };
     create_job_api_jobs_post: {
         parameters: {
             query?: never;
@@ -420,6 +629,126 @@ export interface operations {
             };
         };
     };
+    delete_job_api_jobs__job_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown or expired job */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_job_api_jobs__job_id__export_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExportRequest"];
+            };
+        };
+        responses: {
+            /** @description The file. A ZIP has each structure's crop image and `.mol` file, and `results.smiles.txt` (image, SMILES, IUPAC name), in result order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/zip": unknown;
+                    "chemical/x-mdl-sdfile": unknown;
+                    "text/csv; charset=utf-8": unknown;
+                };
+            };
+            /** @description Unknown or expired job, or no such result */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The job has no structures to export */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request is not valid, or a molfile cannot be read */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too many requests from this client. See Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The service is unavailable. See Retry-After */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_media_api_jobs__job_id__media__name__get: {
         parameters: {
             query?: never;
@@ -457,6 +786,148 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_problem_api_jobs__job_id__report_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unknown or expired job, or no such result */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request is not valid, or a molfile cannot be read */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too many requests from this client. See Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The service is unavailable. See Retry-After */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    validate_api_jobs__job_id__results__n__validate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                /** @description 0-based index of the result. */
+                n: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ValidateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidateView"];
+                };
+            };
+            /** @description Unknown or expired job, or no such result */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The request is not valid, or a molfile cannot be read */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too many requests from this client. See Retry-After */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The service is unavailable. See Retry-After */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };

@@ -26,6 +26,7 @@ from ..app import create_app
 from ..hardening import make_undumpable
 from ..settings import Settings
 from ..store import JobStore
+from .cancel import run_cancellable
 from .pipeline import Deps, run_pipeline
 from .runtime import build_deps
 from .settings import WorkerSettings
@@ -51,7 +52,13 @@ class InProcessEnqueuer:
     async def _run(self, job_id: str) -> None:
         async with self._slots:
             try:
-                await run_pipeline(job_id, self._deps)
+                await run_cancellable(
+                    job_id,
+                    self._deps.store,
+                    run_pipeline(job_id, self._deps),
+                    poll_seconds=self._deps.worker.cancel_poll_seconds,
+                    folder=self._deps.settings.data_dir / job_id,
+                )
             except asyncio.CancelledError:
                 raise
             except Exception:

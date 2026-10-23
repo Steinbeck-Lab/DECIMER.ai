@@ -7,9 +7,8 @@ import type {
 } from './contract';
 
 /**
- * Everything the app asks of the backend. `MockApiClient` implements it today;
- * an HTTP client over the generated types will implement it
- * later. Methods reject with `ApiError` for HTTP-level failures.
+ * Everything the app asks of the backend. `HttpApiClient` implements it over the real API and
+ * `MockApiClient` stands in for it. Methods reject with `ApiError` for HTTP-level failures.
  */
 export interface ApiClient {
   /** How often the app polls `getJob`, in ms (2000 for the real API). */
@@ -18,6 +17,11 @@ export interface ApiClient {
   createJob(files: File[], signal?: AbortSignal): Promise<CreateJobResponse>;
   /** `GET /api/jobs/{id}` */
   getJob(id: string, signal?: AbortSignal): Promise<Job>;
+  /**
+   * `DELETE /api/jobs/{id}`: the user starts over, so the server may stop the job, free the client's
+   * slot and delete the files now instead of in an hour. Rejects with a 404 `not_found` when the job is already gone.
+   */
+  deleteJob(id: string, signal?: AbortSignal): Promise<void>;
   /**
    * `POST /api/jobs/{id}/results/{n}/validate` (decision D12) where `n` is the 0-based `Result.index`, not
    * the display number: canonical SMILES, InChIKey, SVG and name for an edited molfile. The request is

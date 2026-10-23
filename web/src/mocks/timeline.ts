@@ -1,4 +1,4 @@
-import { STAGE_ORDER, LIMITS, type Job, type JobWarning, type Result, type Stage } from '../api/contract';
+import { STAGE_ORDER, LIMITS, type Job, type JobWarning, type Result, type Stage, type StageState } from '../api/contract';
 
 export interface MockJobSpec {
   id: string;
@@ -19,9 +19,36 @@ export interface MockJobSpec {
 export const QUEUE_STEPS = 2;
 
 /**
+ * What the four pipeline stages (render, segment, recognise, check) report at each step of a run. Like
+ * the worker the stages overlap: a stage is active from its first piece of work and done
+ * when its last piece ends and every stage before it is done. The upload stage is done from the start.
+ */
+export const RUN: readonly (readonly StageState[])[] = [
+  ['active', 'pending', 'pending', 'pending'], // the first page is being rendered
+  ['active', 'active', 'pending', 'pending'], // the first page is with seg while the others render
+  ['done', 'active', 'pending', 'pending'], // every page rendered
+  ['done', 'active', 'active', 'pending'], // the first structures are at ocsr, the rest of the pages at seg
+  ['done', 'done', 'active', 'active'], // every page searched (the count is known); the first checks
+  ['done', 'done', 'done', 'active'], // every structure recognised; the names
+];
+/** Steps of a run. The job is done at step `QUEUE_STEPS + RUN.length`. */
+export const RUN_STEPS = RUN.length;
+/** The step of `RUN` from which every page has been searched and the structure count is in the record. */
+const COUNT_KNOWN_FROM = RUN.findIndex((states) => states[STAGE_ORDER.indexOf('segment') - 1] === 'done');
+/** The steps in which pages are still being rendered. */
+const RENDER_STEPS = RUN.filter((states) => states[0] !== 'done').length;
+/** A failed job stops while recognising, with the stages as they were then. */
+const FAILED_AT = RUN.findIndex((states) => states[2] === 'active');
+
+/** The record's stage list for the four pipeline stages of one step (upload is always done once the job runs). */
+function stagesOf(states: readonly StageState[]): Stage[] {
+  return STAGE_ORDER.map((name, i) => ({ name, state: i === 0 ? 'done' : (states[i - 1] ?? 'pending') }));
+}
+
+/**
  * The job as the API would report it `elapsedMs` after it was created. A pure
  * function of time, so replays are deterministic and tests need no timers:
- * queued (2, 1) then one step per stage, then done (or failed).
+ * queued (2, 1), then the steps of `RUN` (the stages overlap), then done (or failed).
  */
 export function jobAt(spec: MockJobSpec, elapsedMs: number, stepMs: number): Job {
   const step = Math.max(0, Math.floor(elapsedMs / stepMs));
@@ -36,7 +63,7 @@ export function jobAt(spec: MockJobSpec, elapsedMs: number, stepMs: number): Job
     createdAt: spec.createdAt ?? '1970-01-01T00:00:00.000Z',
     expiresAt: spec.expiresAt ?? '1970-01-01T01:00:00.000Z',
   };
-  const idleStages: Stage[] = STAGE_ORDER.map((name) => ({ name, state: 'pending' }));
+  const idleStages = stagesOf([]);
 
   if (step < QUEUE_STEPS) {
     return {
@@ -51,23 +78,20 @@ export function jobAt(spec: MockJobSpec, elapsedMs: number, stepMs: number): Job
     };
   }
 
-  const active = step - QUEUE_STEPS;
-  if (active < STAGE_ORDER.length) {
-    const renderIndex = STAGE_ORDER.indexOf('render');
-    const segmentIndex = STAGE_ORDER.indexOf('segment');
+  const run = step - QUEUE_STEPS;
+  const states = RUN[run];
+  if (states) {
+    // Pages processed grow while the pages are being rendered, over all the steps that render.
     const pagesProcessed =
-      active < renderIndex ? 0 : active === renderIndex ? Math.round(processed * stepFraction) : processed;
+      run >= RENDER_STEPS ? processed : Math.round(processed * ((run + stepFraction) / RENDER_STEPS));
     return {
       ...base,
       status: 'running',
       queuePosition: null,
       error: null,
-      stages: STAGE_ORDER.map((name, i) => ({
-        name,
-        state: i < active ? 'done' : i === active ? 'active' : 'pending',
-      })),
+      stages: stagesOf(states),
       pagesProcessed,
-      structuresFound: active > segmentIndex ? spec.structuresFound : 0,
+      structuresFound: run >= COUNT_KNOWN_FROM ? spec.structuresFound : 0,
       results: [],
     };
   }
@@ -78,10 +102,7 @@ export function jobAt(spec: MockJobSpec, elapsedMs: number, stepMs: number): Job
       status: 'failed',
       queuePosition: null,
       error: spec.failure,
-      stages: STAGE_ORDER.map((name, i) => ({
-        name,
-        state: i < STAGE_ORDER.length - 1 ? 'done' : 'active',
-      })),
+      stages: stagesOf(RUN[FAILED_AT] ?? []),
       pagesProcessed: processed,
       structuresFound: 0,
       results: [],

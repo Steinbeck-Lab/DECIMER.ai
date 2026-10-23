@@ -1,11 +1,94 @@
 {
   "components": {
     "schemas": {
+      "EngineView": {
+        "properties": {
+          "id": {
+            "description": "Stable short name, e.g. decimer-segmentation.",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Git commit the version was built from, when it is not a release.",
+            "title": "Revision"
+          },
+          "role": {
+            "description": "What it does here, e.g. segmentation, ocsr, naming.",
+            "title": "Role",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "role",
+          "version"
+        ],
+        "title": "EngineView",
+        "type": "object"
+      },
+      "EnginesView": {
+        "properties": {
+          "engines": {
+            "items": {
+              "$ref": "#/components/schemas/EngineView"
+            },
+            "title": "Engines",
+            "type": "array"
+          }
+        },
+        "required": [
+          "engines"
+        ],
+        "title": "EnginesView",
+        "type": "object"
+      },
+      "ErrorCode": {
+        "enum": [
+          "empty_upload",
+          "too_many_files",
+          "unsupported",
+          "mixed_upload",
+          "multiple_pdfs",
+          "corrupt_file",
+          "encrypted_pdf",
+          "too_many_pixels",
+          "processing_limit",
+          "too_large",
+          "invalid_request",
+          "rate_limited",
+          "queue_full",
+          "busy",
+          "unavailable",
+          "not_found",
+          "no_results",
+          "method_not_allowed",
+          "http_error",
+          "internal_error"
+        ],
+        "title": "ErrorCode",
+        "type": "string"
+      },
       "ErrorDetail": {
         "properties": {
           "code": {
-            "title": "Code",
-            "type": "string"
+            "$ref": "#/components/schemas/ErrorCode"
           },
           "message": {
             "title": "Message",
@@ -29,6 +112,36 @@
           "detail"
         ],
         "title": "ErrorResponse",
+        "type": "object"
+      },
+      "ExportFormat": {
+        "enum": [
+          "zip",
+          "sdf",
+          "csv"
+        ],
+        "title": "ExportFormat",
+        "type": "string"
+      },
+      "ExportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "format": {
+            "$ref": "#/components/schemas/ExportFormat"
+          },
+          "molfiles": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Edited molfiles keyed by result index (0-based, as a decimal string). A result that is not listed is exported as the server has it. The order of the export is the job's, never the request's.",
+            "title": "Molfiles",
+            "type": "object"
+          }
+        },
+        "required": [
+          "format"
+        ],
+        "title": "ExportRequest",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -177,6 +290,22 @@
           "message"
         ],
         "title": "JobWarning",
+        "type": "object"
+      },
+      "ReportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "index": {
+            "description": "0-based index of the result the problem is about.",
+            "minimum": 0.0,
+            "title": "Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "index"
+        ],
+        "title": "ReportRequest",
         "type": "object"
       },
       "ResultView": {
@@ -359,6 +488,90 @@
         "title": "StageState",
         "type": "string"
       },
+      "ValidateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "molfile": {
+            "description": "The edited structure, as the editor writes it (V2000/V3000).",
+            "title": "Molfile",
+            "type": "string"
+          }
+        },
+        "required": [
+          "molfile"
+        ],
+        "title": "ValidateRequest",
+        "type": "object"
+      },
+      "ValidateView": {
+        "description": "What the server computes for an edited structure: the same values the worker computes for a\nrecognised one, so the screen and the export agree (`chemistry.py`).",
+        "properties": {
+          "inchikey": {
+            "description": "Empty when the structure is not valid or has no InChI.",
+            "title": "Inchikey",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "IUPAC name that passed the round trip; null when none.",
+            "title": "Name"
+          },
+          "nameTier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Tier of `name`.",
+            "title": "Nametier"
+          },
+          "nameVerified": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How `name` was checked.",
+            "title": "Nameverified"
+          },
+          "smiles": {
+            "description": "Canonical SMILES. Empty when the structure is not valid.",
+            "title": "Smiles",
+            "type": "string"
+          },
+          "svg": {
+            "description": "RDKit depiction as an inline SVG string. Empty when not valid.",
+            "title": "Svg",
+            "type": "string"
+          },
+          "valid": {
+            "description": "RDKit accepts the structure and it has at least one atom.",
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "smiles",
+          "inchikey",
+          "svg",
+          "valid"
+        ],
+        "title": "ValidateView",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -407,6 +620,24 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/engines": {
+      "get": {
+        "operationId": "get_engines_api_engines_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnginesView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "The versions of the models and libraries behind the results"
+      }
+    },
     "/api/jobs": {
       "post": {
         "operationId": "create_job_api_jobs_post",
@@ -500,6 +731,47 @@
       }
     },
     "/api/jobs/{job_id}": {
+      "delete": {
+        "description": "For a user who starts over: the job stops counting against the client's limit at once. A\nqueued job is never started; a running one is stopped by its worker within a few seconds\n(`worker/cancel.py`); a finished one loses its files before the hour is up. The job answers\n404 from then on.",
+        "operationId": "delete_job_api_jobs__job_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unknown or expired job"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete a job: stop it, free the client's slot, remove its files"
+      },
       "get": {
         "operationId": "get_job_api_jobs__job_id__get",
         "parameters": [
@@ -546,6 +818,103 @@
           }
         },
         "summary": "Status, progress and results of a job"
+      }
+    },
+    "/api/jobs/{job_id}/export": {
+      "post": {
+        "operationId": "export_job_api_jobs__job_id__export_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/zip": {},
+              "chemical/x-mdl-sdfile": {},
+              "text/csv; charset=utf-8": {}
+            },
+            "description": "The file. A ZIP has each structure's crop image and `.mol` file, and `results.smiles.txt` (image, SMILES, IUPAC name), in result order."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unknown or expired job, or no such result"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The job has no structures to export"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request is too large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request is not valid, or a molfile cannot be read"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too many requests from this client. See Retry-After"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The service is unavailable. See Retry-After"
+          }
+        },
+        "summary": "Download a job's structures as a ZIP, an SDF or a CSV, with the user's edits"
       }
     },
     "/api/jobs/{job_id}/media/{name}": {
@@ -600,6 +969,191 @@
           }
         },
         "summary": "A crop or page image of a job"
+      }
+    },
+    "/api/jobs/{job_id}/report": {
+      "post": {
+        "description": "Keeps the result and its crop image on the private reports volume until someone has looked\nat them. Only the index comes from the client. A result reported twice is kept once.",
+        "operationId": "report_problem_api_jobs__job_id__report_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unknown or expired job, or no such result"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request is too large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request is not valid, or a molfile cannot be read"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too many requests from this client. See Retry-After"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The service is unavailable. See Retry-After"
+          }
+        },
+        "summary": "Report a problem with one result"
+      }
+    },
+    "/api/jobs/{job_id}/results/{n}/validate": {
+      "post": {
+        "description": "The structure the user drew in place of result `n`. The values are computed as the worker\ncomputes them for a recognised structure. The name is null when chem is off, slow, or\ndeclines. A molfile that is a molfile but not a valid structure answers `valid: false`.",
+        "operationId": "validate_api_jobs__job_id__results__n__validate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "0-based index of the result.",
+            "in": "path",
+            "name": "n",
+            "required": true,
+            "schema": {
+              "description": "0-based index of the result.",
+              "minimum": 0,
+              "title": "N",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValidateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidateView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unknown or expired job, or no such result"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request is too large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request is not valid, or a molfile cannot be read"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too many requests from this client. See Retry-After"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The service is unavailable. See Retry-After"
+          }
+        },
+        "summary": "Recompute SMILES, InChIKey, drawing and IUPAC name for an edited molfile"
       }
     },
     "/healthz": {

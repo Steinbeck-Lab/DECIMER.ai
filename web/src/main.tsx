@@ -30,10 +30,13 @@ import { MantineProvider } from '@mantine/core';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { startMatomo } from './analytics/matomo';
 import { createApiClient } from './api';
 import { AppProvider } from './state/react';
 import { strings } from './strings';
 import { cssVariablesResolver, theme } from './theme';
+
+startMatomo();
 
 const root = document.getElementById('root');
 if (!root) throw new Error('#root element missing');

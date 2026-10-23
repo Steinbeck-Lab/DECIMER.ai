@@ -3,6 +3,7 @@ import { LIMITS, STAGE_ORDER, type Job, type StageName } from '../api/contract';
 import { strings } from '../strings';
 import { useAppState } from '../state/react';
 import type { SourceFile } from '../state/model';
+import { stageProgress } from '../state/selectors';
 import { IconFile } from '../ui/icons';
 
 export function formatElapsed(ms: number): string {
@@ -20,19 +21,6 @@ function useElapsed(startedAt: number | null): number {
     return () => clearInterval(timer);
   }, []);
   return startedAt === null ? 0 : now - startedAt;
-}
-
-interface StageView {
-  /** Index of the active stage; the first one before the job exists. */
-  active: number;
-  doneCount: number;
-}
-
-export function stageView(job: Job | null): StageView {
-  if (!job) return { active: 0, doneCount: 0 };
-  const doneCount = job.stages.filter((s) => s.state === 'done').length;
-  const active = job.stages.findIndex((s) => s.state === 'active');
-  return { active: active >= 0 ? active : Math.min(doneCount, STAGE_ORDER.length - 1), doneCount };
 }
 
 function SourceStrip({ sources }: { sources: SourceFile[] }) {
@@ -57,9 +45,9 @@ function SourceStrip({ sources }: { sources: SourceFile[] }) {
   );
 }
 
-/** Five segments, one per stage: done ink, active ink and breathing, pending pale. */
+/** Five segments, one per stage, each in its own state: done ink, active ink and breathing (several can be, the stages overlap), pending pale. */
 function ProgressRule({ job }: { job: Job | null }) {
-  const { active, doneCount } = stageView(job);
+  const { states, current, doneCount } = stageProgress(job);
   const queued = job?.status === 'queued';
   return (
     <div
@@ -69,11 +57,11 @@ function ProgressRule({ job }: { job: Job | null }) {
       aria-valuemin={0}
       aria-valuemax={STAGE_ORDER.length}
       aria-valuenow={doneCount}
-      aria-valuetext={strings.working.stepOf(Math.min(doneCount + 1, STAGE_ORDER.length), STAGE_ORDER.length)}
+      aria-valuetext={strings.working.stepsDone(doneCount, STAGE_ORDER.length)}
     >
       {STAGE_ORDER.map((name, i) => {
-        const state = job?.stages.find((s) => s.name === name)?.state ?? (i === 0 && !queued ? 'active' : 'pending');
-        return <span key={name} className="dc-rule__segment" data-state={queued ? 'pending' : state} data-index={i} data-active={i === active} />;
+        const state = job ? states[name] : i === 0 && !queued ? 'active' : 'pending';
+        return <span key={name} className="dc-rule__segment" data-state={queued ? 'pending' : state} data-index={i} data-current={i === current} />;
       })}
     </div>
   );
@@ -84,19 +72,21 @@ export function WorkingView() {
   const { job } = state;
   const elapsed = useElapsed(state.startedAt);
   const queued = job?.status === 'queued';
-  const { active } = stageView(job);
+  const { states, current, alongside } = stageProgress(job);
 
-  const current: StageName = STAGE_ORDER[active] ?? 'upload';
-  const next: StageName | undefined = STAGE_ORDER[active + 1];
+  // The stages overlap: the heading names the latest one that is running, and says what else is.
+  const stage: StageName = STAGE_ORDER[current] ?? 'upload';
+  const next: StageName | undefined = STAGE_ORDER[current + 1];
 
-  const heading = queued ? strings.working.queuedHeading : strings.working.stage[current];
+  const heading = queued ? strings.working.queuedHeading : strings.working.stage[stage];
   const detail = queued
     ? strings.working.queuePosition(job?.queuePosition ?? 1)
-    : `${strings.working.stepOf(active + 1, STAGE_ORDER.length)}. ${
+    : `${strings.working.stepOf(current + 1, STAGE_ORDER.length)}. ${
         next ? strings.working.next(strings.working.stage[next]) : strings.working.last
       }`;
+  const together = queued || alongside.length === 0 ? null : strings.working.alongside(alongside);
 
-  const rendering = !queued && current === 'render' && job && job.pages > 0;
+  const rendering = !queued && states.render !== 'done' && job && job.pages > 0;
 
   return (
     <main id="main" tabIndex={-1} className="dc-working">
@@ -105,6 +95,7 @@ export function WorkingView() {
       <div className="dc-working__live" role="status" aria-live="polite" aria-atomic="true">
         <h1 className="dc-working__title">{heading}</h1>
         <p className="dc-working__detail">{detail}</p>
+        {together && <p className="dc-working__detail">{together}</p>}
         {queued && <p className="dc-working__detail">{strings.working.queueNote}</p>}
       </div>
       <ProgressRule job={job} />

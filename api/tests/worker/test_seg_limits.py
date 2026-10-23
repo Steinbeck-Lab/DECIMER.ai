@@ -231,13 +231,16 @@ async def test_a_page_with_thirty_structures_costs_twenty_files(make_rig: RigFac
 async def test_the_crops_of_a_page_are_on_disk_before_the_next_page_is_asked_about(
     make_rig: RigFactory,
 ) -> None:
-    """Pages are not collected in memory: what a page found is written when it arrives."""
+    """Pages are not collected in memory: what a page found is written when it arrives. The
+    crops of page 0 are part files, or under their final names when the page has already been
+    given its place (the stages overlap), and never a count short."""
     seen: list[list[str]] = []
     folder_of: dict[str, Path] = {}
 
     def second_page(_request: httpx.Request, parts: dict[str, bytes]) -> httpx.Response | None:
         if parts["page_index"] == b"1":
-            seen.append(sorted(p.name for p in folder_of["job"].glob("seg-0-*.part")))
+            names = (p.name for p in folder_of["job"].iterdir())
+            seen.append(sorted(n for n in names if n.startswith("seg-0-") or n.startswith("crop-")))
         return None
 
     rig = make_rig(
@@ -246,7 +249,7 @@ async def test_the_crops_of_a_page_are_on_disk_before_the_next_page_is_asked_abo
     job = await rig.pdf_job(2)
     folder_of["job"] = rig.file(job, ".")
     await rig.run(job)
-    assert seen == [["seg-0-0.part", "seg-0-1.part", "seg-0-2.part"]]
+    assert len(seen) == 1 and len(seen[0]) == 3
 
 
 async def test_a_run_that_is_repeated_does_not_trip_over_parts_left_by_the_first(

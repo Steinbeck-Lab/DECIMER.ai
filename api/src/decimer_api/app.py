@@ -3,6 +3,7 @@ tests inject fakes; `create_app_from_env()` wires the production pieces."""
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import logging
@@ -17,10 +18,16 @@ from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
 
 from . import handlers
+from .analysis_pool import Analysis, build_analysis
+from .capacity import Capacity, ClientShares
+from .guards import RateLimiter
 from .hardening import make_undumpable
 from .ingest_gate import IngestGate
 from .ingest_runner import IngestRunner, SubprocessIngest
+from .names import Namer, build_namer
 from .queue import ArqEnqueuer, Enqueue
+from .reports import tidy
+from .result_routes import router as result_router
 from .routes import router
 from .settings import Settings
 from .store import JobStore
@@ -38,6 +45,13 @@ class Deps:
     limits: Limits
     hash_client: Callable[[str], str]
     gate: IngestGate
+    namer: Namer
+    limiter: RateLimiter
+    # Reads client molfiles in child processes (`analysis_pool`), a few at once; and the ZIP
+    # downloads being streamed at once. No queue for either: the next request is 503 busy.
+    analysis: Analysis
+    streams: Capacity
+    client_streams: ClientShares  # of those, what one client may hold
     warned_peers: set[str] = field(default_factory=set)
 
 
@@ -62,11 +76,26 @@ def create_app(
     enqueue: Enqueue,
     *,
     ingest_runner: IngestRunner | None = None,
+    namer: Namer | None = None,
+    analysis: Analysis | None = None,
     on_shutdown: Callable[[], Awaitable[None]] | None = None,
 ) -> FastAPI:
+    deps_namer = namer or build_namer(settings)
+    deps_analysis = analysis or build_analysis(settings)
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        # `.tmp-*` folders a crash left in the reports volume; a warning if it is nearly full.
+        try:
+            await asyncio.to_thread(
+                tidy, settings.reports_dir, settings.max_reports, settings.reports_max_bytes
+            )
+        except OSError:
+            log.warning("could not tidy REPORTS_DIR %s", settings.reports_dir, exc_info=True)
+        await deps_analysis.start()  # the molfile-reading children, ready before the first request
         yield
+        await deps_analysis.aclose()
+        await deps_namer.aclose()
         if on_shutdown is not None:
             await on_shutdown()
 
@@ -93,9 +122,15 @@ def create_app(
         limits=Limits.from_settings(settings),
         hash_client=_client_hasher(settings.ip_hash_secret),
         gate=IngestGate(settings.ingest_concurrency),
+        namer=deps_namer,
+        limiter=RateLimiter(store),
+        analysis=deps_analysis,
+        streams=Capacity(settings.max_concurrent_downloads),
+        client_streams=ClientShares(settings.max_downloads_per_client),
     )
     handlers.register(app)
     app.include_router(router)
+    app.include_router(result_router)
 
     @app.get("/healthz", summary="Liveness: the process answers")
     async def healthz() -> dict[str, str]:
