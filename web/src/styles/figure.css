@@ -279,6 +279,17 @@
   border-radius: 6px;
 }
 
+/* The crop is not there: a word in its place, never the browser's broken-image icon. */
+.dc-crop--none {
+  display: grid;
+  place-items: center;
+  color: var(--dc-muted);
+  font-size: 0.6875rem;
+  line-height: 1.15;
+  text-align: center;
+  font-style: italic;
+}
+
 .dc-tile__id {
   display: flex;
   align-items: center;

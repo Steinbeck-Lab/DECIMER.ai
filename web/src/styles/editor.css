@@ -227,6 +227,12 @@
   object-fit: contain;
 }
 
+.dc-fact--crop .dc-crop--none {
+  min-height: 60px;
+  flex: 1;
+  font-size: 0.8125rem;
+}
+
 .dc-fact--crop figcaption {
   color: var(--dc-muted);
   font-size: 0.8125rem;

@@ -66,3 +66,23 @@ test('while an edit is unanswered the tile says nothing about CDK: the values ar
   expect(button.textContent).not.toContain('CDK');
   expect(await hoverText(button)).toBe('Updating name and SMILES…');
 });
+
+const cropOf = (button: HTMLElement) => button.querySelector<HTMLImageElement>('img.dc-tile__crop');
+
+test('the original crop is shown as a picture while it loads', () => {
+  const button = show();
+  expect(cropOf(button)?.getAttribute('src')).toBe(ethanol.cropUrl);
+  expect(button.textContent).not.toContain('No picture');
+});
+
+test('a crop that is not there (404) is a quiet "No picture", never a broken image', () => {
+  const button = show();
+  fireEvent.error(cropOf(button)!);
+  expect(cropOf(button)).toBeNull(); // no <img> left to show the browser's broken-image icon
+  const placeholder = button.querySelector('.dc-tile__crop');
+  expect(placeholder?.textContent).toBe('No picture');
+  expect(placeholder?.getAttribute('data-crop-missing')).toBe('true');
+  // the rest of the tile is untouched: the depiction, the number, the status
+  expect(button.querySelector('img.dc-tile__structure')).not.toBeNull();
+  expect(button.querySelector('.dc-tile__number')?.textContent).toBe(String(ethanol.index + 1));
+});

@@ -78,6 +78,34 @@ async def test_a_crop_is_read_only_when_it_has_an_ocsr_slot(
     assert prepares["crops"] == 12
 
 
+async def test_an_image_of_several_is_read_only_when_it_has_an_ocsr_slot(
+    make_rig: Callable[..., Rig], prepares: dict[str, int]
+) -> None:
+    """D23: a job of several images has no seg page to prepare, and its images (the crops) are
+    read, as every crop is, only once ocsr has a slot for them."""
+    go = asyncio.Event()
+
+    async def held(_parts: dict[str, bytes]) -> None:
+        await go.wait()
+
+    hosts, resolver = fleet(seg=2, ocsr=2, cls=2)
+    backend = FakeBackend(hosts=hosts, pauses={"ocsr": held})
+    rig = make_rig(backend=backend, resolver=resolver, cls_concurrency=3)
+    ocsr = rig.deps.services._caller._pools["ocsr"]
+    jobs = [
+        await rig.image_job([(100 + n, 60) for n in range(6)], ip=f"client-{n}") for n in range(2)
+    ]
+    runs = asyncio.gather(*(rig.run(job) for job in jobs))
+    await wait_until(lambda: backend.active["ocsr"] == 2 and ocsr.waiting == 10, timeout=20)
+    assert prepares["crops"] == 2  # the images that have a slot; ten more are waiting for one
+    assert prepares["pages"] == 0
+    go.set()
+    stored = await asyncio.wait_for(runs, 30)
+    assert all(job.status is JobStatus.DONE for job in stored)
+    assert prepares["crops"] == 12 and prepares["pages"] == 0
+    assert backend.count("seg") == 0
+
+
 async def test_a_slot_is_given_back_when_the_page_cannot_be_read(
     make_rig: Callable[..., Rig], monkeypatch: pytest.MonkeyPatch
 ) -> None:

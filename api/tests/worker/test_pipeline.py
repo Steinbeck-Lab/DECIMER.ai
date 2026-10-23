@@ -133,6 +133,7 @@ async def test_a_page_image_job_is_copied_as_page_n(make_rig: RigFactory) -> Non
     assert png_size(rig.file(job, "page-0.png").read_bytes()) == (300, 200)
     assert png_size(rig.file(job, "page-1.png").read_bytes()) == (250, 120)
     assert [r.page_index for r in job.results] == [0, 1]
+    assert [r.bbox for r in job.results] == [(0, 0, 300, 200), (0, 0, 250, 120)]  # read whole, D23
     assert job.status is JobStatus.DONE
 
 
@@ -221,15 +222,6 @@ async def test_a_pdf_gets_no_fallback_even_with_one_page(make_rig: RigFactory) -
     assert rig.backend.count("ocsr") == 0
     assert rig.backend.count("cls") == 0
     assert job.structures_found == 0
-
-
-async def test_several_images_get_no_fallback(make_rig: RigFactory) -> None:
-    rig = make_rig(backend=FakeBackend(layout={}))
-    job = await rig.run(await rig.image_job([(123, 77), (140, 90)]))
-    assert job.status is JobStatus.DONE
-    assert job.results == []
-    assert rig.backend.count("ocsr") == 0
-    assert all_done(job)  # the stages still complete, so the progress view finishes
 
 
 async def test_the_fallback_does_not_apply_when_segmentation_failed(make_rig: RigFactory) -> None:
@@ -707,16 +699,10 @@ async def test_more_than_ten_images_keep_the_order_they_were_uploaded_in(
     for number, size in enumerate(sizes):
         assert png_size(rig.file(done, f"page-{number}.png").read_bytes()) == size
     assert [r.page_index for r in done.results] == list(range(12))
-    asked = [int(p["page_index"]) for p in rig.backend.parts_of("seg")]
-    assert sorted(asked) == list(range(12))
-    for number in range(12):  # each page was sent as the image of that position
-        sent = next(p for p in rig.backend.parts_of("seg") if int(p["page_index"]) == number)
-        assert png_size(sent["image"]) == sizes[number]
-    assert rig.backend.count("ocsr") == 12  # twelve images are not "one image": no fallback needed
-
-
-async def test_twelve_images_with_nothing_found_get_no_fallback(make_rig: RigFactory) -> None:
-    rig = make_rig(backend=FakeBackend(layout={}))
-    done = await rig.run(await rig.image_job([(100, 100)] * 12))
-    assert done.results == []
-    assert rig.backend.count("ocsr") == 0
+    assert rig.backend.count("seg") == 0  # several images are read whole
+    assert [r.bbox for r in done.results] == [(0, 0, *size) for size in sizes]
+    for number in range(12):  # result N is the image of that position, as it was uploaded
+        assert rig.file(done, f"crop-{number}.png").read_bytes() == (
+            rig.file(done, "input/" + f"{number + 1:04d}.png").read_bytes()
+        )
+    assert rig.backend.count("ocsr") == 12

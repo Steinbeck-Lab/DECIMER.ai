@@ -194,6 +194,8 @@ export const strings = {
     },
     noName: 'No verified name',
     noDepiction: 'No depiction',
+    /** Where the original crop should be and the picture is not there (an image that could not be read has none). */
+    noPicture: 'No picture',
     /**
      * A structure RDKit refused and CDK read (decision D4: CDK is kept as a fallback, as legacy used it). The flag is
      * the short form on the tile; the hover has the whole sentence, and says who could not read it.

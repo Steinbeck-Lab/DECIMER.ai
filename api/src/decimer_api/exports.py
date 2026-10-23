@@ -243,13 +243,15 @@ class Entry:
             self.source.close()
 
 
-def zip_entries(rows: Sequence[Row], crops: Sequence[BinaryIO]) -> list[Entry]:
+def zip_entries(rows: Sequence[Row], crops: Sequence[BinaryIO | None]) -> list[Entry]:
     """Image, then molfile, of each structure in order; the SMILES list last. `crops[i]` is the
-    open crop file of `rows[i]`."""
+    open crop file of `rows[i]`, or None for a structure that has none (an image of a job of
+    several images that could not be read, D23): its image is left out, the rest stays."""
     entries: list[Entry] = []
     for row, crop in zip(rows, crops, strict=True):
         stem = file_stem(row.number, len(rows))
-        entries.append(Entry(f"{stem}.png", crop, stored=True))
+        if crop is not None:
+            entries.append(Entry(f"{stem}.png", crop, stored=True))
         if row.molfile:
             entries.append(Entry(f"{stem}.mol", row.molfile.encode("utf-8")))
     entries.append(Entry(SMILES_FILE, smiles_text(rows).encode("utf-8", "replace")))
