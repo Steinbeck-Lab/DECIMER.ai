@@ -1,30 +1,37 @@
 import { strings } from '../strings';
-import { IconExternal } from '../ui/icons';
+import { Link, RichText } from './Rich';
+import type { Rich } from './Rich';
+import { SectionView } from './Sections';
+import type { Section } from './Sections';
 import { StaticPage } from './StaticPage';
 
 const t = strings.pages.about;
 
+interface Citation {
+  readonly title: string;
+  readonly authors: string;
+  readonly where: Rich;
+  readonly doi: string;
+}
+
+const citations: readonly Citation[] = t.citations;
+const before: readonly Section[] = t.before;
+const after: readonly Section[] = t.after;
+
 export function About() {
   return (
-    <StaticPage title={t.title} note={strings.pages.draftNote}>
+    <StaticPage title={t.title}>
       <p className="dc-page__lead">{t.lead}</p>
 
-      <h2>{t.howTitle}</h2>
-      {t.how.map((paragraph) => (
-        <p key={paragraph}>{paragraph}</p>
+      {before.map((section) => (
+        <SectionView key={section.title} section={section} />
       ))}
-
-      <h2>{t.limitsTitle}</h2>
-      <p>{t.limits}</p>
 
       <h2>{t.componentsTitle}</h2>
       <ul className="dc-page__list">
         {t.components.map((c) => (
           <li key={c.name}>
-            <a href={c.url} target="_blank" rel="noreferrer">
-              {c.name}
-              <IconExternal size={14} />
-            </a>
+            <Link href={c.url} text={c.name} />
             <span>{c.what}</span>
           </li>
         ))}
@@ -33,27 +40,21 @@ export function About() {
       <h2>{t.citeTitle}</h2>
       <p>{t.citeLead}</p>
       <ol className="dc-page__citations">
-        {t.citations.map((c) => (
+        {citations.map((c) => (
           <li key={c.doi}>
-            <a href={c.doi} target="_blank" rel="noreferrer">
-              {c.title}
-            </a>
+            <Link href={c.doi} text={c.title} />
             <span>
-              {c.authors} {c.where}.
+              {c.authors} <RichText value={c.where} />
             </span>
           </li>
         ))}
       </ol>
-      <p>
-        <a href={t.moreResearchUrl} target="_blank" rel="noreferrer">
-          {t.moreResearch}
-          <IconExternal size={14} />
-        </a>
+      <p className="dc-page__more">
+        <Link href={t.moreResearchUrl} text={t.moreResearch} />
       </p>
 
-      <h2>{t.aboutTitle}</h2>
-      {t.aboutBody.map((paragraph) => (
-        <p key={paragraph}>{paragraph}</p>
+      {after.map((section) => (
+        <SectionView key={section.title} section={section} />
       ))}
     </StaticPage>
   );

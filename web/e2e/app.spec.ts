@@ -303,14 +303,30 @@ test('About, Privacy and Impressum are pages of the same site, and the footer li
 
   await footer.getByRole('link', { name: 'About' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'About DECIMER.ai' })).toBeFocused();
-  const about = (await page.locator('main').textContent()) ?? '';
-  expect(about).not.toMatch(/STOUT/i);
-  expect(about).not.toMatch(/Google Analytics/i);
+  await expect(page.getByRole('heading', { level: 2, name: 'Cite us' })).toBeVisible();
+  const references = page.locator('.dc-page__citations li');
+  await expect(references).toHaveCount(6);
+  await expect(references.nth(5)).toContainText('Orthonym'); // in the place of the STOUT paper
+  await expect(page.getByRole('link', { name: 'Orthonym' }).first()).toHaveAttribute('href', 'https://github.com/Steinbeck-Lab/Orthonym');
 
   await footer.getByRole('link', { name: 'Privacy' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Privacy' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 3, name: 'Problem reports' })).toBeVisible();
+
   await footer.getByRole('link', { name: 'Impressum' }).click();
-  await expect(page.getByRole('heading', { level: 1, name: 'Impressum' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Impressum' })).toHaveAttribute('lang', 'de');
+  await expect(page.getByRole('heading', { level: 2, name: 'Haftungsausschluss' })).toBeVisible();
+
+  // No page keeps its placeholder, and none speaks of the removed tools. (A `[CONFIRM: ...]` marker is a decision
+  // still open, listed in the hand-off; it is not a placeholder.)
+  for (const route of ['about', 'privacy', 'impressum']) {
+    await page.goto(`./#/${route}`);
+    await page.locator('main h1').waitFor();
+    const text = (await page.locator('main').textContent()) ?? '';
+    expect(text, route).not.toMatch(/TODO|Draft text/);
+    expect(text, route).not.toMatch(/STOUT/i);
+    expect(text, route).not.toMatch(/Google Analytics/i);
+  }
   expect(problems).toEqual([]);
 });
 

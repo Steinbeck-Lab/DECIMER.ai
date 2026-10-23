@@ -285,109 +285,318 @@ export const strings = {
     external: '(opens in a new tab)',
   },
 
+  // ---------------------------------------------------------------------------------------------
+  // The static pages: About, Privacy and Impressum. Kept apart from the rest so that merges stay small.
+  //
+  // Carried over from the legacy views (about, privacy_policy and impressum blade templates), then updated: Orthonym
+  // replaces STOUT, Google Analytics is gone, and the privacy text describes this stack (api/README.md, deploy/nginx).
+  //
+  // `[CONFIRM: ...]` marks a statement that the repository and the legacy site could not confirm. The page shows it
+  // highlighted (pages/Rich.tsx) until someone who knows decides. A marker never contains a closing bracket. None may
+  // remain at a release: `RELEASE=1 npm test` (scripts/check.sh --release) fails while one is left in the copy or the build.
+  //
+  // A page is a title plus sections. A section has a title, an optional `lang` (for German text), `content` blocks and
+  // sub-sections. A block is a paragraph (a string, or a list of parts: plain text, `{ text, href }` for a link,
+  // `{ text, route }` for another page of this site, `{ em }`, `{ strong }`), `{ lines }`, `{ list }` or `{ strong }`.
+  // ---------------------------------------------------------------------------------------------
   pages: {
-    draftNote: 'Draft text. To be finalised in TODO.',
-    draftNotePrivacy: 'Draft text. To be finalised in TODO, and reviewed by the data-protection officer in P5-06.',
     back: 'Back to the upload',
 
     about: {
       title: 'About DECIMER.ai',
       lead: 'An open platform for automated optical chemical structure identification, segmentation and recognition in scientific publications.',
-      howTitle: 'How to use it',
-      how: [
-        'Upload a PDF document or one or more images that contain chemical structure depictions, or paste an image from the clipboard. For a PDF, DECIMER Segmentation finds every structure depiction on each page.',
-        'The DECIMER Image Transformer reads each depiction as a SMILES, and the DECIMER Image Classifier flags images that may not be chemical structures.',
-        'You check the results, correct them in the Ketcher structure editor and download the structures, exactly as you left them.',
-        'IUPAC names come from Orthonym and are shown only when its OPSIN round trip confirms them. Otherwise the page says there is no verified name; it never guesses.',
+      before: [
+        {
+          title: 'How to use the DECIMER web app',
+          content: [
+            'Upload a PDF document, or one or more images that contain chemical structure depictions, or paste an image from the clipboard. If you upload a PDF, DECIMER Segmentation detects and segments every chemical structure depiction in it. The detected or uploaded depictions are read by the OCSR engine of DECIMER V2, and the DECIMER Image Classifier flags images that may not be chemical structures. The depictions and their SMILES are then shown for your review.',
+            [
+              'You can edit the structures as you need in the ',
+              { text: 'Ketcher chemical structure editor', href: 'https://lifescience.opensource.epam.com/ketcher/' },
+              ' before you download the structure images and molfiles (a ZIP), an SDF file or a CSV file.',
+            ],
+            [
+              'IUPAC names come from ',
+              { text: 'Orthonym', href: 'https://github.com/Steinbeck-Lab/Orthonym' },
+              ' and are shown only when Orthonym has checked them by reading the name back with OPSIN. When it cannot give a verified name, the page says so; it never guesses. Hover over a name, or move focus to it, to see how it was built and checked. A name is worked out again after you edit a structure. [CONFIRM: true once the edit call is merged]',
+            ],
+          ],
+        },
+        {
+          title: 'Limits',
+          content: [
+            `Up to ${LIMITS.maxPages} PDF pages and ${LIMITS.maxStructures} structures per upload, and ${LIMITS.maxUploadBytes / 1024 / 1024} MB per upload. When a limit applies, the results page says so.`,
+          ],
+        },
       ],
-      limitsTitle: 'Limits',
-      limits: `Up to ${LIMITS.maxPages} PDF pages and ${LIMITS.maxStructures} structures per upload, and ${LIMITS.maxUploadBytes / 1024 / 1024} MB per upload. When a limit applies, the results page says so.`,
       componentsTitle: 'Project components',
       components: [
         { name: 'DECIMER Segmentation', what: 'Chemical structure detection and extraction', url: 'https://github.com/Kohulan/DECIMER-Image-Segmentation' },
         { name: 'DECIMER Image Classifier', what: 'Chemical structure classification', url: 'https://github.com/Steinbeck-Lab/DECIMER-Image-Classifier' },
         { name: 'DECIMER Image Transformer', what: 'Optical chemical structure recognition', url: 'https://github.com/Kohulan/DECIMER-Image_Transformer' },
-        { name: 'Orthonym', what: 'IUPAC names checked by an OPSIN round trip', url: 'https://github.com/Steinbeck-Lab/Orthonym' },
-        { name: 'Ketcher', what: 'The structure editor, by EPAM', url: 'https://lifescience.opensource.epam.com/ketcher/' },
+        { name: 'Orthonym', what: 'IUPAC names, each checked by an OPSIN round trip (MIT licence)', url: 'https://github.com/Steinbeck-Lab/Orthonym' },
+        { name: 'Ketcher', what: 'The chemical structure editor, by EPAM', url: 'https://lifescience.opensource.epam.com/ketcher/' },
       ],
       citeTitle: 'Cite us',
       citeLead: 'If our toolkit helped your work, please cite our publications.',
+      // The five DECIMER citations are the legacy list, word for word (journal in italics, volume in bold, as there).
+      // The one fix: a missing comma after "Agea, I.A." in the first one. Dropped: the STOUT paper. Added: the Orthonym
+      // preprint (title, authors, date and DOI as Crossref records them).
       citations: [
-        { title: 'DECIMER.ai: an open platform for automated optical chemical structure identification, segmentation and recognition in scientific publications', authors: 'Rajan, K., Brinkhaus, H.O., Agea, I.A., Zielesny, A., Steinbeck, C.', where: 'Nat Commun 14, 5045 (2023)', doi: 'https://doi.org/10.1038/s41467-023-40782-0' },
-        { title: 'Advancements in hand-drawn chemical structure recognition through an enhanced DECIMER architecture', authors: 'Rajan, K., Brinkhaus, H.O., Zielesny, A., Steinbeck, C.', where: 'J Cheminform 16, 78 (2024)', doi: 'https://doi.org/10.1186/s13321-024-00872-7' },
-        { title: 'DECIMER: towards deep learning for chemical image recognition', authors: 'Rajan, K., Zielesny, A., Steinbeck, C.', where: 'J Cheminform 12, 65 (2020)', doi: 'https://doi.org/10.1186/s13321-020-00469-w' },
-        { title: 'DECIMER-Segmentation: Automated extraction of chemical structure depictions from scientific literature', authors: 'Rajan, K., Brinkhaus, H.O., Sorokina, M. et al.', where: 'J Cheminform 13, 20 (2021)', doi: 'https://doi.org/10.1186/s13321-021-00496-1' },
-        { title: 'DECIMER 1.0: deep learning for chemical image recognition using transformers', authors: 'Rajan, K., Zielesny, A., Steinbeck, C.', where: 'J Cheminform 13, 61 (2021)', doi: 'https://doi.org/10.1186/s13321-021-00538-8' },
+        {
+          title: 'DECIMER.ai: an open platform for automated optical chemical structure identification, segmentation and recognition in scientific publications',
+          authors: 'Rajan, K., Brinkhaus, H.O., Agea, I.A., Zielesny, A., Steinbeck, C.',
+          where: [{ em: 'Nat Commun' }, ', ', { strong: '14' }, ', 5045 (2023).'],
+          doi: 'https://doi.org/10.1038/s41467-023-40782-0',
+        },
+        {
+          title: 'Advancements in hand-drawn chemical structure recognition through an enhanced DECIMER architecture.',
+          authors: 'Rajan, K., Brinkhaus, H.O., Zielesny, A., Steinbeck, C.',
+          where: [{ em: 'J Cheminform' }, ', ', { strong: '16' }, ', 78 (2024).'],
+          doi: 'https://doi.org/10.1186/s13321-024-00872-7',
+        },
+        {
+          title: 'DECIMER: towards deep learning for chemical image recognition',
+          authors: 'Rajan, K., Zielesny, A., Steinbeck, C.',
+          where: [{ em: 'J Cheminform' }, ', ', { strong: '12' }, ', 65 (2020).'],
+          doi: 'https://doi.org/10.1186/s13321-020-00469-w',
+        },
+        {
+          title: 'DECIMER-Segmentation: Automated extraction of chemical structure depictions from scientific literature',
+          authors: 'Rajan, K., Brinkhaus, H.O., Sorokina, M. et al.',
+          where: [{ em: 'J Cheminform' }, ', ', { strong: '13' }, ', 20 (2021).'],
+          doi: 'https://doi.org/10.1186/s13321-021-00496-1',
+        },
+        {
+          title: 'DECIMER 1.0: deep learning for chemical image recognition using transformers',
+          authors: 'Rajan, K., Zielesny, A., Steinbeck, C.',
+          where: [{ em: 'J Cheminform' }, ', ', { strong: '13' }, ', 61 (2021).'],
+          doi: 'https://doi.org/10.1186/s13321-021-00538-8',
+        },
+        {
+          title: 'Orthonym: verified IUPAC names for chemical structures in the wild',
+          authors: 'Rajan, K., Zielesny, A., Steinbeck, C.',
+          where: [{ em: 'ChemRxiv' }, ' (2026), preprint.'],
+          doi: 'https://doi.org/10.26434/chemrxiv.15009769/v1',
+        },
       ],
       moreResearch: 'Learn more about our research',
       moreResearchUrl: 'https://cheminf.uni-jena.de/research/deep-learning/',
-      aboutTitle: 'About the project',
-      aboutBody: [
-        'Deep Learning for Chemical Image Recognition (DECIMER) is a step towards automated chemical image segmentation and recognition. It is developed and maintained by the Steinbeck group at Friedrich Schiller University Jena, and the code is open source (MIT).',
-        'You need the right, granted by the publisher, to use the documents and images you upload for data mining.',
-        'Your files are used only to compute and show your results. They are deleted after one hour, unless you report a problem: a reported image is kept until we have analysed the error, then deleted. See the privacy page for details.',
+      after: [
+        {
+          title: 'About DECIMER',
+          content: [
+            [
+              'Deep Learning for Chemical Image Recognition (DECIMER) is a step towards automated chemical image segmentation and recognition. DECIMER is actively developed and maintained by the ',
+              { text: 'Steinbeck group', href: 'https://cheminf.uni-jena.de/research/deep-learning/' },
+              ' at the ',
+              { text: 'Friedrich Schiller University Jena', href: 'https://www.uni-jena.de/' },
+              '. The code is open source (MIT licence).',
+            ],
+            'You need to have the right, granted by the publisher of the uploaded documents and images, to use them for data mining. We do not store or use the data for anything other than automated processing and display of results in the web app. Your documents and images are deleted one hour after your job ends, unless a problem is reported. If you report a problem, we keep the reported image to analyse the error, and delete it afterwards.',
+            [
+              'A more detailed description of what happens with your data is in our ',
+              { text: 'privacy policy', route: '/privacy' },
+              '. German law requires us to provide some information about who we are: ',
+              { text: 'Impressum - Legal Disclosure', route: '/impressum' },
+              '.',
+            ],
+          ],
+        },
       ],
     },
 
     privacy: {
       title: 'Privacy',
+      note: '[CONFIRM: draft until the data-protection officer has reviewed this text. Remove this notice then]',
+      intro: [
+        'Personal data (usually referred to just as "data" below) will only be processed by us to the extent necessary and for the purpose of providing a functional and user-friendly website, including its contents, and the services offered there.',
+        'Per Art. 4 No. 1 of Regulation (EU) 2016/679, i.e. the General Data Protection Regulation (hereinafter referred to as the "GDPR"), "processing" refers to any operation or set of operations such as collection, recording, organization, structuring, storage, adaptation, alteration, retrieval, consultation, use, disclosure by transmission, dissemination, or otherwise making available, alignment, or combination, restriction, erasure, or destruction performed on personal data, whether by automated means or not.',
+        'The following privacy policy is intended to inform you in particular about the type, scope, purpose, duration, and legal basis for the processing of such data either under our own control or in conjunction with others. We also inform you below about the third-party components we use to optimize our website and improve the user experience which may result in said third parties also processing data they collect and control.',
+        'Our privacy policy is structured as follows: I. Information about us as controllers of your data. II. The rights of users and data subjects. III. Information about the data processing.',
+      ],
       sections: [
         {
-          title: 'Who is responsible',
-          body: [
-            'Cheminformatics and Computational Metabolomics group, Friedrich Schiller University Jena, Lessingstraße 8, 07743 Jena, Germany. Telephone +49 3641 948181, email christoph.steinbeck@uni-jena.de. The data-protection contact is Prof. Dr. Christoph Steinbeck.',
+          title: 'I. Information about us as controllers of your data',
+          content: [
+            'The party responsible for this website (the "controller") for purposes of data protection law is:',
+            {
+              lines: [
+                'Cheminformatics and Computational Metabolomics group at Friedrich-Schiller-University Jena',
+                'Lessingstraße 8',
+                '07743 Jena',
+                'Germany',
+              ],
+            },
+            {
+              lines: [
+                'Telephone: +49 3641 948181',
+                ['Email: ', { text: 'christoph.steinbeck@uni-jena.de', href: 'mailto:christoph.steinbeck@uni-jena.de' }],
+              ],
+            },
+            "The controller's data protection officer is:",
+            { lines: ['Prof. Dr. Christoph Steinbeck'] },
           ],
         },
         {
-          title: 'Your files and results',
-          body: [
-            'There is no account and no login. A document or image you upload, the crops cut from it and your results are used only to compute and show your results.',
-            'They are deleted one hour after your job ends. If you report a problem with a result, that image and its result are kept until we have analysed the problem, then deleted.',
+          title: 'II. The rights of users and data subjects',
+          content: [
+            'With regard to the data processing to be described in more detail below, users and data subjects have the right',
+            {
+              list: [
+                'to confirmation of whether data concerning them is being processed, information about the data being processed, further information about the nature of the data processing, and copies of the data (cf. also Art. 15 GDPR);',
+                'to correct or complete incorrect or incomplete data (cf. also Art. 16 GDPR);',
+                'to the immediate deletion of data concerning them (cf. also Art. 17 GDPR), or, alternatively, if further processing is necessary as stipulated in Art. 17 Para. 3 GDPR, to restrict said processing per Art. 18 GDPR;',
+                'to receive copies of the data concerning them and/or provided by them and to have the same transmitted to other providers/controllers (cf. also Art. 20 GDPR);',
+                'to file complaints with the supervisory authority if they believe that data concerning them is being processed by the controller in breach of data protection provisions (see also Art. 77 GDPR).',
+              ],
+            },
+            'In addition, the controller is obliged to inform all recipients to whom it discloses data of any such corrections, deletions, or restrictions placed on processing the same per Art. 16, 17 Para. 1, 18 GDPR. However, this obligation does not apply if such notification is impossible or involves a disproportionate effort. Nevertheless, users have a right to information about these recipients.',
+            { strong: "Likewise, under Art. 21 GDPR, users and data subjects have the right to object to the controller's future processing of their data pursuant to Art. 6 Para. 1 lit. f) GDPR. In particular, an objection to data processing for the purpose of direct advertising is permissible." },
           ],
         },
         {
-          title: 'Server logs',
-          body: [
-            'For security and stability the server records the browser type and version, the operating system, the referring page, the pages visited, the time of the visit and the IP address. These logs are deleted within seven days unless an incident needs them as evidence. (Carried over from the legacy text; to be confirmed.)',
+          title: 'III. Information about the data processing',
+          content: [
+            'Your data processed when using our website will be deleted or blocked as soon as the purpose for its storage ceases to apply, provided the deletion of the same is not in breach of any statutory storage obligations or unless otherwise stipulated below.',
+          ],
+          sections: [
+            {
+              title: 'Your uploads and results',
+              content: [
+                'There is no account and no login.',
+                'When you upload a PDF or images, or paste an image, the server keeps your results (SMILES, InChIKeys, names and molfiles) in a job record in its job store (Redis), and the uploaded file and the structure images cut out of it in a job folder on disk. They are used only to compute and show your results. When you edit a structure, the edited structure is sent to the server so that it can work out the SMILES, the name and the picture again.',
+                'They are deleted about one hour after your job ends, whether it finished or failed. The record expires by itself; a clean-up job removes the folders and runs every five minutes, so allow a few minutes more. A running job keeps its record alive with every step it completes. A job that is still waiting, or whose worker has stopped, is removed after its own time limit, about six hours at most with the current settings.',
+                '[CONFIRM: check this section against the finished API. The edit call is not built yet, so what it stores is not confirmed here. Also state the legal basis for processing the uploads]',
+              ],
+            },
+            {
+              title: 'Problem reports',
+              content: [
+                'If you choose "Report a problem" on a result, the server saves that result and its structure image in a private storage area so that we can analyse the error. A report is kept until we have analysed it, and is deleted afterwards.',
+                '[CONFIRM: the report call is not built yet. State exactly what a report stores (the image, the SMILES, the name, the job identifier?), who can see it, how long it can stay unanalysed, and whether the storage is backed up and how deleted reports leave the backups]',
+              ],
+            },
+            {
+              title: 'Fair use and your network address',
+              content: [
+                'To give everyone a fair share, the server lets each visitor run at most two jobs at once. It counts them per network address (for IPv6, per /64 network), but the application does not store the address: it keeps only a keyed hash (an HMAC) of it, made with a secret key that stays on the server. The hash cannot be matched to an address without the key. It is kept with the job record and the counters, which expire with the job. The web server in front of the application also holds network addresses in memory to apply its own rate limits (requests per second, uploads per minute, open connections), only for as long as those limits need them, and does not write them to its access log.',
+                'The basis is Art. 6 Para. 1 lit. f) GDPR. Our legitimate interest lies in the stability and fair use of the service.',
+              ],
+            },
+            {
+              title: 'Server logs',
+              content: [
+                'The web server of this site writes an access log that records the date and time, the request method, the page requested (job identifiers are left out), the answer code, the time taken and the size of the answer. It records no IP address, no browser or operating system, no referring page and no query string.',
+                "If the server fails to pass a request on, its error log names the IP address of that request. Those lines are kept as long as the server's log rotation keeps them.",
+                '[CONFIRM: how long the error log is kept. The legacy text said that the server logs the browser type and version, the operating system, the referring page, the pages visited, the time and the IP address, and deletes them within seven days unless an incident needs them as evidence. Say what the university proxy and the server in front of this site log, and for how long, and whether the seven days still apply]',
+              ],
+            },
+            {
+              title: 'Cookies and your browser',
+              content: [
+                'This site itself sets no cookies. Your browser keeps one small note in its local storage, "decimer.visited", so that the animated logo plays only on your first visit. The structure editor (Ketcher) may also keep its own settings there. You can delete these in your browser settings. The visit counter described next does set cookies of its own.',
+              ],
+            },
+            {
+              title: 'Visit statistics (Matomo)',
+              content: [
+                'We count visits with Matomo, a web-analytics tool run by NFDI4Chem (matomo.nfdi4chem.de). This site loads the Matomo script from that server, so your browser contacts it each time you open a page of this site and sends it the data Matomo\'s tracker sends by default: the address and title of the page, the referring page, the time, and your screen size, language and browser. Your IP address reaches it with every request. The code is the one the previous version of this site used, and it does not switch Matomo\'s cookies off, so Matomo sets first-party cookies whose names start with "_pk_", such as a visitor identifier (by Matomo\'s defaults valid for up to 13 months), a session marker (30 minutes), a record of the website you came from when you arrive through a link (6 months), and a short-lived test cookie. You can delete them in your browser settings.',
+                'Matomo counts each page you open on this site (the main page, About, Privacy and Impressum). The page address never contains your files or results. It may also record the address of a link to another website that you click, such as a PubChem or COCONUT search, which contains the InChIKey of the structure. No other analytics service is used, and apart from this counter this site loads no scripts, fonts or images from other websites. Links to other sites open them only when you click.',
+                '[CONFIRM: what the NFDI4Chem Matomo server keeps, for how long, and whether it shortens IP addresses; the legal basis (Art. 6 Para. 1 lit. f) GDPR was the basis in the legacy text) and how visitors can opt out. ROADMAP and PRODUCT.md call this Matomo "cookieless", but the legacy code, now used here, does not call disableCookies: decide whether to add it, or whether these cookies need consent (§ 25 TDDDG)]',
+              ],
+            },
+            {
+              title: 'Error reports and usage counts',
+              content: [
+                '[CONFIRM: error reporting (Sentry or GlitchTip, set by SENTRY_DSN; not live yet) and the server-side usage counter that replaces the legacy usage logs are not described yet. Say what they record, whether an IP address or an upload can reach an error report, where it is stored and for how long]',
+              ],
+            },
           ],
         },
-        {
-          title: 'Analytics',
-          body: [
-            'This site does not use Google Analytics. Visit statistics are counted with Matomo, run by NFDI4Chem, in a mode that sets no cookies. (To be checked against what the deployed site actually loads before launch.)',
-          ],
-        },
-        {
-          title: 'Your rights',
-          body: [
-            'Under the GDPR you have the right to information about, correction of and deletion of data concerning you, to restriction of its processing, to data portability, to object, and to complain to a supervisory authority. Contact the address above.',
-          ],
-        },
+      ],
+      closing: [
+        [
+          'The legal parts of this text follow the ',
+          { text: 'Model Data Protection Statement', href: 'https://www.ratgeberrecht.eu/leistungen/muster-datenschutzerklaerung.html' },
+          ' for ',
+          { text: 'Anwaltskanzlei Weiß & Partner', href: 'https://www.ratgeberrecht.eu/', lang: 'de' },
+          '.',
+        ],
       ],
     },
 
     impressum: {
       title: 'Impressum',
-      note: 'Legal disclosure. Carried over from the legacy site; the full German text is to be reviewed and added in TODO.',
+      note: '[CONFIRM: legal review of the Impressum. § 5 now cites the Digitale-Dienste-Gesetz (DDG), which replaced the Telemediengesetz (TMG) in May 2024, and the typos of the legacy text are corrected, but the liability text still cites §§ 8 to 10 TMG and keeps the legacy wording (for example "Nutzen" where "Nutzung" is meant). Ask the university\'s legal office to check the whole text, the provider data and the contact person, and to say whether the credit to the generator at the end is still needed]',
+      lead: 'This legal disclosure (Impressum) is required by German law. It is in German.',
       sections: [
         {
-          title: 'Provider (Angaben gemäß § 5 TMG)',
-          lines: [
-            'Friedrich-Schiller-Universität Jena',
-            'Institut für Anorganische und Analytische Chemie',
-            'Arbeitsgruppe Cheminformatics and Computational Metabolomics',
-            'Lessingstraße 8',
-            '07743 Jena',
+          title: 'Angaben gemäß § 5 DDG',
+          lang: 'de',
+          content: [
+            '(Friedrich-Schiller-Universität Jena- Arbeitsgruppe: Cheminformatics and Computational Metabolomics)',
+            { lines: ['Lessingstr. 8', '07743 Jena'] },
           ],
         },
         {
-          title: 'Contact person',
-          lines: ['Prof. Dr. Christoph Steinbeck'],
+          title: 'Repräsentiert von',
+          lang: 'de',
+          content: [
+            {
+              lines: [
+                'Friedrich-Schiller-Universität Jena',
+                'Institut für Anorganische und Analytische Chemie',
+                'Arbeitsgruppe: Cheminformatics and Computational Metabolomics',
+                'Ansprechpartner: Prof. Dr. Christoph Steinbeck',
+              ],
+            },
+          ],
         },
         {
-          title: 'Contact',
-          lines: ['Telephone: +49 3641 948181', 'Email: christoph.steinbeck@uni-jena.de', 'Web: https://cheminf.uni-jena.de/'],
+          title: 'Kontaktdaten',
+          lang: 'de',
+          content: [
+            {
+              lines: [
+                'Telefon: +49 3641 948181',
+                ['E-Mail: ', { text: 'christoph.steinbeck@uni-jena.de', href: 'mailto:christoph.steinbeck@uni-jena.de' }],
+                ['Webseite: ', { text: 'https://cheminf.uni-jena.de/', href: 'https://cheminf.uni-jena.de/' }],
+              ],
+            },
+          ],
         },
+        {
+          title: 'Haftungsausschluss',
+          lang: 'de',
+          sections: [
+            {
+              title: 'Verantwortlichkeit für Inhalte',
+              content: [
+                'Die Inhalte unserer Webseiten wurden unter größter Sorgfalt erstellt. Trotzdem können wir nicht garantieren, dass der Inhalt aktuell, zuverlässig oder komplett ist. Gemäß den gesetzlichen Vorschriften sind wir für die selbst erstellten Inhalte verantwortlich. In diesem Zusammenhang möchten wir klarstellen, dass wir nicht verantwortlich sind für Informationen, die von dritten Parteien zur Verfügung gestellt oder von diesen gesammelt werden. Wir kontrollieren weder die Informationen, die versandt werden, noch verfolgen wir mögliche illegale Aktivitäten in diesen. Werden illegale Aktivitäten festgestellt, folgen wir unserer Verpflichtung, die entsprechenden Inhalte zu blockieren oder zu löschen, entsprechend den Paragraphen 8 bis 10 des Telemedia Acts (TMG).',
+              ],
+            },
+            {
+              title: 'Verantwortlichkeit für Links',
+              content: [
+                'Die Verantwortung für Inhalte von Links Dritter (externe Inhalte) liegt in der Verantwortung der jeweiligen Webseitenbetreiber. Zum Zeitpunkt der Einfügung der verwendeten Links auf unseren Seiten wurden keine illegalen Aktivitäten in diesen festgestellt. Sobald uns illegale Aktivitäten oder Verstöße bekannt werden, werden wir den entsprechenden Link entfernen.',
+              ],
+            },
+            {
+              title: 'Copyright',
+              content: [
+                'Unsere Webseiten und deren Inhalt (Texte, Fotos, Grafiken, Design) unterliegen dem deutschen Urheberrecht. Soweit nicht anderweitig gesetzlich vereinbart unterliegt der Nutzen, die Wiedergabe, Kopie oder die Veränderung der Inhalte dem Urheberrecht. Ausnahmen müssen schriftlich von den Webseitenbetreibern oder Rechteinhabern genehmigt werden. Individuelle Kopien sind nur für den privaten Gebrauch gestattet, sie dürfen weder direkt noch indirekt für wirtschaftliche Zwecke genutzt werden. Der nicht genehmigte Nutzen von unter Urheberrecht geschütztem Material ist nach Paragraph 106 strafbar.',
+              ],
+            },
+          ],
+        },
+      ],
+      closing: [
+        [
+          'Dieses Impressum wurde mithilfe von ',
+          { text: 'impressumgeneratorenglisch.de', href: 'http://impressumgeneratorenglisch.de/' },
+          ' erstellt.',
+        ],
       ],
     },
   },

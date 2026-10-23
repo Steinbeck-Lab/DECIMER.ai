@@ -60,11 +60,15 @@
 }
 
 .dc-page__list a,
-.dc-page__body p a {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.dc-page__citations a,
+.dc-page__more a {
   align-self: flex-start;
+}
+
+/* The "opens in a new tab" icon follows the last word of a link that wraps. */
+.dc-page__body a svg {
+  margin-left: 6px;
+  vertical-align: -2px;
 }
 
 .dc-page__list span,
@@ -75,6 +79,38 @@
 
 .dc-page__line {
   display: block;
+}
+
+.dc-page__body h3 {
+  margin: 20px 0 6px;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.dc-page__bullets {
+  margin: 0 0 12px;
+  padding-left: 1.25em;
+}
+
+.dc-page__bullets li {
+  margin-bottom: 6px;
+}
+
+.dc-page__credit {
+  margin-top: 28px;
+  color: var(--dc-muted);
+  font-size: 0.9375rem;
+}
+
+/* A statement nobody has confirmed yet, see strings.ts: it is meant to be noticed until it is settled. */
+.dc-confirm {
+  padding: 0 0.25em;
+  border-radius: 4px;
+  background: var(--dc-peach);
+  color: var(--dc-ink);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 
 .dc-page__back {
