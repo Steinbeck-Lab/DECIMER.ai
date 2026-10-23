@@ -2,6 +2,7 @@ import type { Ketcher } from 'ketcher-core';
 import { useEffect, useMemo } from 'react';
 import { EDIT_DEBOUNCE_MS } from '../config';
 import { useController } from '../state/react';
+import { serviceActivity } from './serviceActivity';
 import { EditorSession, type KetcherLike } from './session';
 
 /**
@@ -18,7 +19,7 @@ export function useEditorSession(ketcher: Ketcher | null): EditorSession | null 
         ? new EditorSession(ketcher as unknown as KetcherLike, {
             onEdit: (index, molfile) => controller.edit(index, molfile),
             onRevert: (index) => controller.reset(index),
-          }, EDIT_DEBOUNCE_MS)
+          }, EDIT_DEBOUNCE_MS, serviceActivity)
         : null,
     [ketcher, controller],
   );

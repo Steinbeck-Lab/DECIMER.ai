@@ -1,17 +1,21 @@
 import { useFocusTrap } from '@mantine/hooks';
 import type { Ketcher } from 'ketcher-core';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { strings } from '../strings';
 import type { Status } from '../state/model';
 import { useAppState, useController, useResultViews } from '../state/react';
 import { pageNumber, stepList, type ResultView } from '../state/selectors';
 import { IconCheck, IconChevronLeft, IconChevronRight, IconFlag, IconReset, IconX } from '../ui/icons';
 import { nameHover, statusLabel } from '../ui/format';
-import { CopyButton } from './CopyButton';
 import { KetcherPanel } from './KetcherPanel';
+import { blockKeysWhileBusy } from './busyKeys';
 import { keepKetcherLabelled } from './labels';
+import { CopyButton } from './CopyButton';
 import { Links } from './Links';
+import { StructureCode } from './StructureCode';
 import { useEditorSession } from './useEditorSession';
+
+const noSubscribe = () => () => undefined;
 
 const LEGEND: Status[] = ['unchecked', 'review', 'notsure', 'edited', 'checked'];
 
@@ -75,7 +79,7 @@ function Idle() {
 function Reasons({ view }: { view: ResultView }) {
   const unresolved = view.status === 'review' || view.status === 'notsure';
   const shown = view.reasons.filter((reason) => {
-    if (reason === 'invalid' || reason === 'rgroup') return !view.stale;
+    if (reason === 'invalid' || reason === 'rgroup' || reason === 'cdkOnly') return !view.stale;
     return unresolved;
   });
   if (shown.length === 0) return null;
@@ -111,6 +115,8 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
   const views = useResultViews(state);
   const [ketcher, setKetcher] = useState<Ketcher | null>(null);
   const session = useEditorSession(ketcher);
+  // The result whose structure is on the canvas once no swap is waiting; it follows the selection with a delay.
+  const shownIndex = useSyncExternalStore(session ? session.subscribe : noSubscribe, () => session?.shownIndex ?? null);
   const canvasHost = useRef<HTMLDivElement>(null);
   const [reporting, setReporting] = useState(false);
   // The result whose structure Ketcher could not load; the header must not claim it while the canvas is empty.
@@ -140,15 +146,15 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
   }, [session, state.jobId]);
 
   // Load a result into the editor (its edit, if it has one). Reads the store directly so typing, which
-  // changes the edit on every keystroke, never reloads the canvas.
+  // changes the edit on every keystroke, never reloads the canvas. The edit is looked up when the swap runs,
+  // not now: the edit of the result being left reaches the store only during that swap.
   const loadResult = useCallback(
     (index: number) => {
       if (!session) return;
-      const { job, edits } = controller.store.getState();
-      const result = job?.results.find((r) => r.index === index);
+      const result = controller.store.getState().job?.results.find((r) => r.index === index);
       if (!result) return;
       session
-        .load(result.index, result.molfile, edits[result.index]?.molfile ?? null)
+        .load(result.index, result.molfile, () => controller.store.getState().edits[result.index]?.molfile ?? null)
         .then(() => setLoadFailed((failed) => (failed === index ? null : failed)))
         .catch(() => setLoadFailed(index));
     },
@@ -158,6 +164,13 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
   useEffect(() => {
     if (selectedIndex !== null) loadResult(selectedIndex);
   }, [loadResult, selectedIndex]);
+
+  // The heading names the selected result at once; the canvas follows when its swaps have run (one per press of Next).
+  // Until then it shows another structure, and what is drawn on it would be filed under the wrong number or lost in
+  // the next swap, so it says it is busy (a veil over it, see editor.css, takes the pointer) and the keyboard does not
+  // reach Ketcher. Not `inert`: that would drop on the page the focus Ketcher takes when it starts. A failed load has
+  // its own overlay (and an empty canvas).
+  const swapping = session !== null && view !== undefined && shownIndex !== view.index && loadFailed !== view.index;
 
   const list = stepList(views, state.filter, selectedIndex);
   const position = view ? list.findIndex((v) => v.index === view.index) : -1;
@@ -268,6 +281,8 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
         data-active={open}
         role="group"
         aria-label={strings.editor.canvasLabel}
+        aria-busy={swapping}
+        onKeyDownCapture={swapping ? blockKeysWhileBusy : undefined}
       >
         {state.editorMounted && <KetcherPanel onReady={onReady} />}
         {view && loadFailed === view.index && (
@@ -320,34 +335,7 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
             </dl>
           </div>
 
-          <div className="dc-code" aria-busy={view.validating}>
-            <div className="dc-code__head">
-              <span className="dc-code__label" id="dc-smiles-label">
-                {strings.editor.smiles}
-              </span>
-              <CopyButton value={view.stale || !view.valid ? '' : view.smiles} label={strings.editor.copySmiles} />
-            </div>
-            <code className="dc-code__text" aria-labelledby="dc-smiles-label" data-stale={view.stale}>
-              {view.stale
-                ? view.validating
-                  ? strings.editor.updatingShort
-                  : strings.editor.notUpdated
-                : view.valid && view.smiles
-                  ? view.smiles
-                  : strings.editor.noSmiles}
-            </code>
-            <p className="dc-code__status" role="status">
-              {view.validating && strings.editor.updating}
-              {view.validationFailed && strings.editor.updateFailed}
-            </p>
-            <details className="dc-molfile">
-              <summary>{strings.editor.molfile}</summary>
-              <div className="dc-molfile__head">
-                <CopyButton value={view.molfile} label={strings.editor.copyMolfile} />
-              </div>
-              <pre className="dc-molfile__text">{view.molfile}</pre>
-            </details>
-          </div>
+          <StructureCode view={view} />
         </div>
       )}
 
