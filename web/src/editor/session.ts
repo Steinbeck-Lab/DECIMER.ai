@@ -1,5 +1,6 @@
 import { sameStructure } from './molfile';
 import { serial } from './serial';
+import type { ServiceActivity } from './serviceActivity';
 
 /** The part of Ketcher the session uses (and a fake can stand in for in tests). */
 export interface KetcherLike {
@@ -41,6 +42,13 @@ export interface SessionCallbacks {
  *   baseline taken after this load can be compared.) An edit that ends equal to
  *   it is reported as a revert, so "modified" means "differs from recognised".
  * - `flush` commits an edit still waiting in the debounce. The export awaits it.
+ * - Ketcher's own server calls (Layout, Clean Up ...) answer later and put the answer on the canvas whatever is on it
+ *   then. Every swap, reset and flush therefore waits until none is running, so the answer is filed under the result
+ *   it was asked for and cannot land on the next one. A call that has not answered after a few seconds stops being
+ *   waited for, and its answer is turned into an error when it comes (see `serviceActivity.ts`, which also lists
+ *   what is not covered).
+ * - What a swap shows is decided when it runs, not when it was asked for: the edit of a result that was left a moment
+ *   ago reaches the store only while the swap away from it runs, and a swap back to it, queued earlier, must show it.
  */
 export class EditorSession {
   private readonly run = serial();
@@ -49,6 +57,9 @@ export class EditorSession {
   private lastSeen = '';
   private timer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
+  /** Swaps (load, reset, forget) that were asked for and have not finished. */
+  private pending = 0;
+  private readonly listeners = new Set<() => void>();
   private readonly onChange = () => {
     if (this.disposed || this.current === null) return;
     this.clearTimer();
@@ -62,6 +73,8 @@ export class EditorSession {
     private readonly ketcher: KetcherLike,
     private readonly callbacks: SessionCallbacks,
     private readonly debounceMs = 250,
+    /** Ketcher's server calls (`ServiceActivity`): the session waits for them, and ends their epoch when it leaves a result. */
+    private readonly service: Pick<ServiceActivity, 'settled' | 'leave'> = { settled: () => Promise.resolve(), leave: () => Promise.resolve() },
   ) {}
 
   /** Starts listening to Ketcher. Separate from the constructor so React can create sessions without side effects. */
@@ -75,25 +88,47 @@ export class EditorSession {
     return this.current;
   }
 
-  /** Shows result `index`: its edit when it has one, otherwise the recognised structure. */
-  load(index: number, original: string, edited: string | null): Promise<void> {
+  /**
+   * The result whose structure is on the canvas once every swap that was asked for has finished; null until then.
+   * The panel treats the canvas as ready (editable) only for the result it names.
+   */
+  get shownIndex(): number | null {
+    return this.pending === 0 ? this.current : null;
+  }
+
+  /** Calls `listener` whenever `shownIndex` may have changed (for `useSyncExternalStore`). */
+  readonly subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => void this.listeners.delete(listener);
+  };
+
+  /**
+   * Shows result `index`: its edit when it has one, otherwise the recognised structure. `edited` may be a function:
+   * it is called when the swap runs, after the edit of the result being left has been committed.
+   */
+  load(index: number, original: string, edited: string | null | (() => string | null)): Promise<void> {
     this.clearTimer();
-    return this.run(async () => {
+    return this.swap(async () => {
+      await this.service.leave(); // a Layout started on the result we are leaving must land on it, not on the next one
       await this.commit(); // an edit made a moment ago belongs to the result we are leaving
-      await this.show(index, edited ?? original, edited === null);
+      const stored = typeof edited === 'function' ? edited() : edited;
+      await this.show(index, stored ?? original, stored === null);
     });
   }
 
   /** Puts the recognised structure back on the canvas and drops edits still waiting to be reported. */
   reset(index: number, original: string): Promise<void> {
     this.clearTimer();
-    return this.run(() => this.show(index, original, true));
+    return this.swap(async () => {
+      await this.service.leave(); // its answer would otherwise replace the recognised structure
+      await this.show(index, original, true);
+    });
   }
 
   /** A new job starts: nothing of the old one may leak into it (result indexes repeat). */
   forget(): Promise<void> {
     this.clearTimer();
-    return this.run(async () => {
+    return this.swap(async () => {
       this.current = null;
       this.baseline = null;
       this.lastSeen = '';
@@ -102,13 +137,30 @@ export class EditorSession {
 
   flush(): Promise<void> {
     this.clearTimer();
-    return this.run(() => this.commit());
+    return this.run(async () => {
+      await this.service.settled(); // an export right after Layout must carry the laid-out structure
+      await this.commit();
+    });
   }
 
   dispose(): void {
     this.disposed = true;
     this.clearTimer();
     this.ketcher.changeEvent.remove(this.onChange);
+  }
+
+  /** Queues a swap and keeps count of those not finished, so `shownIndex` stays null while the canvas is about to change. */
+  private swap(task: () => Promise<void>): Promise<void> {
+    this.pending++;
+    this.notify();
+    return this.run(task).finally(() => {
+      this.pending--;
+      this.notify();
+    });
+  }
+
+  private notify(): void {
+    this.listeners.forEach((listener) => listener());
   }
 
   private clearTimer(): void {

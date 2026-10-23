@@ -15,9 +15,20 @@ async function openResults(page: Page, file = 'figure2.png') {
   await page.getByRole('list', { name: 'Recognised structures' }).waitFor({ timeout: 30_000 });
 }
 
+/**
+ * Waits until the canvas shows the structure the panel's heading names. The heading follows a press of Next or Previous
+ * at once, but Ketcher swaps one structure per press, in order, so the canvas trails it; until it has caught up the
+ * canvas is busy and cannot be edited. This is the condition to wait for, not a pause: how long it takes depends on
+ * the machine.
+ */
+async function waitForCanvas(page: Page) {
+  await expect(page.locator('.dc-editor__canvas[data-active=true][aria-busy=false]')).toBeVisible({ timeout: 60_000 });
+}
+
 /** Waits for Ketcher, then edits the structure on the canvas the way a user does: select all, Layout (Ctrl+L). */
 async function editOnCanvas(page: Page) {
   await waitForEditor(page);
+  await waitForCanvas(page);
   await layoutOnCanvas(page);
 }
 
@@ -68,7 +79,7 @@ test('an edit marks the result edited, survives switching and never leaks into a
   // Undo cannot reach across a switch: the history of another structure is gone, so pressing it on 4 changes nothing.
   await tile(page, 4).click();
   await expect(panel.getByRole('heading', { name: 'Editing 4' })).toBeVisible();
-  await page.waitForTimeout(800);
+  await waitForCanvas(page);
   const box = await page.locator('.dc-editor__canvas[data-active=true]').boundingBox();
   if (!box) throw new Error('canvas is not showing');
   await page.mouse.click(box.x + box.width / 2, box.y + box.height - 12);
@@ -227,7 +238,9 @@ test('ten quick Next and Previous presses end on the right structure, with the c
   for (let i = 0; i < 3; i++) await page.keyboard.press('Enter');
   // Result numbers are 1, 2, 4, 5, 6, 7, 11, 12: four steps on from the first is number 6.
   await expect(panel.getByRole('heading', { name: 'Editing 6' })).toBeVisible();
-  await page.waitForTimeout(1500);
+  // The heading is right at once, but the canvas still has ten swaps to work through. It shows structure 6 when they
+  // are done (an edit before that would be made on another structure, or be wiped by the swaps that follow).
+  await waitForCanvas(page);
 
   // The canvas shows structure 6: an edit made there has its atoms, not those of a structure passed on the way.
   await layoutOnCanvas(page);
@@ -241,6 +254,97 @@ test('ten quick Next and Previous presses end on the right structure, with the c
   expect(atomCount(await molfileText(page))).toBe(expectedAtoms);
   // Nothing else was touched on the way.
   await expect(counts(page)).toContainText('1 edited');
+  expect(problems).toEqual([]);
+});
+
+test('a Layout that Indigo is still working on when the user presses Next stays with the structure it was made on', async ({ page }) => {
+  test.setTimeout(240_000);
+  const problems = watchProblems(page);
+  await openResults(page);
+  await tile(page, 6).click();
+  await waitForEditor(page);
+  await waitForCanvas(page);
+  const panel = panelOf(page);
+
+  // Layout is a round trip to Indigo (some 100 ms and more) whose answer replaces the whole canvas when it comes.
+  // Next goes in straight after it, in the same instant for the user: before the fix the swap ran first and the answer,
+  // arriving after it, was either wiped by the next swap (the edit of 6 lost) or drawn on the next structure.
+  const box = await page.locator('.dc-editor__canvas[data-active=true]').boundingBox();
+  if (!box) throw new Error('canvas is not showing');
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.keyboard.press('Control+a');
+  await page.keyboard.press('Control+l');
+  await page.evaluate(() => document.querySelector<HTMLElement>('[aria-label="Next structure"]')?.click());
+
+  await expect(panel.getByRole('heading', { name: 'Editing 7' })).toBeVisible();
+  await expect(tile(page, 6)).toContainText('Edited', { timeout: 15_000 });
+  await waitForCanvas(page);
+  await expect(counts(page)).toContainText('1 edited');
+  // Nothing else was touched, not by an answer that comes late either. The export flushes the editor first, so
+  // its file lists every edit the session has to report by now, and only the one of 6 is among them.
+  const sections = zipSections(await readDownload(page, /^ZIP/));
+  expect(sections.filter(([, state]) => state === 'edited').map(([n]) => n)).toEqual([6]);
+  await expect(tile(page, 7)).not.toContainText('Edited');
+
+  // And the edit is where it belongs: back on 6 it is shown as edited, with the molfile Ketcher wrote.
+  await panel.getByRole('button', { name: 'Previous structure' }).click();
+  await waitForCanvas(page);
+  await expect(panel.getByText('Edited by you')).toBeVisible();
+  expect(await molfileText(page)).not.toContain('RDKit');
+  expect(problems).toEqual([]);
+});
+
+test('while the canvas trails the heading, the keyboard does not reach Ketcher: Select all and Delete change nothing', async ({ page }) => {
+  test.setTimeout(240_000);
+  const problems = watchProblems(page);
+  await openResults(page);
+  await tile(page, 1).click();
+  await waitForEditor(page);
+  await waitForCanvas(page);
+
+  // Focus is in Ketcher (the user clicked the canvas); then seven structures on and four back. A click made by script
+  // does not move focus, so it stays on the canvas while the eleven swaps run for a second or two.
+  const canvas = page.locator('.dc-editor__canvas[data-active=true]');
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error('canvas is not showing');
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  for (const label of [...Array<string>(7).fill('Next structure'), ...Array<string>(4).fill('Previous structure')]) {
+    await page.evaluate((name) => document.querySelector<HTMLElement>(`[aria-label="${name}"]`)?.click(), label);
+  }
+  // Typing into a canvas that shows another structure than the heading would edit a structure about to be replaced.
+  // The page itself says which key presses came while the canvas was busy: Select all and Delete once it has caught up
+  // are a real edit, of the structure it shows then, and must not count against the blocker.
+  await page.evaluate(() => {
+    const w = window as unknown as { __keys: number[]; __readyAt: number | null };
+    w.__keys = [];
+    w.__readyAt = null;
+    document.addEventListener('keydown', () => w.__keys.push(performance.now()), true);
+    new MutationObserver(() => {
+      if (w.__readyAt === null && document.querySelector('.dc-editor__canvas')?.getAttribute('aria-busy') === 'false') w.__readyAt = performance.now();
+    }).observe(document.querySelector('.dc-editor__canvas') as Element, { attributes: true, attributeFilter: ['aria-busy'] });
+  });
+  for (let i = 0; i < 8; i++) {
+    await page.keyboard.press('Control+a');
+    await page.keyboard.press('Delete');
+  }
+  await expect(panelOf(page).getByRole('heading', { name: 'Editing 5' })).toBeVisible();
+  await waitForCanvas(page);
+  const { keys, readyAt } = await page.evaluate(() => {
+    const w = window as unknown as { __keys: number[]; __readyAt: number | null };
+    return { keys: w.__keys, readyAt: w.__readyAt ?? Infinity };
+  });
+  const whileBusy = keys.filter((at) => at < readyAt).length;
+  expect(whileBusy).toBeGreaterThanOrEqual(8); // the keys really came while the swaps ran
+
+  // No structure was changed on the way. The export flushes the editor first, so its file lists every edit. (A key
+  // that came after the canvas had caught up is a real edit of structure 5, the one it shows then.)
+  const sections = zipSections(await readDownload(page, /^ZIP/));
+  const edited = sections.filter(([, state]) => state === 'edited').map(([n]) => n);
+  expect(edited.filter((n) => n !== 5)).toEqual([]);
+  if (whileBusy === keys.length) {
+    expect(edited).toEqual([]);
+    await expect(counts(page)).not.toContainText('edited');
+  }
   expect(problems).toEqual([]);
 });
 

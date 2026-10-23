@@ -1,5 +1,6 @@
 import { expect, test, vi } from 'vitest';
 import { EditorSession, type KetcherLike } from './session';
+import { ServiceActivity } from './serviceActivity';
 
 /** A Ketcher stand-in: setMolecule/getMolfile with a canvas, and change events like the real one. */
 function fakeKetcher() {
@@ -296,5 +297,198 @@ test('Ketcher failures outside a load are not mistaken for one', async () => {
   await ketcher.setMolecule('ZZZ');
   await expect(session.load(1, 'B', null)).resolves.toBeUndefined();
   expect(session.currentIndex).toBe(1);
+  vi.useRealTimers();
+});
+
+// ---- races between a swap and what the user (or Ketcher) is doing -----------------------------------------------
+
+/** A session wired to a `ServiceActivity`, as the real editor is (its struct service reports to it). Fake timers. */
+function setupWithActivity() {
+  vi.useFakeTimers();
+  const ketcher = fakeKetcher();
+  const activity = new ServiceActivity();
+  const edits: Array<[number, string]> = [];
+  const session = new EditorSession(
+    ketcher,
+    { onEdit: (i, m) => edits.push([i, m.split('\n').slice(3).join('\n')]), onRevert: () => undefined },
+    100,
+    activity,
+  );
+  session.attach();
+  /** `settled` looks again one turn of the event loop later, which fake timers only run when told. */
+  const finished = async <T>(work: Promise<T>) => {
+    await vi.advanceTimersByTimeAsync(10);
+    return work;
+  };
+  /**
+   * A server call of Ketcher that is still running (Layout, Clean Up ...): its answer replaces the whole canvas
+   * when it arrives, with the structure the call was started on. The tracker is told, as the wrapped struct
+   * service of the real editor does.
+   */
+  const runningLayout = (laidOut: string) => {
+    let answer!: () => void;
+    const call = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+    // What Ketcher does with the promise it gets from the service: draw the answer.
+    void activity.track(call, true).then(
+      () => ketcher.draw(laidOut),
+      () => undefined,
+    );
+    return answer;
+  };
+  return { ketcher, session, edits, finished, runningLayout, activity };
+}
+
+test('a Layout still running when the user steps on is kept, on the result it was started on', async () => {
+  const { ketcher, session, edits, finished, runningLayout } = setupWithActivity();
+  await finished(session.load(0, 'A', null));
+
+  const answer = runningLayout('A-laid-out');
+  const swap = session.load(1, 'B', null); // the user pressed Next while Indigo is still working
+  await vi.advanceTimersByTimeAsync(50);
+  expect(ketcher.canvasText()).toBe('A'); // the swap waits for the answer: it would be overwritten by it
+  answer();
+  await finished(swap);
+  await vi.advanceTimersByTimeAsync(500);
+
+  expect(edits).toEqual([[0, 'A-laid-out']]); // result 0 has its layout; result 1 inherited nothing
+  expect(ketcher.canvasText()).toBe('B');
+  expect(session.currentIndex).toBe(1);
+  vi.useRealTimers();
+});
+
+test('an export waits for a server call of Ketcher that is still running', async () => {
+  const { session, edits, finished, runningLayout } = setupWithActivity();
+  await finished(session.load(0, 'A', null));
+
+  const answer = runningLayout('A-laid-out');
+  const flushed = session.flush();
+  await vi.advanceTimersByTimeAsync(50);
+  expect(edits).toEqual([]);
+  answer();
+  await finished(flushed);
+  expect(edits).toEqual([[0, 'A-laid-out']]);
+  vi.useRealTimers();
+});
+
+test('a Reset waits for a running server call, so its answer cannot land on the recognised structure', async () => {
+  const { ketcher, session, edits, finished, runningLayout } = setupWithActivity();
+  await finished(session.load(0, 'A', null));
+
+  const answer = runningLayout('A-laid-out');
+  const reset = session.reset(0, 'A');
+  await vi.advanceTimersByTimeAsync(50); // without the wait, the reset has put 'A' on the canvas by now
+  answer();
+  await finished(reset);
+  await vi.advanceTimersByTimeAsync(500);
+  expect(ketcher.canvasText()).toBe('A');
+  expect(edits).toEqual([]);
+  vi.useRealTimers();
+});
+
+test('a Layout that answers only after the cap is dropped: it is never filed under another result', async () => {
+  const { ketcher, session, edits, finished, runningLayout } = setupWithActivity();
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  await finished(session.load(0, 'A', null));
+  const answer = runningLayout('A-laid-out');
+  const swap = session.load(1, 'B', null);
+  await vi.advanceTimersByTimeAsync(5100); // the swap gave up waiting at 5 s and went on
+  await finished(swap);
+  expect(ketcher.canvasText()).toBe('B');
+  expect(warn).toHaveBeenCalledTimes(1);
+  answer(); // 5.1 s after the call was made
+  await vi.advanceTimersByTimeAsync(500);
+
+  expect(ketcher.canvasText()).toBe('B'); // not the old structure, laid out
+  expect(edits).toEqual([]); // and nothing is filed under result 1
+  expect(session.currentIndex).toBe(1);
+  warn.mockRestore();
+  vi.useRealTimers();
+});
+
+test('a call that never answers delays one swap by the cap, not every later one', async () => {
+  const { ketcher, session, finished, runningLayout } = setupWithActivity();
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  await finished(session.load(0, 'A', null));
+  runningLayout('never drawn'); // never answered
+
+  const first = session.load(1, 'B', null);
+  await vi.advanceTimersByTimeAsync(4999);
+  expect(ketcher.canvasText()).toBe('A');
+  await vi.advanceTimersByTimeAsync(10);
+  await finished(first);
+  expect(ketcher.canvasText()).toBe('B');
+
+  const second = session.load(2, 'C', null);
+  await vi.advanceTimersByTimeAsync(10); // no more than the turn of the event loop that `settled` takes
+  await second;
+  expect(ketcher.canvasText()).toBe('C');
+  expect(session.shownIndex).toBe(2);
+  warn.mockRestore();
+  vi.useRealTimers();
+});
+
+test('a call that is older than the cap when the user steps on is not waited for at all', async () => {
+  const { ketcher, session, finished, runningLayout } = setupWithActivity();
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  await finished(session.load(0, 'A', null));
+  runningLayout('never drawn');
+  await vi.advanceTimersByTimeAsync(20_000); // the user worked on, then pressed Next
+  const swap = session.load(1, 'B', null);
+  await vi.advanceTimersByTimeAsync(10);
+  await swap;
+  expect(ketcher.canvasText()).toBe('B');
+  warn.mockRestore();
+  vi.useRealTimers();
+});
+
+test('stepping on and straight back brings the edit back to the canvas, although it reached the store only during the swap', async () => {
+  const { ketcher, session, edits } = setup();
+  await session.load(0, 'A', null);
+  ketcher.draw('A-edited'); // the debounce has not fired: the store does not know yet
+  const stored = () => edits.find(([i]) => i === 0)?.[1] ?? null;
+  // Next, then Previous, before the first swap has run: when Previous is asked for, result 0 has no edit in the store.
+  const next = session.load(1, 'B', () => stored());
+  const previous = session.load(0, 'A', () => stored());
+  await Promise.all([next, previous]);
+  await vi.advanceTimersByTimeAsync(500);
+
+  expect(edits).toEqual([[0, 'A-edited']]);
+  expect(ketcher.canvasText()).toBe('A-edited'); // not the recognised structure under an "Edited" tile
+  expect(session.currentIndex).toBe(0);
+  vi.useRealTimers();
+});
+
+test('shownIndex names the result on the canvas only once every swap that was asked for has finished', async () => {
+  const { session } = setup();
+  const seen: Array<number | null> = [];
+  const unsubscribe = session.subscribe(() => seen.push(session.shownIndex));
+  expect(session.shownIndex).toBeNull();
+
+  const first = session.load(0, 'A', null);
+  const second = session.load(1, 'B', null);
+  expect(session.shownIndex).toBeNull(); // the canvas is about to change twice
+  await first;
+  expect(session.shownIndex).toBeNull(); // 0 is on it for a moment, but 1 is still queued
+  await second;
+  expect(session.shownIndex).toBe(1);
+  expect(seen.at(-1)).toBe(1);
+  expect(seen.filter((v) => v === 0)).toEqual([]); // never announced as ready while another swap was waiting
+
+  unsubscribe();
+  await session.load(2, 'C', null);
+  expect(seen.at(-1)).toBe(1); // no more calls after unsubscribing
+  vi.useRealTimers();
+});
+
+test('shownIndex stays null after a failed load, and a later load makes it ready again', async () => {
+  const { ketcher, session } = setup();
+  ketcher.unloadable.add('BAD');
+  await session.load(0, 'A', null);
+  await session.load(1, 'BAD', null).catch(() => undefined);
+  expect(session.shownIndex).toBeNull();
+  await session.load(2, 'C', null);
+  expect(session.shownIndex).toBe(2);
   vi.useRealTimers();
 });
