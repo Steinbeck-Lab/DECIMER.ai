@@ -59,6 +59,24 @@ async def test_allowed_names(
     assert (await client.get(f"/api/jobs/{job.id}/media/{name}")).status_code == 200
 
 
+async def test_every_page_url_of_the_job_is_served_and_a_skipped_page_is_404(
+    client: httpx.AsyncClient, store: JobStore, settings: Settings, clock: FakeClock
+) -> None:
+    job = await make_job(
+        store, settings, clock, {"page-0.png": make_png(), "page-2.png": make_png()}
+    )
+    job.pages = job.pages_processed = 3
+    await store.save(job)
+    urls = (await client.get(f"/api/jobs/{job.id}")).json()["pageUrls"]
+    assert urls == [f"/api/jobs/{job.id}/media/page-{i}.png" for i in range(3)]
+    # The URLs are what the page loads: same origin, answered by the media route.
+    assert [(await client.get(url)).status_code for url in urls] == [
+        200,
+        404,
+        200,
+    ]  # page 1 failed to render
+
+
 async def test_a_media_file_of_job_a_is_404_under_job_b(
     client: httpx.AsyncClient, store: JobStore, settings: Settings, clock: FakeClock
 ) -> None:

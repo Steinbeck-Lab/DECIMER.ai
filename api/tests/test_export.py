@@ -742,15 +742,72 @@ async def test_every_edit_of_a_full_job_fits_when_the_molfiles_are_normal_sized(
     assert all(line[1] == "CCCl" for line in exported.smiles_lines)
 
 
-async def test_a_job_whose_crop_is_gone_is_404_before_anything_is_sent(
+async def test_a_result_without_a_crop_file_is_left_out_of_the_zip_images_and_nothing_else(
     client: httpx.AsyncClient, job: Job, settings: Settings
 ) -> None:
+    """An image of a job of several images that could not be read has no crop: its image is
+    left out, its molfile and its line of the SMILES list stay, and the others are untouched."""
     crop_path(settings, job, 3).unlink()
-    response = await export(client, job.id, "zip")
-    assert response.status_code == 404 and response.json()["detail"]["code"] == "not_found"
+    exported = await export_zip(client, job.id)
+    assert exported.names == [
+        name
+        for number in range(1, 6)
+        for name in (f"structure-0{number}.png", f"structure-0{number}.mol")
+        if name != "structure-04.png"
+    ] + [SMILES_FILE]
+    assert exported.zip.testzip() is None
+    assert exported.zip.read("structure-05.png") == crop_bytes(4)
+    assert exported.text("structure-04.mol") == job.results[3].molfile
+    assert [line[1] for line in exported.smiles_lines] == [r.smiles for r in job.results]
 
 
-async def test_a_symlinked_crop_is_not_followed(
+async def test_an_unreadable_image_is_a_line_of_the_list_with_no_image_and_no_molfile(
+    client: httpx.AsyncClient, store: JobStore, settings: Settings, clock: FakeClock
+) -> None:
+    """What the worker leaves for an image it could not read: an empty SMILES, no molfile, no
+    crop file. The archive has the other images and a line for it, the numbers do not move."""
+    results = make_results(["CCO", "CCO", "c1ccccc1"])
+    results[1] = results[1].model_copy(
+        update={
+            "smiles": "",
+            "inchikey": "",
+            "valid": False,
+            "molfile": "",
+            "svg": "",
+            "name": None,
+        }
+    )
+    unreadable = await make_done_job(store, settings, clock, results, ip="unreadable")
+    crop_path(settings, unreadable, 1).unlink()
+    exported = await export_zip(client, unreadable.id)
+    assert exported.names == [
+        "structure-01.png",
+        "structure-01.mol",
+        "structure-03.png",
+        "structure-03.mol",
+        SMILES_FILE,
+    ]
+    # the list keeps a line for every structure, numbered as before, by the image's name
+    assert [line[0] for line in exported.smiles_lines] == [
+        "structure-01.png",
+        "structure-02.png",
+        "structure-03.png",
+    ]
+    assert exported.smiles_lines[1][1] == ""
+
+
+async def test_a_job_with_no_crop_file_at_all_still_exports_its_molfiles_and_list(
+    client: httpx.AsyncClient, job: Job, settings: Settings
+) -> None:
+    for index in range(len(job.results)):
+        crop_path(settings, job, index).unlink()
+    exported = await export_zip(client, job.id)
+    assert not [name for name in exported.names if name.endswith(".png")]
+    assert len([name for name in exported.names if name.endswith(".mol")]) == len(job.results)
+    assert len(exported.smiles_lines) == len(job.results)
+
+
+async def test_a_symlinked_crop_is_not_followed_and_its_image_is_left_out(
     client: httpx.AsyncClient, job: Job, settings: Settings, tmp_path: object
 ) -> None:
     from pathlib import Path
@@ -760,7 +817,9 @@ async def test_a_symlinked_crop_is_not_followed(
     target = crop_path(settings, job, 0)
     target.unlink()
     target.symlink_to(secret)
-    assert (await export(client, job.id, "zip")).status_code == 404
+    exported = await export_zip(client, job.id)
+    assert "structure-01.png" not in exported.names and "structure-01.mol" in exported.names
+    assert b"secret" not in exported.response.content
 
 
 # --- rate limit ----------------------------------------------------------------------------------

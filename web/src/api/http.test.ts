@@ -114,6 +114,7 @@ describe('getJob', () => {
     expect(job.queuePosition).toBeNull();
     expect(job.error).toBeNull();
     expect(job.warnings).toEqual([]);
+    expect(job.pageUrls).toEqual([]);
     expect(job.results).toHaveLength(1);
     expect(job.results[0]).toMatchObject({ name: null, nameTier: null, nameVerified: null, svg: '', number: 1, isStructure: true });
     expect(wireJob().results).toBeUndefined(); // (the wire job really did omit them)
@@ -170,6 +171,15 @@ describe('getJob', () => {
     // Behind the same base as the request that returned it.
     const requested = call(fetchMock).url;
     expect(expected.startsWith(requested.slice(0, requested.indexOf('/api/jobs/')))).toBe(true);
+  });
+
+  // The page images of the upload go behind the base exactly like the crops (same origin, so the CSP's img-src holds).
+  test.each(['', '/beta', 'https://decimer.example/gateway'])('page URLs go behind the base URL %j, in page order', async (baseUrl) => {
+    const pageUrls = [0, 1, 2].map((i) => `/api/jobs/${JOB_ID}/media/page-${i}.png`);
+    const { api } = clientWith(() => json(wireJob({ status: 'done', pages: 3, pagesProcessed: 3, pageUrls })), baseUrl);
+    const job = await api.getJob(JOB_ID);
+    const base = baseUrl.replace(/\/$/, '');
+    expect(job.pageUrls).toEqual(pageUrls.map((url) => `${base}${url}`));
   });
 
   test('a media URL that already names an origin is left as the server sent it', async () => {

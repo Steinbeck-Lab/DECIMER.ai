@@ -23,7 +23,8 @@ from .media import resolve_media
 from .models import Job, JobStatus, JobView, is_valid_job_id, new_job_id
 from .settings import Settings
 from .store import Admission, Reservation
-from .uploads import Upload, classify
+from .uploads import FileKind, Upload, classify
+from .usage import kind_of
 
 log = logging.getLogger("decimer_api")
 
@@ -174,7 +175,9 @@ async def create_job(request: Request, response: Response) -> JobView:
     # costs one Redis round trip, however many uploads it starts at once.
     reservation = await deps.store.reserve(client_hash)
     if not isinstance(reservation, Reservation):
-        raise _admission_error(reservation, settings)
+        refusal = _admission_error(reservation, settings)
+        await deps.usage.refused(refusal.code)
+        raise refusal
 
     job_dir = settings.data_dir / new_job_id()
     form: FormData | None = None
@@ -190,7 +193,7 @@ async def create_job(request: Request, response: Response) -> JobView:
         if sum(part.size or 0 for part in parts) > settings.max_upload_bytes:
             raise ApiError(413, "too_large", _too_large_message(settings.max_upload_bytes))
         uploads = [Upload(name=part.filename or "", data=part.file) for part in parts]
-        classify(uploads, deps.limits)  # cheap refusals first, before waiting for a slot
+        kinds = classify(uploads, deps.limits)  # cheap refusals first, before waiting for a slot
 
         try:
             async with deps.gate.slot(client_hash, settings.ingest_wait_seconds):
@@ -223,15 +226,21 @@ async def create_job(request: Request, response: Response) -> JobView:
                 503, "unavailable", "The service is temporarily unavailable. Please retry."
             ) from error
         enqueued = True
-    except BaseException:
+    except BaseException as failure:
         if not enqueued:
             # Everything this request took is given back, even if the request is cancelled.
             await asyncio.shield(_give_back(deps.store, reservation, job, job_dir))
+            if isinstance(failure, ApiError):
+                await deps.usage.refused(failure.code)
         raise
     finally:
         if form is not None:
             await form.close()
 
+    await deps.usage.job_created(
+        kind_of(is_pdf=kinds[0] is FileKind.PDF, names=[upload.name for upload in uploads]),
+        small=settings.is_small_job(job.pages_processed),
+    )
     try:
         position = await deps.store.queue_position(job.id)
     except Exception:

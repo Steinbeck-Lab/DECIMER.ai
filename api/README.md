@@ -27,6 +27,8 @@ DATA_DIR=/tmp/decimer-jobs REDIS_URL=redis://localhost:6379/0 \
 
 uv run python -m decimer_api.sweep                 # delete expired job folders, once (for cron)
 uv run python -m decimer_api.sweep --every 300     # or as a long-running sidecar
+uv run python -m decimer_api.sidecar               # the ingest sidecar (INGEST_SIDECAR_URL=tcp://127.0.0.1:9000 for the api)
+uv run python -m decimer_api.usage --days 30       # the per-day usage counts (jobs, pages, structures, failures)
 ```
 
 In a container set `HOST=0.0.0.0`. Without `MEDIA_STREAM_DIRECT=true` the media endpoint returns an
@@ -81,6 +83,11 @@ All come from environment variables of the same name (case-insensitive); `.env.e
 | `MAX_REPORTS`, `REPORTS_MAX_BYTES`, `MAX_REPORT_IMAGE_BYTES` | `5000`, `2147483648`, `4194304` | At most this many report folders and this many bytes in all (counted from the disk, so a restart does not forget them; `503` beyond, a warning at 80 % of either); a crop image over the size is left out of its report. |
 | `REPORTS_MAX_AGE_DAYS` | `364` | A report older than this many days is deleted, whether or not anyone has analysed it: at start-up and then every hour, by the api itself. The privacy page says 12 months at the latest, the shortest of which is 365 days, so the default leaves the hour between runs (and a day's margin); keep it under 365 (`tests/test_privacy_promises.py` checks the examples and the default). |
 | `HOST`, `PORT` | `127.0.0.1`, `8000` | `python -m decimer_api` only. |
+| `SENTRY_DSN`, `SENTRY_ENVIRONMENT`, `SENTRY_RELEASE` | empty, `production`, empty | Error reports to the stack's GlitchTip; empty DSN: off. A bad DSN is logged and ignored. In compose the DSN host is `glitchtip-gate:8000`, a proxy that passes event posts only; GlitchTip itself is not reachable from the api. The release is the package version when empty (compose passes `DECIMER_TAG`). See "Observability". |
+| `LOG_FORMAT`, `LOG_LEVEL` | `json`, `INFO` | One JSON object per line (`text` for a terminal); the level of every logger. |
+| `USAGE_REDIS_URL`, `USAGE_TTL_DAYS` | empty (`REDIS_URL`), `800` | Where the per-day usage counts are kept, and for how long. See "Usage counter". |
+| `INGEST_SIDECAR_URL` | empty | `tcp://ingest:9000`: send uploads and molfiles to the ingest sidecar instead of parsing them in children of this process. Empty: in-process (development). |
+| `SIDECAR_HOST`, `SIDECAR_PORT`, `SIDECAR_SCRATCH_DIR` | `127.0.0.1`, `9000`, `/scratch` | `python -m decimer_api.sidecar` only: where it listens, and where it keeps the request in flight. |
 
 ## Endpoints
 
@@ -166,7 +173,8 @@ the request; unknown JSON fields are refused.
   result `i` replaces the stored one, and that row's SMILES, InChIKey, validity and name are computed
   from it (chem is asked for the edited, valid ones only); the others are as stored. A key that is not
   `0`..`n-1` (no signs, no padding, no spaces) or a molfile that cannot be used refuses the whole export
-  with `422`, and one over `MAX_MOLFILE_BYTES` with `413`. The ZIP has `structure-NN.png` (the crop),
+  with `422`, and one over `MAX_MOLFILE_BYTES` with `413`. The ZIP has `structure-NN.png` (the crop; left out for a result that has no crop file, an image of
+  several that could not be read, D23, whose line in the list stays; a symlink is never followed),
   `structure-NN.mol` (the edit, verbatim up to `M  END`, or the stored molfile; left out when there is
   none) for each structure and `results.smiles.txt`, `image<TAB>SMILES<TAB>IUPAC name`. File names are
   made from the structure's number (zero-padded to the width of the largest). It is streamed: the crops
@@ -225,7 +233,7 @@ JSON is camelCase. A job:
 ```json
 {"id": "<32 hex>", "status": "queued", "queuePosition": 1,
  "stages": [{"name": "upload", "state": "done"}, {"name": "render", "state": "pending"}],
- "pages": 12, "pagesProcessed": 10, "truncated": true,
+ "pages": 12, "pagesProcessed": 10, "pageUrls": ["/api/jobs/<id>/media/page-0.png", "..."], "truncated": true,
  "structuresFound": 0, "structuresDropped": 0, "results": [],
  "warnings": [{"code": "pages_truncated", "message": "..."}], "error": null,
  "createdAt": "...Z", "expiresAt": "...Z"}
@@ -236,8 +244,13 @@ JSON is camelCase. A job:
 `validBy` is `"rdkit"` for a valid result, `"cdk"` for one that RDKit refused and only CDK accepted (`valid` is
 `false`; `molfile` is CDK's, `svg` RDKit's drawing of it, `smiles` DECIMER's own text, `inchikey` and `name`
 empty), `null` for one neither accepted.
+`pageUrls` lists `page-0.png` to `page-<pagesProcessed - 1>.png`, one URL for each page the job processes, in
+page order and same-origin like `cropUrl` (the UI's "Display uploaded document", shown for PDFs). An upload of
+images lists every image; a PDF lists its first `MAX_PDF_PAGES` pages, and the pages past the cap are not
+processed and not listed. The list is the plan, not a check that the files exist: a page the worker could not
+render (warning `page_render_failed`), or has not rendered yet, answers `404`.
 The stored record (`Job`, `Result`) holds none of the derived fields (`queuePosition`, `number`,
-`cropUrl`); the API composes them when it returns the job (`JobView`, `ResultView`).
+`cropUrl`, `pageUrls`); the API composes them when it returns the job (`JobView`, `ResultView`).
 
 ## What the upload does
 
@@ -260,8 +273,8 @@ The stored record (`Job`, `Result`) holds none of the derived fields (`queuePosi
   `/proc/<pid>/environ` (`IP_HASH_SECRET`, `REDIS_URL`) or memory. That is all it closes: the child still
   runs as the same user, so it can read any file that user can read (a `.env`) and open network
   connections (Redis). The cost of non-dumpable: py-spy and gdb cannot attach to the API unless run as
-  root. **For P3-11:** run the ingest in a sidecar container with no network route to Redis, only
-  `DATA_DIR` mounted, and ideally another uid; the API then talks to it instead of spawning a child.
+  root. **The sidecar (P3-11, below) closes the rest**: with `INGEST_SIDECAR_URL` set, uploads are parsed in
+  another container that has no job data and no route to Redis, and the API sends them over a socket.
 * At most `INGEST_CONCURRENCY` children run at once, and **at most one per client**: a client's second
   upload waits for its own first (not for a free slot), so one address cannot hold every slot while
   `MAX_ACTIVE_JOBS_PER_IP` equals `INGEST_CONCURRENCY`. A request that cannot get its turn within
@@ -354,6 +367,77 @@ record cannot be read (once nothing in the folder has changed for `JOB_TTL_SECON
 directories named like a job id and never follows symlinks. A folder it cannot judge or remove is logged
 and counted as failed, and the sweep goes on; with `--every` a failed run does not stop the loop.
 
+## Observability and the sidecar (TODO, D21)
+
+### Error reports
+
+`observability.init_error_reporting` starts the Sentry SDK (`sentry-sdk==2.71.0`) when `SENTRY_DSN` is set: in
+`create_app_from_env` (service `api`: Starlette and FastAPI integrations, route templates as transaction names, so
+`/api/jobs/{job_id}` and never an id) and in the worker's `main` (service `worker`: arq integration, started before arq
+builds its worker). Both also report every `log.error` / `log.exception` (that is how the pipeline's "failed
+unexpectedly" and the 500 handler reach GlitchTip). It is configured to collect nothing: `send_default_pii=False`, no
+request bodies, no local variables, no source lines, no breadcrumbs, no sessions or tracing or metrics, the default
+integrations replaced by an explicit list (the standard-library one would add subprocess and HTTP breadcrumbs). The
+ingest, render and molfile children never import it. `before_send` is `scrub.scrub_event`: an **allowlist** that rebuilds
+the event from the exception types, the stack as function names, line numbers and module names, the SDK and runtime
+versions, tags and the request's method and path (query and fragment cut, job ids `:id`, only `Content-Type` and
+`Content-Length` headers), and drops everything else; the text it keeps (messages, exception values, tags) goes through
+`scrub.scrub_text`, which replaces molfiles, file names, job ids, IP addresses and SMILES strings (`[smiles]`) by
+placeholders. A SMILES is found as a *token*: text between spaces and the delimiters a message puts around one
+(quotes, brackets, `,;|<>{}`, `!?&`), tried whole, then without the brackets, quotes and punctuation that wrap it, then
+as the value of `key=value` or the part of a path (`/uploads/CCO`), up to three levels deep and repeated until the text
+stops changing (`id=CCO/id=CCO`); a token is SMILES when it is wholly SMILES pieces and starts with an atom (`10s`,
+`n=1` and `2026-10-23` are safe; a lower-case start needs five characters). `?query` is cut from anything that looks
+like a URL or path. File names are found by their extension (images, PDF, Office, chemistry formats such as `.mol`,
+`.cdx`, `.ket`) and, when quoted, as a whole including spaces. **What it does not catch**, the same in
+`web/src/observability/scrub.ts` and written down so that nobody relies on it: a file name with no extension, an
+unquoted file name with spaces (the words before the last one stay), and a SMILES of at most four capital letters and
+no carbon (`NN`, `OO`, `ONNO`; `INFO` and `NASA` look the same, so they are left alone). A scrubber that fails
+drops the report. Tests (`tests/test_scrub.py`, `tests/worker/test_reporting.py`) run a crafted event through it, and the
+real SDK with a recording transport through a crashing FastAPI request, a logged error and a failing arq job. The web app
+has the matching scrubber (`web/src/observability`).
+
+### Logs
+
+`logs.configure_logging` (called by `python -m decimer_api`, the worker, the sweep and the sidecar) writes one JSON object
+per line: `time`, `level`, `logger`, `message`, and `exc` for a traceback, the same shape as the model services' logs. The
+text goes through the same scrubber, with two differences: job ids are kept (they are how a problem with one job is
+followed up) and private, loopback and link-local addresses are kept (`replica 172.29.0.5 joined`); public addresses,
+SMILES, molfiles and file names are replaced. uvicorn runs with `log_config=None` (its own format has the client address)
+and its access log stays off.
+
+### Usage counter
+
+`usage.py` replaces the legacy TSV files: per UTC day, in a Redis hash `decimer:usage:<date>`, the jobs accepted by kind
+(`pdf`, `image`, `paste`: one image named `pasted-image...`, which is what the web app calls a pasted one; a test keeps the
+two in step) and size (`small`/`large`, the fast-lane rule), `done` and `failed` jobs, `pages` and `structures` of the jobs
+that finished `done`, and `refused.<error code>` for uploads that got an error. The api counts at `POST /api/jobs`, the
+worker when a job finishes. No address, no job id, no file name, no time of day. Best effort: a Redis that is down or slow
+(one second) costs a warning and that count. `USAGE_REDIS_URL` points at a Redis that survives a restart (compose has one,
+`usage`); `USAGE_TTL_DAYS` (800) after the last count of a day it expires. `python -m decimer_api.usage --days 30 [--json]`
+prints it (a table with a total, and the refusals by code); there is no HTTP route.
+
+### The ingest sidecar
+
+`python -m decimer_api.sidecar` is a small TCP server (`sidecar.py`, framing in `sidecar_wire.py`) that runs the api's
+untrusted-file work in a container of its own: `ingest` (the same `SubprocessIngest`: a child per upload with a deadline and
+hard limits) and `analysis` (the same `AnalysisPool` of RDKit children, one place per connection). With
+`INGEST_SIDECAR_URL=tcp://ingest:9000` the api uses `RemoteIngest` and `RemoteAnalysis` (`sidecar_client.py`) behind the same
+`IngestRunner` and `Analysis` seams, so nothing else changes. The uploads travel over the connection into the sidecar's own
+scratch directory, the normalised files come back, and the api writes them into `DATA_DIR/<job>/input/` itself after
+checking them: the names must be exactly `document.pdf` (for a PDF upload) or `0001.png` .. `NNNN.png` (for N images), sizes
+and counts are bounded, page numbers must be possible for the limits, warnings have a short lower-case code, an error is a
+status from 400 to 599 and a code of `ErrorCode`; anything else, a closed connection or silence past the deadline is `503
+unavailable`. A structure comes back as exactly the five fields of `Chemistry` with the right types, a bounded SMILES with no
+control character, an InChIKey of the right shape or none, a molfile that is one record ending in `M  END`, and an SVG
+that is a drawing and nothing else (only the elements RDKit draws with; no script, event handler, link, style sheet,
+entity, doctype or second comment); anything else is also `503 unavailable`, because the api puts the SVG into a page
+and the molfile into a download (`sidecar_client.checked_chemistry`). `/readyz` asks the sidecar (`ping`), so the api is not ready without it. The sidecar takes its limits from
+the same settings (the same `.env`), enforces its own places (`INGEST_CONCURRENCY`; `503 busy` beyond), cleans its scratch
+after every request, and runs as a non-dumpable process with no secret. What this closes and what it does not:
+`deploy/README.md`, "What the API review required". `tests/test_sidecar.py` runs it with real sockets and real child
+processes.
+
 ## Tests and checks
 
 ```bash
@@ -362,12 +446,16 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy
 ```
 
 Most API tests run the ingest code in a thread; `tests/test_isolation.py` runs the real child process
-(deadline, memory limit, crash, signals, environment, stderr).
+(deadline, memory limit, crash, signals, environment, stderr). P3-11 adds `test_scrub.py` and `worker/test_reporting.py`
+(what an error report and a log line may carry), `test_logs.py`, `test_usage.py` and `worker/test_usage.py` (the counter),
+`test_sidecar.py` (real sockets and child processes), `worker/test_chem_down.py` (the worker without chem) and
+`test_glitchtip_edge.py` (the edge's and the gate's configuration for the error-report path).
 
 ## Dependencies
 
 Exact pins in `pyproject.toml`. PDFs are read with `pypdfium2` (Apache-2.0 / BSD-3-Clause), images with
-Pillow and `pillow-heif`.
+Pillow and `pillow-heif`. `sentry-sdk==2.71.0` (MIT; newest release at least two weeks old on 2026-10-23, with `urllib3`
+2.8.0 as its transport) reports errors to GlitchTip.
 
 ## Worker
 
@@ -411,7 +499,7 @@ stages (render, segment, recognise, check), not the order in which things happen
 | Stage (its state is saved when it changes) | What happens |
 |---|---|
 | `render` | PDF: page `i` rendered with pypdfium2 at **exactly 300 DPI** to `page-<i>.png`, one child process per page (deadline, memory and CPU limits, no secrets in its environment; the worker never imports pdfium). Images: `input/000N.png` becomes `page-<N-1>.png` (hard link, else copy), in upload order. A page that cannot be rendered is skipped with a warning; if none can, the job fails. |
-| `segment` | seg is called once per page. A page above 25 MP or 36 MiB (seg takes 40 MP and 40 MiB; a B2 page is 49 MP) is sent as a smaller copy; the boxes seg returns are scaled back to the page and the crops are **cut from the full-resolution page** (not from seg's answer: those are the copy's pixels, white outside seg's mask). The crops of a page are written to part files as its answer arrives, only the first `MAX_STRUCTURES` of a page, and read back later, so no crop is held in memory. They are put in reading order (page by page, seg's order within a page) and cut at `MAX_STRUCTURES` (20): `structuresFound` is the total, the rest is `structuresDropped`, `truncated` is set and the warning `structures_truncated` added. **Single image that fills the frame (`SINGLE_IMAGE_WHOLE_FRACTION`, default 0.6):** for a job made of exactly one uploaded image (not a PDF, not several images), when seg finds exactly ONE structure and its box covers at least that fraction of the image's area, the whole image goes to ocsr and cls instead of seg's crop, and the reported bbox is the whole image (`crop-0.png` is a hard link to `page-0.png`, as in the fallback below). A pasted image is usually already a tight crop, and seg's box, grown from its mask, can clip its edge (a methoxy group, a ring edge). Several structures, or one small structure in a big image, keep seg's crops; the numbering and the cap are untouched (one image is one page). **Single-image fallback:** only for a job made of exactly one uploaded image (not a PDF, not several images), and only when seg answered and found nothing: the whole image is the one structure (bbox = the page, `crop-0.png` a hard link to `page-0.png`). seg's answer is checked against what was sent: the echoed page index and image size, every box inside the image. |
+| `segment` | seg is called once per page, except for a job of **several images**. A page above 25 MP or 36 MiB (seg takes 40 MP and 40 MiB; a B2 page is 49 MP) is sent as a smaller copy; the boxes seg returns are scaled back to the page and the crops are **cut from the full-resolution page** (not from seg's answer: those are the copy's pixels, white outside seg's mask). The crops of a page are written to part files as its answer arrives, only the first `MAX_STRUCTURES` of a page, and read back later, so no crop is held in memory. They are put in reading order (page by page, seg's order within a page) and cut at `MAX_STRUCTURES` (20): `structuresFound` is the total, the rest is `structuresDropped`, `truncated` is set and the warning `structures_truncated` added. **Single image that fills the frame (`SINGLE_IMAGE_WHOLE_FRACTION`, default 0.6):** for a job made of exactly one uploaded image (not a PDF, not several images: see D23), when seg finds exactly ONE structure and its box covers at least that fraction of the image's area, the whole image goes to ocsr and cls instead of seg's crop, and the reported bbox is the whole image (`crop-0.png` is a hard link to `page-0.png`, as in the fallback below). A pasted image is usually already a tight crop, and seg's box, grown from its mask, can clip its edge (a methoxy group, a ring edge). Several structures, or one small structure in a big image, keep seg's crops; the numbering and the cap are untouched (one image is one page). **Single-image fallback:** only for a job made of exactly one uploaded image (not a PDF, not several images), and only when seg answered and found nothing: the whole image is the one structure (bbox = the page, `crop-0.png` a hard link to `page-0.png`). seg's answer is checked against what was sent: the echoed page index and image size, every box inside the image. **Several images:** legacy never segments an upload of several images, and neither does the worker. For a job of more than one uploaded image seg is not called at all (no seg slot, no seg ticket): every image is one structure, read whole by ocsr and cls (its crop is a hard link to the image, fitted for the models like any crop, and read only once an ocsr slot is held), numbered in image order, and its box is the whole image (`pageIndex` is the image's place in the upload). The numbering is the same prefix rule and the same cap as for any job: `structuresFound` is the number of images that could be put in their place, the first `MAX_STRUCTURES` (20) are recognised, the rest is `structuresDropped` (legacy read the first 20 and left the others empty), `truncated` is set and the warning `structures_truncated` added; nothing is sent to ocsr or cls for the dropped images. Every image keeps its place, as in legacy (an image it cannot read still gets its slot with an empty SMILES): an image that cannot be read (its box is `[0, 0, 0, 0]`, its size unknown, and it has no `page-N.png` and no crop file: the media endpoint answers `404` for them, the ZIP export leaves its image out), whose crop cannot be written (no crop file), or that ocsr refuses is a result with an empty SMILES, `valid: false` and the warning `recognition_failed` ("Structure N ..."), and the images after it are not renumbered; even when none of the images can be read the job is `done`, not `render_failed`. The others are read as usual. The job is still a "not small" job for scheduling (`SMALL_JOB_MAX_PAGES`). |
 | `recognise` | Each kept crop, as soon as its number is known, is read, cut down for the models, and sent to ocsr and cls (together), at most as many crops at once as the replicas of the two services take. The models look at 512 px (ocsr) and 224 px (cls), so a crop above 4 MP or 4096 px on a side is downscaled (and re-encoded until under 19 MiB); the crop file keeps its size. ocsr's SMILES goes through **legacy's fragment filter**: more than four `.`-separated fragments, or a first fragment shorter than all the others together, keeps only the first fragment (warning `fragments_trimmed`; the raw prediction is in the debug log only). |
 | `check` | A crop goes through RDKit as soon as it is recognised; CDK and the names are asked for once every crop is through. RDKit (`chemistry.py`): canonical SMILES, validity, full InChIKey, V2000 molfile with 2D coordinates and wedge bonds, an SVG that starts with `<svg`. Then, if `CHEM_URL` is set: the SMILES RDKit refused go to chem's `POST /cdk` in **one batch per job**, then IUPAC names: one `POST /names` per job (20 structures per request); without `CHEM_URL`, `name`, `nameTier` and `nameVerified` are null and CDK is not tried. |
 
@@ -451,7 +539,8 @@ A service call is retried only where retrying can help:
 
 * **503** waits `Retry-After` (default 5 s, capped at 30 s), up to `BUSY_RETRIES` times.
 * **Could not connect** (the service is down or starting): doubling backoff, each wait at most
-  `CONNECT_BACKOFF_MAX_SECONDS` (10 s), until `CONNECT_RETRY_BUDGET_SECONDS` (90 s) of waiting have been spent.
+  `CONNECT_BACKOFF_MAX_SECONDS` (10 s), until `CONNECT_RETRY_BUDGET_SECONDS` (90 s) have been spent on waiting and
+  on attempts that took a while to fail (an address that swallows packets instead of refusing).
   ocsr needs about 50 s to load, so a worker that finds it restarting waits for it. This is done inside the
   call rather than by re-queueing the job with arq's `Retry`: a re-queued job would redo the render and seg
   work, show the user a restart, and use up arq's tries.
@@ -474,8 +563,8 @@ and a 120 s timeout. An answer is read as a stream and refused above 64 MiB (seg
 | chem fails, times out, or answers nonsense | names stay null; one warning `names_unavailable`. A structure chem ran out of time on: null, the same warning. Any other decline (`UNNAMEABLE`, `NO_VERIFIED_PIN`, ...): null, no warning |
 | the `/cdk` batch fails, times out, or answers nonsense; CDK times out or breaks on a structure | those structures stay invalid (`validBy: null`); one warning `cdk_unavailable`. CDK declining a SMILES (`invalid_smiles`, `layout_failed`, `too_large`): invalid, no warning |
 | seg 500 / 422 / timeout, or an image that cannot be fitted to seg's limits, on one page | that page is skipped; warning `page_segmentation_failed` ("Page 3 ..."); on every page the job fails: `segmentation_failed` |
-| seg or ocsr unreachable or busy for good | the job fails: `service_unavailable` |
-| a page cannot be rendered | that page is skipped; warning `page_render_failed`; no page at all: the job fails, `render_failed` |
+| seg or ocsr unreachable or busy for good | the job fails: `service_unavailable` (seg is not asked for a job of several images) |
+| a page cannot be rendered | that page is skipped; warning `page_render_failed`; no page at all: the job fails, `render_failed`. Not for several images: each keeps its place as a result that failed to be recognised (`recognition_failed`) |
 | the input is missing, or the job runs longer than `PIPELINE_TIMEOUT_SECONDS` | the job fails: `input_missing`, `timeout` |
 | anything else | the job fails: `internal_error` (the traceback goes to the log) |
 
@@ -619,7 +708,8 @@ Environment variables, read by `WorkerSettings` (`worker/settings.py`); `.env.ex
 | `HEARTBEAT_SECONDS` | `60` | A running record is saved at least this often. |
 | `CANCEL_POLL_SECONDS` | `2` | A running job is looked at this often for having been deleted by its owner; the run stops within this long. |
 | `BUSY_RETRIES`, `BUSY_RETRY_AFTER_DEFAULT_SECONDS`, `BUSY_RETRY_AFTER_MAX_SECONDS` | `3`, `5`, `30` | 503 handling. |
-| `CONNECT_RETRY_BUDGET_SECONDS`, `CONNECT_BACKOFF_SECONDS`, `CONNECT_BACKOFF_MAX_SECONDS` | `90`, `0.5`, `10` | Could-not-connect handling: doubling backoff, capped per wait, until the budget is spent. |
+| `CONNECT_RETRY_BUDGET_SECONDS`, `CONNECT_BACKOFF_SECONDS`, `CONNECT_BACKOFF_MAX_SECONDS` | `90`, `0.5`, `10` | Could-not-connect handling: doubling backoff, capped per wait, until the budget is spent. The budget counts the waits **and** the time lost in attempts that failed slowly (a connect that hangs instead of being refused), so it is a bound on the whole. |
+| `CHEM_CONNECT_RETRY_BUDGET_SECONDS` | `5` | chem is optional, so a call to it spends this long in all (waiting and failed attempts: a blackholed address costs one attempt, not several) on getting a connection (instead of `CONNECT_RETRY_BUDGET_SECONDS`) before the job goes on without names; once per job (the names are not asked again after the CDK call failed to connect). The worker starts, and runs jobs, with chem down: one `names_unavailable` warning (`tests/worker/test_chem_down.py`); compose waits for chem to have started, not to be healthy. |
 | `SENT_RETRIES` | `1` | Retries after the connection broke once the request was sent. |
 | `SEG_RESPONSE_LIMIT_MB`, `SMALL_RESPONSE_LIMIT_KB` | `64`, `1024` | The most an answer may be (seg's, the others'). |
 | `RENDER_TIMEOUT_SECONDS`, `RENDER_MEMORY_MB` | `90`, `2048` | Deadline and extra address space of one render child. |

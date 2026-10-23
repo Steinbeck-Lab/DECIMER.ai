@@ -100,6 +100,11 @@ class WorkerSettings(BaseSettings):
     # covers a restart. (Re-queueing the job with arq's Retry would redo the render and seg
     # work and count against arq's tries; waiting inside the call loses nothing.)
     connect_retry_budget_seconds: float = Field(default=90.0, ge=0)
+    # chem is optional (no chem: names are null and a warning says so), so a job does not wait for
+    # it as it waits for a model it cannot do without: while chem refuses connections the check
+    # stage gives up on it after this much waiting, once per job (TODO: the worker runs with
+    # chem down).
+    chem_connect_retry_budget_seconds: float = Field(default=5.0, ge=0)
     connect_backoff_seconds: float = Field(default=0.5, ge=0)
     connect_backoff_max_seconds: float = Field(default=10.0, gt=0)
     # The connection broke after the request was sent (reset, closed by the server): the work
@@ -189,6 +194,12 @@ class WorkerSettings(BaseSettings):
             )
         if problems:
             raise ValueError("; ".join(problems))
+
+    def connect_retry_budget(self, service: str) -> float:
+        """How long a call to `service` waits, in all, for a service that refuses connections."""
+        if service == "chem":
+            return self.chem_connect_retry_budget_seconds
+        return self.connect_retry_budget_seconds
 
     def max_response_bytes(self, service: str) -> int:
         if service == "seg":

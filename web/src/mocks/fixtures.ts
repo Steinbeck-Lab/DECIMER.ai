@@ -5,6 +5,8 @@
  * Provenance of the rasters and drawings in ./fixtures:
  * - cropN.png: crops of Figure 2 of the paper (CC BY 4.0), cut by DECIMER
  *   Segmentation for the design mock-ups, 2026-10-22.
+ * - page.png: page 3 of the paper (the one with Figure 2), rendered at 72 DPI and reduced to 64 colours; every
+ *   page of a mock job is this one image (`pageUrls`, the "Display uploaded document" strip).
  * - molN.svg: RDKit depictions of the label SMILES.
  * - compounds.json: SMILES, InChIKeys and IUPAC names from the checked golden
  *   labels (a name is null where Orthonym gave none); 2D molfiles generated from
@@ -23,6 +25,9 @@ const crops = import.meta.glob<string>('./fixtures/crop*.png', {
   query: '?url',
   import: 'default',
 });
+/** The image behind every page URL of a mock job. */
+export { default as FIXTURE_PAGE_URL } from './fixtures/page.png';
+
 const drawings = import.meta.glob<string>('./fixtures/mol*.svg', {
   eager: true,
   query: '?url',

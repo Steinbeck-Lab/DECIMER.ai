@@ -40,6 +40,47 @@ jobs:
         shell: bash # with pipefail: a failing export fails the step
         run: uv run python ../web/scripts/export-openapi.py | diff - ../web/src/api/openapi.json
 
+  # deploy/compose.yaml against the rules in deploy/README.md; "docker compose config" on a copy with dummy secrets,
+  # no container is started (scripts/check.sh runs the same).
+  deploy:
+    name: deploy (compose file checks)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: python3 -I deploy/check-compose.py
+
+  # TODO: a job through the whole API path (upload, arq worker, pipeline, poll, validate, export, delete)
+  # against fake model services, on a real Redis. The same test (api/tests/e2e) also runs in the "python (api)"
+  # job above on fakeredis; here E2E_REDIS_URL points it at the service container; the test deletes only its own keys.
+  api-e2e:
+    name: api end-to-end (real Redis, fake models)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      redis:
+        # The Redis the deployment runs (deploy/compose.yaml), without its password.
+        image: redis:8.10.2-alpine3.23@sha256:0bf6577d7774e592b29d093e3ac9390eb91e13d72c21e506afce736de5e0eeb0
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      E2E_REDIS_URL: redis://127.0.0.1:6379/0
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa # v10.3.1
+        with:
+          version: "0.13.5"
+      - run: uv sync --locked
+      - run: uv run pytest tests/e2e --durations=5
+
   web:
     runs-on: ubuntu-24.04
     defaults:

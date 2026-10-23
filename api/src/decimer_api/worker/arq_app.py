@@ -26,9 +26,12 @@ from arq.worker import run_worker
 from redis.asyncio import Redis
 
 from ..hardening import make_undumpable
+from ..logs import configure_logging
+from ..observability import init_error_reporting
 from ..queue import PROCESS_JOB, watch_fast_lane
 from ..settings import Settings
 from ..store import JobStore
+from ..usage import RedisUsage, build_usage
 from .cancel import run_cancellable
 from .pipeline import Deps, run_pipeline
 from .runtime import build_deps
@@ -39,6 +42,7 @@ log = logging.getLogger("decimer_api.worker")
 DEPS_KEY = "deps"
 REDIS_KEY = "redis"
 RESCUE_KEY = "fast_lane_rescue"
+USAGE_KEY = "usage"
 # Runs that arq may start for one job: the first, and one more after each cancellation (a
 # restart of the worker). Past that the job is dropped and its record expires by itself.
 MAX_TRIES = 3
@@ -81,7 +85,8 @@ def make_startup(settings: Settings, worker: WorkerSettings) -> Hook:
     async def startup(ctx: dict[str, Any]) -> None:
         redis: Redis = Redis.from_url(settings.redis_url, decode_responses=True)
         ctx[REDIS_KEY] = redis
-        ctx[DEPS_KEY] = build_deps(settings, worker, JobStore(redis, settings))
+        usage = ctx[USAGE_KEY] = build_usage(settings)
+        ctx[DEPS_KEY] = build_deps(settings, worker, JobStore(redis, settings), usage=usage)
         fast, own = settings.worker_fast_queue_name, settings.worker_queue_name
         if fast != own and worker.fast_lane_rescue_seconds > 0:
             ctx[RESCUE_KEY] = asyncio.create_task(
@@ -109,6 +114,9 @@ async def shutdown(ctx: dict[str, Any]) -> None:
     deps: Deps | None = ctx.pop(DEPS_KEY, None)
     if deps is not None:
         await deps.aclose()
+    usage: RedisUsage | None = ctx.pop(USAGE_KEY, None)
+    if usage is not None:
+        await usage.aclose()
     redis: Redis | None = ctx.pop(REDIS_KEY, None)
     if redis is not None:
         await redis.aclose()
@@ -141,8 +149,16 @@ def build_arq_settings(
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    settings = Settings()
+    configure_logging(fmt=settings.log_format, level=settings.log_level)
     # The render children run as the same user: without this they could read this process's
     # environment (REDIS_URL, ...) and memory through /proc. The API does the same at start.
     make_undumpable()
-    run_worker(build_arq_settings())
+    # Before the worker is built: the arq integration patches arq's Worker. Off without SENTRY_DSN.
+    init_error_reporting(
+        settings.sentry_dsn,
+        service="worker",
+        environment=settings.sentry_environment,
+        release=settings.sentry_release,
+    )
+    run_worker(build_arq_settings(settings))

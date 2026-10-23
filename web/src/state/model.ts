@@ -1,5 +1,5 @@
 import type { ApiErrorCode, Job, ValidateResponse } from '../api/contract';
-import type { SelectionError } from '../upload/files';
+import type { FileKind, SelectionError } from '../upload/files';
 
 export type Phase = 'empty' | 'working' | 'results' | 'failed';
 export type Filter = 'all' | 'review' | 'edited';
@@ -21,6 +21,8 @@ export type Failure = { kind: 'job'; message: string | null } | { kind: 'connect
 export interface SourceFile {
   name: string;
   size: number;
+  /** A PDF or an image (an upload is one or the other): it decides what the job's pages and limits mean. */
+  kind: FileKind;
   /** Object URL of an image preview (pasted or uploaded images only). */
   previewUrl?: string;
 }

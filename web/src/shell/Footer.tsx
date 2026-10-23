@@ -15,11 +15,14 @@ export function Footer() {
         <a href={strings.shell.issuesUrl}>{strings.shell.reportIssue}</a>.
       </p>
       <div className="dc-footer__row">
-        <p className="dc-footer__coffee">
-          {strings.shell.builtWith}{' '}
-          <IconCoffee size={16} className="dc-footer__cup" />
-          <span className="dc-sr">{strings.shell.builtWithIcon}</span> {strings.shell.builtBy}
-        </p>
+        <div className="dc-footer__about">
+          <p className="dc-footer__legal">{strings.shell.copyright(new Date().getFullYear())}</p>
+          <p className="dc-footer__coffee">
+            {strings.shell.builtWith}{' '}
+            <IconCoffee size={16} className="dc-footer__cup" />
+            <span className="dc-sr">{strings.shell.builtWithIcon}</span> {strings.shell.builtBy}
+          </p>
+        </div>
         <nav className="dc-footer__nav" aria-label={strings.shell.footerNav}>
           <a href={hrefFor('/about')}>{strings.shell.about}</a>
           <a href={hrefFor('/privacy')}>{strings.shell.privacy}</a>

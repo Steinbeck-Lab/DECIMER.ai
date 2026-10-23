@@ -37,6 +37,11 @@ class ServiceUnavailable(ServiceError):
     """The service is busy (503) or unreachable, and the retries are used up."""
 
 
+class ServiceUnreachable(ServiceUnavailable):
+    """No connection could be made within the budget: the service is down or starting. (A busy
+    service, 503, is the plain `ServiceUnavailable`: it answers, and may answer the next call.)"""
+
+
 class RenderError(Exception):
     """A page could not be rendered (damaged PDF, child crashed, limit hit, took too long)."""
 

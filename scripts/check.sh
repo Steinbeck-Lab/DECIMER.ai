@@ -34,6 +34,32 @@ for project in api services/common services/seg services/ocsr services/cls servi
   fi
 done
 
+# deploy/compose.yaml: networks, secrets, read-only mounts and the error-report path are what the README says
+# (stdlib only; runs "docker compose config" on a copy with dummy secrets, no container is started).
+step "deploy: compose file checks (deploy/check-compose.py)"
+python3 -I deploy/check-compose.py
+
+if [[ $E2E == 1 ]]; then
+  # TODO: the API end to end (upload, arq worker, pipeline, poll, validate, export, delete) against fake model
+  # services, on a real Redis: a throwaway container of the release deploy/compose.yaml runs, on a free port of
+  # 127.0.0.1, removed when this step ends. (The api step above ran the same test on fakeredis.) Skipped by --no-e2e.
+  step "api: end-to-end (fake models, real Redis in a throwaway container)"
+  redis_image=$(grep -m1 -oE 'redis:[0-9][^ ]*@sha256:[0-9a-f]{64}' deploy/compose.yaml || true)
+  [[ -n $redis_image ]] || { echo "no pinned redis image found in deploy/compose.yaml" >&2; exit 1; }
+  redis_name=decimer-e2e-redis-$$
+  trap 'docker rm -f "$redis_name" >/dev/null 2>&1 || true' EXIT
+  docker run -d --rm --name "$redis_name" -p 127.0.0.1::6379 "$redis_image" >/dev/null
+  redis_port=$(docker port "$redis_name" 6379/tcp | head -n1 | sed 's/.*://')
+  for _ in $(seq 1 100); do
+    docker exec "$redis_name" redis-cli ping 2>/dev/null | grep -q PONG && break
+    sleep 0.1
+  done
+  docker exec "$redis_name" redis-cli ping | grep -q PONG || { echo "the throwaway redis did not start" >&2; exit 1; }
+  (cd api && E2E_REDIS_URL="redis://127.0.0.1:$redis_port/0" uv run -q pytest -q tests/e2e)
+  docker rm -f "$redis_name" >/dev/null
+  trap - EXIT
+fi
+
 step "web: lint, types, unit tests, build"
 (cd web && npm ci --silent && npm run -s lint && npm run -s typecheck && npm test --silent \
   && node scripts/gen-api.mjs --check --types-only && npm run -s build >/dev/null)

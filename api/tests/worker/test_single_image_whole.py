@@ -4,7 +4,8 @@ seg's box is grown from its mask and can clip the edge of a drawing (the methoxy
 shentonin A), so for a job made of exactly one uploaded image where seg finds exactly ONE
 structure covering at least `SINGLE_IMAGE_WHOLE_FRACTION` (0.6) of the image, ocsr and cls get the
 whole image and the reported box is the whole image. Several structures, a small structure in a big
-image, PDFs and multi-image jobs keep seg's crops; zero structures keep the older fallback.
+image and PDFs keep seg's crops; zero structures keep the older fallback. A job of several images
+never calls seg at all.
 
 The fake seg answers every page with the boxes a test lists (in pixels of the image it was sent).
 The crop it returns is a white PNG of the box's size, so a crop and the whole image are told apart
@@ -211,7 +212,6 @@ async def test_a_fired_rule_never_cuts_the_crop_it_replaces(
         ([(0, 0, 100, 100)], [(200, 100)], False, [0]),  # one small box
         ([(0, 0, 180, 90), (10, 5, 190, 95)], [(200, 100)], False, [0]),  # two
         ([], [(200, 100)], False, [0]),  # none: write_parts finds nothing, the fallback follows
-        ([(10, 5, 190, 95)], [(200, 100), (200, 100)], False, [0, 1]),  # several images
         ([(30, 30, 570, 570)], [], True, [0]),  # a PDF page
     ],
 )
@@ -276,20 +276,6 @@ async def test_a_pdf_page_with_one_big_box_keeps_the_crop(make_rig: RigFactory) 
     assert sent(rig, "ocsr") == sent(rig, "cls") == [(540, 540)]
     assert png_size(rig.file(done, "page-0.png").read_bytes()) == (600, 600)
     assert not same_file(rig, done, "page-0.png", "crop-0.png")
-
-
-async def test_several_images_keep_their_crops_each_with_one_big_box(make_rig: RigFactory) -> None:
-    rig = make_rig(backend=seg_boxes((10, 5, 190, 95)))  # 81 % of both images
-    done = await rig.run(await rig.image_job([(200, 100), (200, 100)]))
-
-    assert [(r.index, r.page_index, r.bbox) for r in done.results] == [
-        (0, 0, (10, 5, 190, 95)),
-        (1, 1, (10, 5, 190, 95)),
-    ]
-    assert sent(rig, "ocsr") == sent(rig, "cls") == [(180, 90), (180, 90)]
-    for name in ("crop-0.png", "crop-1.png"):
-        assert png_size(rig.file(done, name).read_bytes()) == (180, 90)
-    assert (done.structures_found, done.structures_dropped) == (2, 0)
 
 
 # --- the setting ---------------------------------------------------------------------------------

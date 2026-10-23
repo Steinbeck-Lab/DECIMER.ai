@@ -12,10 +12,13 @@
 # tsc -b type-checks these through tsconfig.node.json
 !web/playwright.config.ts
 !web/e2e
+# the parity check's screenshots are records, not build input
+web/e2e/parity/evidence
 !web/src
 !web/public
 !deploy/nginx/nginx.conf
 !deploy/nginx/edge.conf
+!deploy/nginx/glitchtip-ui.conf
 !deploy/nginx/security-headers.conf
 !deploy/nginx/edge-entrypoint.sh
 !deploy/nginx/edge-logs.sh

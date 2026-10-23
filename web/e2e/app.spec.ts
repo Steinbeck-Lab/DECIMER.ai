@@ -3,6 +3,7 @@ import {
   chooseLargeFile,
   editorPanel,
   fixtureImage,
+  fixturePdf,
   headerDownload,
   horizontalOverflow,
   waitForEditor,
@@ -55,7 +56,7 @@ test('empty → upload → working → results, with no console errors or CSP vi
   await expect(page.getByRole('heading', { level: 1, name: 'Structures' })).toBeVisible();
   const numbers = await page.locator('.dc-tile__number').allTextContents();
   expect(numbers).toEqual(['1', '2', '4', '5', '6', '7', '11', '12']);
-  await expect(page.getByText('8 of 20 structures · 1 of 10 pages')).toBeVisible();
+  await expect(page.getByText('8 of 20 structures · 1 image')).toBeVisible(); // an image has no page limit to count against
   const counts = page.getByRole('list', { name: 'Status of the structures' });
   await expect(counts).toContainText('1 to review');
   await expect(counts).toContainText('1 not sure');
@@ -155,12 +156,26 @@ test('upload works from the keyboard: Tab to the button, Enter opens the file pi
   expect(await chooser).toBeTruthy();
 });
 
+test('the working view says what to expect for this upload: an image is quick, a 10-page PDF is not', async ({ page }) => {
+  await page.goto(SLOW);
+  await upload(page);
+  await expect(page.getByText('A single image usually takes only a few seconds.')).toBeVisible();
+  await expect(page.getByText(/PDF/)).toHaveCount(0);
+
+  await page.goto(SLOW);
+  await page.locator('input[type=file]').setInputFiles(fixturePdf());
+  await expect(page.getByText('10 pages can take a minute or more.')).toBeVisible();
+});
+
 test('limits and edge states: truncation warning, no structures, a failed job', async ({ page }) => {
   await page.goto(FAST);
-  await upload(page, 'truncated.png');
+  await page.locator('input[type=file]').setInputFiles(fixturePdf('truncated.pdf'));
   await waitForResults(page);
   await expect(page.getByRole('note')).toContainText('3 more structures were found. Only the first 20 are shown.');
   await expect(page.getByRole('note')).toContainText('This document has 14 pages. Only the first 10 were processed.');
+  // Each limit once: the API's own structures_truncated and pages_truncated sentences are not shown as well.
+  await expect(page.getByRole('note').locator('p')).toHaveCount(2);
+  await expect(page.getByRole('note')).not.toContainText('23 structures were found');
   await expect(page.locator('.dc-tile')).toHaveCount(20);
 
   await page.goto(FAST);
@@ -298,6 +313,8 @@ test('About, Privacy and Impressum are pages of the same site, and the footer li
   const footer = page.getByRole('contentinfo');
   await expect(footer.getByText('Built with')).toBeVisible();
   await expect(footer.getByText('by Kohulan')).toBeVisible();
+  // Legacy's line, with the current year.
+  await expect(footer.getByText(`© ${new Date().getFullYear()} DECIMER Project. All rights reserved.`)).toBeVisible();
   await expect(footer.getByRole('link', { name: 'Steinbeck group' })).toBeVisible();
   await expect(footer.getByRole('navigation', { name: 'Footer' }).getByRole('link', { name: 'GitHub' })).toHaveAttribute('href', 'https://github.com/Steinbeck-Lab/DECIMER.ai');
 
