@@ -69,19 +69,22 @@ if [[ $RELEASE_GATE == 1 ]]; then
   (cd web && RELEASE=1 npx vitest run src/release.test.ts)
 fi
 
+playwright_image=mcr.microsoft.com/playwright:v1.64.1-noble   # web/package.json's @playwright/test
+
 if [[ $E2E == 1 ]]; then
   step "web: e2e (Playwright image)"
   docker run --rm --network host --user "$(id -u):$(id -g)" -e HOME=/tmp \
-    -v "$ROOT/web":/work -w /work mcr.microsoft.com/playwright:v1.64.1-noble npx playwright test
+    -v "$ROOT/web":/work -w /work "$playwright_image" npx playwright test
 fi
 
 if [[ $LIVE == 1 ]]; then
-  step "web: live e2e against ${LIVE_BASE_URL:-http://127.0.0.1:8090} (running stack, Playwright image)"
+  live_url=${LIVE_BASE_URL:-http://127.0.0.1:8090}
+  step "web: live e2e against $live_url (running stack, Playwright image)"
   # golden/ is mounted for the PDF the spec uploads.
   docker run --rm --network host --user "$(id -u):$(id -g)" -e HOME=/tmp \
-    -e LIVE_BASE_URL="${LIVE_BASE_URL:-http://127.0.0.1:8090}" -e LIVE_PDF=/golden/zou2024_penicillium_shentong.pdf \
+    -e LIVE_BASE_URL="$live_url" -e LIVE_PDF=/golden/zou2024_penicillium_shentong.pdf \
     -v "$ROOT/web":/work -v "$ROOT/golden":/golden:ro -w /work \
-    mcr.microsoft.com/playwright:v1.64.1-noble npx playwright test --config e2e/live/live.config.ts
+    "$playwright_image" npx playwright test --config e2e/live/live.config.ts
 fi
 
 step "trivy (api and web fail on HIGH/CRITICAL; services report only)"

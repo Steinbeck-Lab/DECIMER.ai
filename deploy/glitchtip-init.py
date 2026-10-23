@@ -42,6 +42,9 @@ organization.scrub_ip_addresses = True
 organization.save(update_fields=["scrub_ip_addresses"])
 if user is not None and not organization.users.filter(pk=user.pk).exists():
     organization.add_user(user)
+team, _ = Team.objects.get_or_create(slug="team", organization=organization)
+if user is not None:
+    team.members.add(organization.organization_users.get(user=user))
 
 for slug, platform in (("decimer-api", "python"), ("decimer-web", "javascript")):
     project, _ = Project.objects.get_or_create(
@@ -50,9 +53,6 @@ for slug, platform in (("decimer-api", "python"), ("decimer-web", "javascript"))
     if not project.scrub_ip_addresses:
         project.scrub_ip_addresses = True
         project.save(update_fields=["scrub_ip_addresses"])
-    team, _ = Team.objects.get_or_create(slug="team", organization=organization, defaults={})
-    if user is not None:
-        team.members.add(organization.organization_users.get(user=user))
     team.projects.add(project)
     key = ProjectKey.objects.filter(project=project).first() or ProjectKey.objects.create(project=project)
     host = "glitchtip-gate:8000" if slug == "decimer-api" else "<the site's host>/glitchtip"

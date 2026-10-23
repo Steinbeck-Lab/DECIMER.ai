@@ -22,7 +22,7 @@
 # (the default), 6/4/3 after cutover (legacy's layout plus one ocsr; D18 amended 2026-10-23). `deploy.replicas` is how: Compose creates N
 # containers (decimer-next-seg-1 ... -N) and the SERVICE NAME resolves, on the `models` network, to the
 # addresses of all of them (Docker's embedded DNS answers with every replica's A record, in rotating
-# order). That is the whole discovery contract for the worker (TODO, done), and nothing else is promised:
+# order). That is the whole discovery contract for the worker, and nothing else is promised:
 #     SEG_URL=http://seg:8001   OCSR_URL=http://ocsr:8002   CLS_URL=http://cls:8003   CHEM_URL=http://chem:8004
 # one hostname per service, one fixed port per service, all replicas answer on that port; the worker
 # resolves all A records of the name (api/src/decimer_api/worker/replicas.py), looks again every 10 s and
@@ -96,6 +96,19 @@ x-model-service: &model-service
     - models
   oom_score_adj: 500
 
+# redis and usage: the same image and password, the `redis` user, a read-only root file system, `backend` only
+# (see `redis` below).
+x-redis: &redis
+  <<: *service
+  image: redis:8.10.2-alpine3.23@sha256:0bf6577d7774e592b29d093e3ac9390eb91e13d72c21e506afce736de5e0eeb0
+  user: redis
+  environment:
+    REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env (openssl rand -hex 24)}
+    REDISCLI_AUTH: ${REDIS_PASSWORD}
+  read_only: true
+  networks:
+    - backend
+
 # api, worker, sweep: one image (api.Dockerfile), three commands. Only the api has a build section.
 # pull_policy: never on every image this project builds, and a localhost/ name: nothing here is ever
 # pulled, and there is no Docker Hub namespace (decimer-next/...) that somebody else could own and that
@@ -124,8 +137,8 @@ x-no-glitchtip-secrets: &no-glitchtip-secrets
 
 # What the two workers (worker, worker-fast) have in common. SEG/OCSR/CLS_CONCURRENCY are PER REPLICA:
 # the worker finds the replicas of a service by itself (see the header) and multiplies, so 1 keeps every
-# replica busy with one inference at a time and does not fill its queue, whether the layout is 2/2/2
-# or 6/3/3. They do NOT follow the replica counts any more; leave them at 1 unless a replica is shown to
+# replica busy with one inference at a time and does not fill its queue, whether the layout is 2/3/2
+# or 6/4/3. They do NOT follow the replica counts any more; leave them at 1 unless a replica is shown to
 # have idle time with one call (the services queue a few more, ocsr 16, seg 8). A lone 10-page job then
 # takes about 70 s beside legacy and 46 s after cutover (deploy/README.md), legacy 95.3 s.
 x-worker-env: &worker-env
@@ -161,6 +174,42 @@ x-worker-env: &worker-env
   WORKER_QUEUE_NAME: ${WORKER_QUEUE_NAME:-arq:queue}
   WORKER_FAST_QUEUE_NAME: ${WORKER_FAST_QUEUE_NAME:-decimer:fast}
 
+# The rest of what worker and worker-fast share (each has its own `environment`, from x-worker-env, and limits).
+# depends_on: wait for every replica of seg, cls and ocsr to answer a real inference, so the first jobs after a
+# start do not fail. NOT for chem's health: chem is optional for the worker (a job without it has no IUPAC name,
+# one warning, and a few seconds of waiting: WorkerSettings.chem_connect_retry_budget_seconds), and it takes the
+# JVM a minute to load, so `service_started` only puts it ahead in the start order. A chem that is down never
+# keeps the worker from starting or from running jobs (tests/worker/test_chem_down.py; deploy/check-compose.py
+# keeps this line honest).
+x-worker: &worker
+  <<: [*service, *api-image]
+  command: ["python", "-m", "decimer_api.worker"]
+  env_file: .env
+  volumes:
+    - jobs:/data/jobs
+  networks:
+    - backend
+    - models
+    - glitchtip-sdk
+  depends_on:
+    redis:
+      condition: service_healthy
+    seg:
+      condition: service_healthy
+    cls:
+      condition: service_healthy
+    ocsr:
+      condition: service_healthy
+    chem:
+      condition: service_started
+  healthcheck:
+    test: ["CMD", "python", "/usr/local/bin/worker_healthcheck.py"]
+    interval: 30s
+    timeout: 10s
+    start_period: 60s
+    retries: 3
+  stop_grace_period: 120s
+
 services:
   # --- state ------------------------------------------------------------------------------------
   # Job records, per-client counters and the arq queue. Nothing is persisted, on purpose: every key has
@@ -181,9 +230,7 @@ services:
   # The image's entrypoint (which starts as root) is replaced, so the container runs as the `redis`
   # user from the start and needs no capabilities.
   redis:
-    <<: *service
-    image: redis:8.10.2-alpine3.23@sha256:0bf6577d7774e592b29d093e3ac9390eb91e13d72c21e506afce736de5e0eeb0
-    user: redis
+    <<: *redis
     entrypoint:
       - sh
       - -c
@@ -196,14 +243,8 @@ services:
         maxmemory-policy noeviction
         tcp-keepalive 60
         EOF
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env (openssl rand -hex 24)}
-      REDISCLI_AUTH: ${REDIS_PASSWORD}
-    read_only: true
     tmpfs:
       - /data
-    networks:
-      - backend
     healthcheck:
       test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
       interval: 10s
@@ -221,9 +262,7 @@ services:
   # warning and lose that count, never the upload or the job. Same password as `redis` (one secret less); no
   # route from outside `backend`. Read it: `$DC exec api python -m decimer_api.usage --days 30`.
   usage:
-    <<: *service
-    image: redis:8.10.2-alpine3.23@sha256:0bf6577d7774e592b29d093e3ac9390eb91e13d72c21e506afce736de5e0eeb0
-    user: redis
+    <<: *redis
     entrypoint:
       - sh
       - -c
@@ -238,14 +277,8 @@ services:
         maxmemory-policy noeviction
         tcp-keepalive 60
         EOF
-    environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env (openssl rand -hex 24)}
-      REDISCLI_AUTH: ${REDIS_PASSWORD}
-    read_only: true
     volumes:
       - usage-data:/data
-    networks:
-      - backend
     healthcheck:
       test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
       interval: 15s
@@ -284,7 +317,7 @@ services:
       NUMBA_NUM_THREADS: ${SEG_TF_INTRAOP_THREADS:-2}
       # Pages above this many pixels get a 422 from seg. Do not raise it: the API admits up to 50 MP, and the
       # worker sends seg a smaller copy of every page above SEG_INPUT_MAX_PIXELS (25 MP) or 36 MiB encoded
-      # (worker/files.py `fit_png`, done in P3-04; the crops are cut from the full page), so no page reaches
+      # (worker/files.py `fit_png`; the crops are cut from the full page), so no page reaches
       # this cap. It stays as seg's own backstop, and its memory limit is sized for it.
       OPENCV_IO_MAX_IMAGE_PIXELS: ${SEG_MAX_IMAGE_PIXELS:-40000000}
     # PER REPLICA. About 2 GB resident, 3.5 s a page at all cores (services/seg/README.md). Mask memory grows
@@ -506,9 +539,7 @@ services:
     pids_limit: 256
 
   worker:
-    <<: [*service, *api-image]
-    command: ["python", "-m", "decimer_api.worker"]
-    env_file: .env
+    <<: *worker
     environment:
       <<: *worker-env
       # Jobs this process runs at once, so that several jobs' crops interleave on the replicas (D18; a small
@@ -516,36 +547,6 @@ services:
       # the ocsr slots: 4 beside legacy (2 replicas), 8 after cutover (3 replicas). With the fast lane off
       # this is also how many big PDFs can be running before a small job has to wait for a place.
       WORKER_MAX_JOBS: ${WORKER_MAX_JOBS:-4}
-    volumes:
-      - jobs:/data/jobs
-    networks:
-      - backend
-      - models
-      - glitchtip-sdk
-    # Wait for every replica of seg, cls and ocsr to answer a real inference, so the first jobs after a start
-    # do not fail. NOT for chem's health: chem is optional for the worker (a job without it has no IUPAC name,
-    # one warning, and a few seconds of waiting: WorkerSettings.chem_connect_retry_budget_seconds), and it takes
-    # the JVM a minute to load, so `service_started` only puts it ahead in the start order. A chem that is down
-    # never keeps the worker from starting or from running jobs (tests/worker/test_chem_down.py;
-    # deploy/check-compose.py keeps this line honest).
-    depends_on:
-      redis:
-        condition: service_healthy
-      seg:
-        condition: service_healthy
-      cls:
-        condition: service_healthy
-      ocsr:
-        condition: service_healthy
-      chem:
-        condition: service_started
-    healthcheck:
-      test: ["CMD", "python", "/usr/local/bin/worker_healthcheck.py"]
-      interval: 30s
-      timeout: 10s
-      start_period: 60s
-      retries: 3
-    stop_grace_period: 120s
     # Up to WORKER_MAX_JOBS jobs; a PDF page is rendered in a child process of about 0.5 GB (a 50 MP page)
     # and up to RENDER_MEMORY_MB (2 GB) of address space, RENDER_CONCURRENCY of them at once. 2 GB beside
     # legacy, 3 GB after cutover (more jobs, two renders at once). TODO: measure on the golden paper.
@@ -566,39 +567,13 @@ services:
   # (about 18 minutes with the defaults). It shares the model services with the default worker (a replica
   # serves one call at a time for both); its own limits are small because it only takes small jobs.
   worker-fast:
-    <<: [*service, *api-image]
-    command: ["python", "-m", "decimer_api.worker"]
-    env_file: .env
+    <<: *worker
     environment:
       <<: *worker-env
       # The queue this worker serves (the worker reads it), and the variable worker_healthcheck.py builds
       # its health-check key from: <queue name>:health-check, the key arq's worker keeps for its queue.
       WORKER_QUEUE_NAME: ${WORKER_FAST_QUEUE_NAME:-decimer:fast}
       WORKER_MAX_JOBS: ${WORKER_FAST_MAX_JOBS:-2}
-    volumes:
-      - jobs:/data/jobs
-    networks:
-      - backend
-      - models
-      - glitchtip-sdk
-    depends_on:
-      redis:
-        condition: service_healthy
-      seg:
-        condition: service_healthy
-      cls:
-        condition: service_healthy
-      ocsr:
-        condition: service_healthy
-      chem:
-        condition: service_started
-    healthcheck:
-      test: ["CMD", "python", "/usr/local/bin/worker_healthcheck.py"]
-      interval: 30s
-      timeout: 10s
-      start_period: 60s
-      retries: 3
-    stop_grace_period: 120s
     mem_limit: ${WORKER_FAST_MEM_LIMIT:-1g}
     memswap_limit: ${WORKER_FAST_MEM_LIMIT:-1g}
     cpus: ${WORKER_FAST_CPUS:-1}
@@ -812,7 +787,7 @@ services:
       context: ..
       dockerfile: deploy/web.Dockerfile
       args:
-        # `http` is the real client, still TODO; `mock` gives a UI demo on canned data.
+        # `http` is the real client; `mock` gives a UI demo on canned data.
         VITE_API: ${VITE_API:-http}
         # The browser's error reporting: the DSN of GlitchTip's `decimer-web` project, with THIS site's host
         # and /glitchtip/ in it (https://<public key>@decimer.ai/glitchtip/<project id>; the local stack:

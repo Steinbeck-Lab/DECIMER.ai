@@ -7,9 +7,8 @@
 #   docker build -f deploy/web.Dockerfile -t localhost/decimer-next/edge:local .
 #   docker build -f deploy/web.Dockerfile --build-arg VITE_API=mock -t localhost/decimer-next/edge-demo:local .
 #
-# VITE_API picks the backend client at build time (web/src/api/index.ts). `http` is the real one, but
-# its client is still TODO: until that lands, an `http` build throws at start-up and shows an
-# error page; `mock` gives a working UI on canned data (a demo, never for decimer.ai).
+# VITE_API picks the backend client at build time (web/src/api/index.ts). `http` is the real one;
+# `mock` gives a working UI on canned data (a demo, never for decimer.ai).
 #
 # The app is built with a relative base, so the same files serve / and /beta/.
 

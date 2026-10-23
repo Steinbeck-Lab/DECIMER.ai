@@ -30,6 +30,14 @@ WORKDIR /w
 COPY deploy/weights/verify.sh deploy/weights/SHA256SUMS ./
 COPY deploy/weights/ocsr/ ./ocsr/
 RUN sh verify.sh --strict ocsr /w/ocsr /w/SHA256SUMS
+# Made ready for the runtime stage only AFTER the check (so the check sees exactly the listed files), as in
+# seg.Dockerfile. pystow writes README.md into its home directory at import when the file is missing (a
+# PermissionError on a read-only /models), so the file is there already. Modes are set outright (the build
+# context's permissions are whatever the host's umask gave, and 002 would leave group-writable files): owner rw,
+# everyone else read-only. Done here and not after the COPY into the runtime stage, where a chmod -R would store
+# the 650 MB of weights a second time in a new layer.
+RUN printf '%s\n' 'Model weights baked into the image at build time (deploy/weights/SHA256SUMS).' > /w/ocsr/README.md \
+    && chmod -R u=rwX,go=rX /w/ocsr
 
 # ---- builder ----------------------------------------------------------------------------------
 FROM ${PYTHON_IMAGE} AS builder
@@ -73,14 +81,10 @@ RUN if [ "$OPENCV_GUI_LIBS" = "1" ]; then \
     && useradd --system --uid 10001 --gid app --no-create-home --home-dir /nonexistent \
                --shell /usr/sbin/nologin app
 
-# Root-owned and read-only for the service. pystow writes README.md into its home directory at import
-# when the file is missing (a PermissionError on a read-only /models), so the file is there already.
-# Modes are set outright (the build context's permissions are whatever the host's umask gave, and 002
-# would leave group-writable files): owner rw, everyone else read-only. A check as the service user
-# below proves that everything is readable and that nothing under /models is writable.
+# The weights (and pystow's README.md), checked in the weights stage: root-owned and read-only for the
+# service. A check as the service user below proves that everything is readable and that nothing under
+# /models is writable.
 COPY --from=weights /w/ocsr/ /models/
-RUN printf '%s\n' 'Model weights baked into the image at build time (deploy/weights/SHA256SUMS).' > /models/README.md \
-    && chmod -R u=rwX,go=rX /models
 
 COPY --from=builder /opt/venv /opt/venv
 COPY deploy/healthcheck.py /usr/local/bin/healthcheck.py
@@ -88,7 +92,7 @@ COPY deploy/healthcheck.py /usr/local/bin/healthcheck.py
 # PYSTOW_HOME: decimer reads $PYSTOW_HOME/DECIMER-V2/{DECIMER_model,DECIMER_HandDrawn_model}.
 # OPENCV_IO_MAX_IMAGE_PIXELS: the service decodes with Pillow (at most 17.5 MP) and hands arrays to
 # DECIMER, so this is a second guard only; same value as seg.
-# TF_NUM_*: 4 + 1 (compose limits the container to 4 CPUs); tune with measurements.
+# TF_NUM_*: 4 + 1 for a standalone run; compose sets the counts per replica (OCSR_TF_*_THREADS).
 # OCSR_ALLOW_WEIGHT_DOWNLOAD must stay unset: the service has no network and must fail loudly.
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
