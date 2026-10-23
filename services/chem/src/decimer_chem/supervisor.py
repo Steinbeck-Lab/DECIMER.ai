@@ -65,13 +65,6 @@ log = logging.getLogger("decimer_chem")
 
 DEFAULT_FACTORY = "decimer_chem.engine:OrthonymEngine"
 
-_TIMEOUT = NameResult(None, None, None, TIMEOUT_REASON)
-_ENGINE_ERROR = NameResult(None, None, None, ENGINE_ERROR_REASON)
-_UNAVAILABLE = NameResult(None, None, None, ENGINE_UNAVAILABLE_REASON)
-_CDK_TIMEOUT = CdkResult(None, TIMEOUT_REASON)
-_CDK_ENGINE_ERROR = CdkResult(None, ENGINE_ERROR_REASON)
-_CDK_UNAVAILABLE = CdkResult(None, ENGINE_UNAVAILABLE_REASON)
-
 #: Relative paths in these are made absolute before the child changes into its scratch directory.
 _PATH_ENV = ("ORTHONYM_JAR_DIR", "ORTHONYM_CACHE_DIR", "XDG_CACHE_HOME", "JAVA_HOME")
 
@@ -297,22 +290,22 @@ def parse_cdk_result(payload: object) -> CdkResult | None:
 
 
 _NAME = _Operation(
-    "name",
-    "result",
-    parse_result,
-    lambda s: s.name_timeout_s,
-    _TIMEOUT,
-    _ENGINE_ERROR,
-    _UNAVAILABLE,
+    request="name",
+    reply="result",
+    parse=parse_result,
+    limit=lambda s: s.name_timeout_s,
+    timeout=NameResult(None, None, None, TIMEOUT_REASON),
+    engine_error=NameResult(None, None, None, ENGINE_ERROR_REASON),
+    unavailable=NameResult(None, None, None, ENGINE_UNAVAILABLE_REASON),
 )
 _CDK = _Operation(
-    "cdk",
-    "cdk_result",
-    parse_cdk_result,
-    lambda s: s.cdk_timeout_s,
-    _CDK_TIMEOUT,
-    _CDK_ENGINE_ERROR,
-    _CDK_UNAVAILABLE,
+    request="cdk",
+    reply="cdk_result",
+    parse=parse_cdk_result,
+    limit=lambda s: s.cdk_timeout_s,
+    timeout=CdkResult(None, TIMEOUT_REASON),
+    engine_error=CdkResult(None, ENGINE_ERROR_REASON),
+    unavailable=CdkResult(None, ENGINE_UNAVAILABLE_REASON),
     give_up_after_timeout=True,
 )
 _OPERATIONS: dict[str, _Operation[Any]] = {op.request: op for op in (_NAME, _CDK)}

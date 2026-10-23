@@ -190,8 +190,8 @@ class CdkLayout:
     def molfile(self, smiles: str, timeout_s: float) -> CdkResult:
         """The molblock for `smiles`, or a decline, within `timeout_s`.
 
-        Declines: `invalid_smiles` (CDK cannot read it, or it has no atoms), `too_large` (over what
-        the cap above, or over the size cap), `layout_failed` (the layout or the writer
+        Declines: `invalid_smiles` (CDK cannot read it, or it has no atoms), `too_large` (over the
+        atom and bond cap above, or over the size cap), `layout_failed` (the layout or the writer
         raised), `timeout`. Anything that is not a Java `Exception` (an `Error` such as running out
         of memory) and any bug here is raised, for the caller to make an engine error of it."""
         if not self._classes:
