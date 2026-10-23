@@ -549,7 +549,9 @@ test('a figure with two structures pasted (job D): the defect "comes back as one
   expect(problems).toEqual([]);
 });
 
-test('two blank images (job E): 7 "No structures were detected" for a multi-image upload', async () => {
+// D23 (2026-10-23): like legacy, a multi-image upload is not segmented; each image is read whole in its own
+// slot, so two blank images give two results (legacy shows whatever DECIMER read), not "No structures".
+test('two blank images (job E): 7 a multi-image upload reads each image whole', async () => {
   test.setTimeout(900_000);
   await page.goto('./');
   const a = await blankImage(page, 'blank-a.png');
@@ -557,9 +559,11 @@ test('two blank images (job E): 7 "No structures were detected" for a multi-imag
   const created = page.waitForResponse((r) => isApi(r, 'POST', '/api/jobs'), { timeout: 60_000 });
   await page.locator('input[type=file]').setInputFiles([a, b].map((f: FileSpec) => ({ name: f.name, mimeType: f.mimeType, buffer: Buffer.from(f.bytes) })));
   expect((await created).status()).toBe(202);
-  const job = await finished('none');
-  await shot(page, 'new', 'n26-no-structures');
-  facts.set('7.No structures were detected (two blank images)', { heading: await page.getByRole('heading', { level: 1 }).innerText(), body: (await page.locator('.dc-working__detail').innerText()).trim(), results: job.results.length, status: job.status, jobName: 'two blank images' });
+  const job = await finished('results');
+  await shot(page, 'new', 'n26-two-blank-images');
+  expect(job.status).toBe('done');
+  expect(job.results.length).toBe(2); // one slot per image, in upload order
+  facts.set('7.two blank images (D23: each read whole)', { results: job.results.length, status: job.status, smiles: job.results.map((r) => r.smiles), warnings: job.warnings.map((w) => w.code), jobName: 'two blank images' });
   const id = jobId;
   await startOver(id);
   expect(problems).toEqual([]);
