@@ -2,6 +2,7 @@
 
 uv run decimer-golden legacy --base-url http://127.0.0.1:8080   run the paper through legacy
 uv run decimer-golden next --base-url http://127.0.0.1:8090     run the paper through the new stack
+uv run decimer-golden single-image --crops runs/<run>/crops     each crop as a pasted image
 uv run decimer-golden score runs/<run>/predictions.csv          score a run against labels.csv
 uv run decimer-golden draft-labels runs/<run>/predictions.csv   first-pass labels to correct
 """
@@ -16,7 +17,7 @@ import time
 from collections.abc import Sequence
 from pathlib import Path
 
-from . import legacy, next_stack
+from . import legacy, next_stack, single_image
 from .docker_memory import PROJECT_PATTERN, MemorySampler
 from .score import Prediction, read_labels, read_predictions, score, to_inchikey, write_predictions
 
@@ -26,9 +27,10 @@ LABELS = HERE / "labels.csv"
 RUNS = HERE / "runs"
 
 
-def _make_run_dir(stack: str, stamp: str) -> Path:
-    """Create `runs/<stack>-<stamp>/crops`, or with -2, -3, ... appended when a run of the same
-    second already has the name. `mkdir` is the claim on a name, so two runs cannot share one."""
+def _make_run_dir(stack: str, stamp: str, *, crops: bool = True) -> Path:
+    """Create `runs/<stack>-<stamp>/crops` (without `crops`: the directory alone), or with -2, -3,
+    ... appended when a run of the same second already has the name. `mkdir` is the claim on a
+    name, so two runs cannot share one."""
     RUNS.mkdir(parents=True, exist_ok=True)
     attempt = 1
     while True:
@@ -38,7 +40,8 @@ def _make_run_dir(stack: str, stamp: str) -> Path:
         except FileExistsError:
             attempt += 1
             continue
-        (run_dir / "crops").mkdir()
+        if crops:
+            (run_dir / "crops").mkdir()
         return run_dir
 
 
@@ -115,6 +118,63 @@ def _next(args: argparse.Namespace) -> int:
     return 0
 
 
+def _single_image(args: argparse.Namespace) -> int:
+    if not args.crops and not args.negatives:
+        print("error: give --crops and/or --negatives", file=sys.stderr)
+        return 2
+    for folder in (args.crops, args.negatives):
+        if folder and not Path(folder).is_dir():
+            print(f"error: {folder} is not a directory", file=sys.stderr)
+            return 2
+    items: list[single_image.Item] = []
+    if args.crops:
+        items += single_image.crop_items(Path(args.crops), LABELS)
+    if args.negatives:
+        items += single_image.negative_items(Path(args.negatives), LABELS)
+    try:
+        origin = next_stack.check_origin(args.base_url)
+    except ValueError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
+    run_dir = _make_run_dir("single", time.strftime("%Y%m%d-%H%M%S", time.gmtime()), crops=False)
+    with next_stack.new_client(origin) as client:
+        rows = single_image.measure(
+            client,
+            items,
+            whole_fraction=args.whole_fraction,
+            also_without_rule=args.also_without_rule,
+            poll=args.poll,
+            timeout=args.timeout,
+            on_row=lambda row: print(f"{row.crop}: {row.on.status}", file=sys.stderr),
+        )
+    out = run_dir / "single-image.csv"
+    single_image.write_rows(out, rows)
+    written = single_image.read_rows(out)
+    print(single_image.table(written))
+    unchecked = single_image.unchecked(rows)
+    if unchecked:
+        print(
+            f"WARNING: {len(unchecked)} labels not yet checked by hand (marked * above): "
+            + ", ".join(unchecked)
+            + "; an absolute count is against drafts, only a before/after difference is solid"
+        )
+    if args.before:
+        print()
+        print(single_image.compare(single_image.read_rows(Path(args.before)), written))
+    meta = {
+        "base_url": args.base_url,
+        "crops": args.crops,
+        "negatives": args.negatives,
+        "whole_fraction": args.whole_fraction,
+        "also_without_rule": args.also_without_rule,
+        "before": args.before,
+        "jobs": len(rows) * (2 if args.also_without_rule else 1),
+    }
+    (run_dir / "run.json").write_text(json.dumps(meta, indent=2) + "\n")
+    print(f"{_shown(out)}")
+    return 0
+
+
 def _score(args: argparse.Namespace) -> int:
     labels = read_labels(LABELS)
     unchecked = [label.number for label in labels if not label.checked]
@@ -184,6 +244,31 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Compose project whose containers' peak memory is sampled every 2 s",
     )
     p.set_defaults(func=_next)
+    p = sub.add_parser(
+        "single-image",
+        help="send every crop of a run as a pasted image, one job at a time (jobs are deleted)",
+    )
+    p.add_argument("--base-url", default="http://127.0.0.1:8090")
+    p.add_argument("--crops", help="a run's crops/ directory (NN_crop-K.png)")
+    p.add_argument(
+        "--negatives", help="a folder with negatives.csv and its images (single-negatives/)"
+    )
+    p.add_argument(
+        "--also-without-rule",
+        action="store_true",
+        help="also send every image with a blank companion (a 2-image job: the rule never "
+        "applies), for seg's own box and what the crop path reads",
+    )
+    p.add_argument(
+        "--whole-fraction",
+        type=_positive,
+        default=0.6,
+        help="the worker's SINGLE_IMAGE_WHOLE_FRACTION, for the predicted-rule column",
+    )
+    p.add_argument("--before", help="a single-image.csv of an earlier run, to compare with")
+    p.add_argument("--poll", type=_non_negative, default=1.0, help="seconds between polls")
+    p.add_argument("--timeout", type=_positive, default=300.0, help="seconds per job")
+    p.set_defaults(func=_single_image)
     for name, func in (("score", _score), ("draft-labels", _draft_labels)):
         p = sub.add_parser(name)
         p.add_argument("predictions")

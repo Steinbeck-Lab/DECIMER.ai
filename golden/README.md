@@ -41,6 +41,22 @@ Uploads the PDF to `POST /api/jobs`, polls `GET /api/jobs/{id}` every `--poll` s
 - `--docker-project NAME` samples `docker stats --no-stream` for that Compose project's containers every 2 s while the job runs (not during the crop downloads) and records in `run.json` under `memory` each container's baseline (before the upload) and peak in MiB, the highest total at any one moment, and that peak minus the baseline, also per processed page. This is the "memory per page" of TODO. A sampling problem is recorded under `memory.errors` and never fails the run.
 - A failed job, a refused upload, a timeout, an unreachable API or a crop that cannot be fetched writes `run.json` (with `failure.kind`, `message` and the job id) and exits 1; bad arguments exit 2. `predictions.csv` is written whenever the job finished `done`, so a crop problem still leaves a scorable run. There is no way to cancel a job yet, so a run that times out or is interrupted leaves its job to expire.
 
+### `single-image`
+
+```bash
+uv run decimer-golden single-image [--base-url http://127.0.0.1:8090] [--crops runs/<run>/crops] \
+    [--negatives single-negatives] [--also-without-rule] [--before runs/single-<run>/single-image.csv] \
+    [--whole-fraction 0.6] [--poll 1.0] [--timeout 300]
+```
+
+Measures D20 (a job of one pasted image where seg finds exactly one structure covering at least `SINGLE_IMAGE_WHOLE_FRACTION` of it is read whole) from outside, through the API: every image is its own job, one at a time, and every job is deleted (`DELETE /api/jobs/{id}`) when it is done, also when it failed or its answer could not be read. Writes `runs/single-<timestamp>/single-image.csv` and `run.json`, and prints a table.
+
+- `--crops`: the crops of a `next` run (`NN_crop-K.png`). Each is already one seg crop, so the rule should fire on all of them; its label is the one whose `legacy_segment` is `NN`, crops without one (the 3D conformer image) are measured but not scored.
+- `--negatives`: `single-negatives/`, regions of the paper's pages where the rule should not fire (or may fire on a box that is mostly structure): a structure with its number, with a reaction arrow, with a dashed box, with the text next to it, with rows of Table 1 (a composite), and two structures side by side. `negatives.csv` says what each contains and which labels (numbers of `labels.csv`, `;`-separated) it holds; `single-negatives/render.py` regenerates them from the PDF (`cd api && uv run python ../golden/single-negatives/render.py`, pypdfium2 at 300 DPI).
+- `--also-without-rule`: repeats every image as a job of two images (the image and a blank one). The rule never applies to a job like that, so it shows seg's own box and what the crop path reads, to set beside the single-image job; this is how a negative is judged. The columns `off_*` hold it.
+- Scoring is by full InChIKey: an image is right when every label it contains is among its results. `fired` is the rule having made the job read the image whole (exact with `--also-without-rule`; without it a seg that found nothing, the older fallback, looks the same). `--before` compares with an earlier CSV per crop (predicted against fired, right before and after).
+- **The labels are mostly drafts.** The table marks a label that no human has checked with `*` and the command ends with the same kind of WARNING as `score`; the CSV has a `checked` column. An absolute count ("13/19 right") is against those drafts, only the before/after difference is solid evidence.
+
 ## Baseline
 
 | Run | Correct | Extra | Invalid | Cut by cap | Time |

@@ -115,6 +115,8 @@ x-worker-env: &worker-env
   CHEM_URL: ${CHEM_URL-http://chem:8004}
   # D4 (kept): the SMILES RDKit refuses go to chem's POST /cdk, one batch per job (needs CHEM_URL). `false` = no call.
   CDK_FALLBACK: ${CDK_FALLBACK:-true}
+  # One pasted image, one structure covering at least this fraction of it: the whole image goes to ocsr and cls.
+  SINGLE_IMAGE_WHOLE_FRACTION: ${SINGLE_IMAGE_WHOLE_FRACTION:-0.6}
   SEG_CONCURRENCY: ${SEG_CONCURRENCY:-1}
   OCSR_CONCURRENCY: ${OCSR_CONCURRENCY:-1}
   CLS_CONCURRENCY: ${CLS_CONCURRENCY:-1}
