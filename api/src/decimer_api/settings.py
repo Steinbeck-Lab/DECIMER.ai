@@ -148,6 +148,10 @@ class Settings(BaseSettings):
     # them). Beyond it a report is refused with 503, and a warning is logged at 80 %.
     reports_max_bytes: int = Field(default=2 * 1024**3, gt=0)
     max_report_image_bytes: int = Field(default=4 * MIB, gt=0)
+    # A report is deleted when it is older than this many days, whether or not anyone has looked
+    # at it, by a run at start-up and then every hour. The privacy page says 12 months at the
+    # latest, the shortest of which is 365 days: so 364, leaving the hour between runs to spare.
+    reports_max_age_days: int = Field(default=364, gt=0)
 
     # --- serving (python -m decimer_api) ---
     host: str = "127.0.0.1"

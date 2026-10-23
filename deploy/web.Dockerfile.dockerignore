@@ -18,4 +18,5 @@
 !deploy/nginx/edge.conf
 !deploy/nginx/security-headers.conf
 !deploy/nginx/edge-entrypoint.sh
+!deploy/nginx/edge-logs.sh
 **/node_modules
