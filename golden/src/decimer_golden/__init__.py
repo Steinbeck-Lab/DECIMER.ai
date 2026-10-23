@@ -177,11 +177,12 @@ def _single_image(args: argparse.Namespace) -> int:
 
 def _score(args: argparse.Namespace) -> int:
     labels = read_labels(LABELS)
-    unchecked = [label.number for label in labels if not label.checked]
+    # excluded labels (scored=no) do not count, so their check state does not matter here
+    unchecked = [label.number for label in labels if label.scored and not label.checked]
     s = score(labels, read_predictions(Path(args.predictions)))
     print(
         f"correct {s.correct}/{s.labels} · extra {s.extra} · invalid {s.invalid} · "
-        f"dropped by cap {s.dropped}"
+        f"refused {s.refused} · dropped by cap {s.dropped} · excluded {s.excluded}"
     )
     if s.missing:
         print("missing labels:", ", ".join(s.missing))

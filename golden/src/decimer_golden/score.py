@@ -2,6 +2,19 @@
 
 Matching rule (ROADMAP §5): within the paper, compare the multiset of labelled InChIKeys
 with the multiset of predicted InChIKeys. Each prediction can match at most one label.
+
+A label with `scored=no` in labels.csv (the two Figure 3 drawings with correlation arrows over
+the bonds, excluded 2026-10-23) is not counted: a prediction first matches a scored label, and
+only when none is left may it use up an excluded one, which counts as neither correct nor extra.
+
+What a prediction without a usable structure counts as (ROADMAP §5: "Invalid: SMILES that RDKit
+rejects"; decided by Kohulan 2026-10-23, gate P2-08 passes as §5 words it):
+- invalid: a non-empty SMILES that RDKit rejects;
+- refused: an empty SMILES that the stack returned (`valid` is True or False, not None): it
+  tried and its recognition declined to answer, e.g. the new stack's 422 "no complete structure".
+  It is reported apart from invalid, so it never counts against the pass rule's invalid limit;
+- cut: an empty SMILES with `valid` None, the padding rows for structures beyond the 20-structure
+  cap (legacy writes its cut rows the same way).
 """
 
 from __future__ import annotations
@@ -24,6 +37,7 @@ class Label:
     inchikey: str
     smiles: str
     checked: bool
+    scored: bool = True
 
 
 @dataclass(frozen=True)
@@ -48,9 +62,11 @@ class Score:
     labels: int
     correct: int
     extra: int
-    invalid: int
-    dropped: int
+    invalid: int  # a non-empty SMILES that RDKit rejects
+    dropped: int  # cut by the 20-structure cap (padding rows: empty SMILES, valid None)
     missing: list[str] = field(default_factory=list)
+    excluded: int = 0  # predictions that used up an excluded label (neither correct nor extra)
+    refused: int = 0  # empty SMILES the stack returned: its recognition declined, not invalid
 
 
 def to_inchikey(smiles: str) -> str | None:
@@ -65,12 +81,14 @@ def to_inchikey(smiles: str) -> str | None:
 
 
 def score(labels: list[Label], predictions: list[Prediction]) -> Score:
-    remaining = Counter(label.inchikey for label in labels)
-    correct = extra = invalid = dropped = 0
+    counted = [label for label in labels if label.scored]
+    remaining = Counter(label.inchikey for label in counted)
+    spare = Counter(label.inchikey for label in labels if not label.scored)
+    correct = extra = invalid = dropped = excluded = refused = 0
     for p in predictions:
         if not p.smiles.strip():
             if p.valid is not None:
-                invalid += 1  # a result the stack returned (valid either way) with no SMILES
+                refused += 1  # a result the stack returned (valid either way) with no SMILES
             else:
                 dropped += 1  # padding beyond the 20-structure cap (valid=None; legacy: "")
         elif p.inchikey is None:
@@ -78,16 +96,19 @@ def score(labels: list[Label], predictions: list[Prediction]) -> Score:
         elif remaining[p.inchikey] > 0:
             remaining[p.inchikey] -= 1
             correct += 1
+        elif spare[p.inchikey] > 0:
+            spare[p.inchikey] -= 1
+            excluded += 1
         else:
             extra += 1
     # Labels still unmatched; for duplicates, the later-listed copies count as missing.
     unmatched = remaining.copy()
     missing = []
-    for label in reversed(labels):
+    for label in reversed(counted):
         if unmatched[label.inchikey] > 0:
             unmatched[label.inchikey] -= 1
             missing.append(label.number)
-    return Score(len(labels), correct, extra, invalid, dropped, missing[::-1])
+    return Score(len(counted), correct, extra, invalid, dropped, missing[::-1], excluded, refused)
 
 
 def read_labels(path: Path) -> list[Label]:
@@ -99,9 +120,20 @@ def read_labels(path: Path) -> list[Label]:
                 inchikey=row["inchikey"],
                 smiles=row["smiles"],
                 checked=row["checked"].strip().lower() == "yes",
+                scored=_parse_scored(row.get("scored")),
             )
             for row in csv.DictReader(f)
         ]
+
+
+def _parse_scored(value: str | None) -> bool:
+    """`yes` or `no`; a labels file without the column (older copies) scores every label."""
+    if value is None:
+        return True
+    text = value.strip().lower()
+    if text not in ("yes", "no"):
+        raise ValueError(f"labels.csv: scored must be yes or no, not {value!r}")
+    return text == "yes"
 
 
 PREDICTION_FIELDS = [

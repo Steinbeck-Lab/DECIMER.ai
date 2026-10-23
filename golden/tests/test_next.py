@@ -105,14 +105,14 @@ def test_cli_writes_a_run_that_scores_like_a_legacy_run(
     assert (cut.segment, cut.valid) == ("", None)  # the rows for what the cap cut
 
     # Scored like a legacy run: caffeine and benzene match (the classifier's "not a structure"
-    # does not matter to scoring, as for legacy), the failed recognition is invalid, CCO is an
-    # extra, and the two structures the cap cut count as dropped.
+    # does not matter to scoring, as for legacy), the failed recognition is a refusal (not an
+    # invalid SMILES), CCO is an extra, and the two structures the cap cut count as dropped.
     labels = [
         Label("1", 3, to_inchikey(CAFFEINE) or "", CAFFEINE, True),
         Label("2", 4, to_inchikey(BENZENE) or "", BENZENE, True),
     ]
     s = score(labels, predictions)
-    assert (s.correct, s.extra, s.invalid, s.dropped) == (2, 1, 1, 2)
+    assert (s.correct, s.extra, s.invalid, s.refused, s.dropped) == (2, 1, 0, 1, 2)
 
     # The upload is the multipart form the web app sends.
     (post,) = [r for r in api.requests if r.method == "POST"]
@@ -490,12 +490,12 @@ def test_the_inchikey_is_the_one_the_scorer_computes_and_differences_are_reporte
     assert next_stack.inchikey_differences(job, predictions) == [0, 2]
 
 
-def test_a_failed_recognition_is_invalid_and_a_cut_structure_is_dropped() -> None:
+def test_a_failed_recognition_is_refused_and_a_cut_structure_is_dropped() -> None:
     job = next_stack.parse_job(
         job_json("done", results=[result_json(0, "", is_structure=None)], dropped=3)
     )
     s = score([], next_stack.to_predictions(job))
-    assert (s.invalid, s.dropped, s.extra, s.correct) == (1, 3, 0, 0)
+    assert (s.refused, s.invalid, s.dropped, s.extra, s.correct) == (1, 0, 3, 0, 0)
 
 
 # --- memory -----------------------------------------------------------------------------------

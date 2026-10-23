@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from decimer_golden import main
 from decimer_golden.score import (
     Label,
     Prediction,
@@ -33,11 +34,12 @@ def test_to_inchikey() -> None:
     assert to_inchikey("") is None
 
 
-def test_counts_correct_extra_invalid_and_dropped() -> None:
+def test_counts_correct_extra_invalid_refused_and_dropped() -> None:
     labels = [label("1", CAFFEINE), label("2", BENZENE)]
-    preds = [pred(0, CAFFEINE), pred(1, "CCO"), pred(2, "C1CC"), pred(3, "")]
+    refusal = Prediction(index=4, smiles="", inchikey=None, valid=False)
+    preds = [pred(0, CAFFEINE), pred(1, "CCO"), pred(2, "C1CC"), pred(3, ""), refusal]
     s = score(labels, preds)
-    assert (s.correct, s.extra, s.invalid, s.dropped) == (1, 1, 1, 1)
+    assert (s.correct, s.extra, s.invalid, s.refused, s.dropped) == (1, 1, 1, 1, 1)
     assert s.missing == ["2"]
 
 
@@ -58,20 +60,34 @@ def test_order_of_predictions_does_not_matter() -> None:
     assert a.correct == b.correct == 2
 
 
-def test_an_empty_smiles_is_invalid_when_the_stack_says_it_tried_and_dropped_otherwise() -> None:
+def test_an_empty_smiles_is_refused_when_the_stack_says_it_tried_and_dropped_otherwise() -> None:
     tried = Prediction(index=0, smiles="", inchikey=None, valid=False)
     cut = Prediction(index=1, smiles="", inchikey=None)  # legacy's empty rows have valid=None
     s = score([], [tried, cut])
-    assert (s.invalid, s.dropped) == (1, 1)
+    assert (s.invalid, s.refused, s.dropped) == (0, 1, 1)
 
 
 @pytest.mark.parametrize("valid", [True, False])
-def test_an_empty_smiles_the_stack_returned_is_invalid_whatever_its_verdict(valid: bool) -> None:
-    # Only the padding rows for what the cap cut (valid=None) are "cut"; a result the stack
-    # reported, even a contradictory one (empty SMILES, valid=True), is not a cut structure.
+def test_an_empty_smiles_the_stack_returned_is_refused_whatever_its_verdict(valid: bool) -> None:
+    # Kohulan 2026-10-23 (ROADMAP §5: Invalid is "SMILES that RDKit rejects"): a recognition that
+    # declined to answer (the new stack's 422) is a refusal, reported apart from invalid. Only the
+    # padding rows for what the cap cut (valid=None) are "cut"; a result the stack reported, even
+    # a contradictory one (empty SMILES, valid=True), is neither invalid nor a cut structure.
     returned = Prediction(index=0, smiles="  ", inchikey=None, valid=valid)
     s = score([], [returned])
-    assert (s.invalid, s.dropped) == (1, 0)
+    assert (s.invalid, s.refused, s.dropped) == (0, 1, 0)
+
+
+def test_a_smiles_rdkit_rejects_is_invalid_not_refused_whatever_the_stacks_verdict() -> None:
+    # Invalid stays "a SMILES RDKit rejects": it has text, so it is never a refusal, also when
+    # the stack itself flagged it (valid=False) or vouched for it (valid=True).
+    rows = [
+        Prediction(index=0, smiles="C1CC", inchikey=None, valid=False),
+        Prediction(index=1, smiles="C1CC", inchikey=None, valid=True),
+        Prediction(index=2, smiles="C1CC", inchikey=None),
+    ]
+    s = score([], rows)
+    assert (s.invalid, s.refused, s.dropped) == (3, 0, 0)
 
 
 def test_predictions_round_trip_through_csv(tmp_path: Path) -> None:
@@ -128,6 +144,7 @@ def test_legacy_runs_still_read_and_score() -> None:
     s = score([], predictions)
     assert s.dropped == 12
     assert s.invalid == 1
+    assert s.refused == 0
 
 
 GOLDEN = Path(__file__).resolve().parents[1]
@@ -135,9 +152,128 @@ GOLDEN = Path(__file__).resolve().parents[1]
 
 def test_the_committed_legacy_run_scores_exactly_as_the_baseline_against_the_real_labels() -> None:
     """Pins the oracle: the scoring rules and labels.csv together must keep giving the legacy
-    baseline of the README (13/26 correct, 6 extra, 1 invalid, 12 cut by the cap). Change either
-    only with a written reason."""
+    baseline of the README (13/24 correct, 6 extra, 1 invalid, 0 refused, 12 cut by the cap).
+    Change either only with a written reason.
+
+    Moved 2026-10-23 from 13/26 to 13/24: the two Figure 3 drawings are excluded from scoring
+    (Kohulan's label review: "Difficult", correlation arrows over the bonds; labels.csv
+    `scored=no`). Evidence: the decision is the primary source; an independent scorer that does
+    not import decimer_golden gives 13/24, 6, 1, 12 and 0 predictions on the excluded labels for
+    this run (and 13/24 for every committed next run); reverting the exclusion fails this test.
+    Legacy has no refusals: its only empty SMILES are the 12 cut rows (valid empty).
+    What would make it wrong: a stack that reads a Figure 3 copy correctly while missing the
+    Figure 2 one is scored correct (multisets cannot tell the drawings apart)."""
     labels = read_labels(GOLDEN / "labels.csv")
     predictions = read_predictions(GOLDEN / "runs" / "legacy-20261022-140954" / "predictions.csv")
     s = score(labels, predictions)
-    assert (s.correct, s.labels, s.extra, s.invalid, s.dropped) == (13, 26, 6, 1, 12)
+    assert (s.correct, s.labels, s.extra, s.invalid, s.refused, s.dropped, s.excluded) == (
+        13,
+        24,
+        6,
+        1,
+        0,
+        12,
+        0,
+    )
+
+
+def test_the_committed_new_stack_run_scores_exactly_as_the_baseline_against_the_real_labels(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Pins the new stack's baseline (run `next-20261023-121537`, main after P3-04d): 13/24
+    correct, 5 extra, 1 invalid, 1 refused, 12 cut by the cap, 0 on an excluded label.
+
+    Evidence (2026-10-23): a scorer written apart from this one, which does not import
+    decimer_golden (RDKit InChIKey multisets from labels.csv, the two `scored=no` labels as
+    uncounted spares, empty SMILES split by the `valid` column), gives exactly these numbers for
+    this run, and the same for the four other committed next runs.
+
+    Which rows they are. The one refusal is index 12: the `1 (Fig 3)` drawing (compound 1 with
+    correlation arrows, the crop was looked at), the very drawing that is excluded from scoring.
+    The classifier called it "not a structure", the OCSR declined it (empty SMILES, `valid=False`,
+    the job's `recognition_failed` warning for structure 13). Legacy read the same crop as a valid
+    but wrong SMILES (an extra). The one invalid is index 13, a structure with no label whose
+    SMILES RDKit rejects; legacy's one invalid is index 15, the `3 (Fig 3)` drawing.
+
+    What the rule changes at the gate. Under the old rule (a refusal is invalid) the new stack had
+    2 invalid against legacy's 1, so P2-08 failed only because of a refusal on an excluded
+    drawing. With refusals counted apart (Kohulan 2026-10-23; ROADMAP §5: Invalid is "SMILES that
+    RDKit rejects") it is 1 against 1, and with the excluded drawings left out entirely it would
+    also be 1 against 1. Counting the refusal as invalid again gives 2 and 0 and fails this test.
+
+    The whole `score` output is pinned too: the line, the exact missing list (the scored labels
+    only) and no WARNING, since every scored label is checked.
+    What would make it wrong: a stack that refuses everything shows 0 invalid, so the pass
+    rule's invalid limit cannot see it; the correct count is what catches that."""
+    labels = read_labels(GOLDEN / "labels.csv")
+    run = GOLDEN / "runs" / "next-20261023-121537" / "predictions.csv"
+    s = score(labels, read_predictions(run))
+    assert (s.correct, s.labels, s.extra, s.invalid, s.refused, s.dropped, s.excluded) == (
+        13,
+        24,
+        5,
+        1,
+        1,
+        12,
+        0,
+    )
+    assert main(["score", str(run)]) == 0
+    captured = capsys.readouterr()
+    assert captured.out == (
+        "correct 13/24 · extra 5 · invalid 1 · refused 1 · dropped by cap 12 · excluded 0\n"
+        "missing labels: 2, 3, 3 (Fig 3), S4, S5, S6, S7, S8, S9, S10, S11\n"
+    )
+    assert captured.err == ""
+
+
+def test_the_score_command_warns_about_an_unchecked_scored_label_only(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The two excluded drawings are checked=no in the real file and never warned about; a scored
+    # label that loses its check is, and is named.
+    text = (GOLDEN / "labels.csv").read_text()
+    row = next(line for line in text.splitlines() if line.startswith("S5,"))
+    assert ",yes,yes," in row
+    flipped = tmp_path / "labels.csv"
+    flipped.write_text(text.replace(row, row.replace(",yes,yes,", ",no,yes,", 1)))
+    monkeypatch.setattr("decimer_golden.LABELS", flipped)
+    run = GOLDEN / "runs" / "next-20261023-121537" / "predictions.csv"
+    assert main(["score", str(run)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[-1] == "WARNING: 1 labels not yet checked by hand: S5"
+    assert len([line for line in lines if line.startswith("WARNING")]) == 1
+
+
+def test_an_excluded_label_is_neither_counted_nor_turns_its_reading_into_an_extra() -> None:
+    def label(number: str, key: str, scored: bool = True) -> Label:
+        return Label(number=number, page=1, inchikey=key, smiles="C", checked=True, scored=scored)
+
+    labels = [label("1", "K1"), label("1 (Fig 3)", "K1", scored=False), label("2", "K2")]
+    both = [
+        Prediction(index=0, smiles="C", inchikey="K1"),
+        Prediction(index=1, smiles="C", inchikey="K1"),
+    ]
+    s = score(labels, both)
+    assert (s.labels, s.correct, s.extra, s.excluded, s.missing) == (2, 1, 0, 1, ["2"])
+    # a third reading of the same molecule has no label left: extra
+    s = score(labels, [*both, Prediction(index=2, smiles="C", inchikey="K1")])
+    assert (s.correct, s.extra, s.excluded) == (1, 1, 1)
+    # the scored label is matched first, so one reading is correct, not excluded
+    s = score(labels, both[:1])
+    assert (s.correct, s.excluded) == (1, 0)
+    # an unread molecule is missing under its scored label's number, never the excluded copy's
+    assert score(labels, []).missing == ["1", "2"]
+
+
+def test_the_scored_column_is_read_strictly(tmp_path: Path) -> None:
+    head = "number,page,inchikey,smiles,checked,scored,note,legacy_segment\n"
+    good = tmp_path / "good.csv"
+    good.write_text(head + "1,1,K,C,yes,no,,0\n")
+    assert [lb.scored for lb in read_labels(good)] == [False]
+    old = tmp_path / "old.csv"
+    old.write_text("number,page,inchikey,smiles,checked,note,legacy_segment\n1,1,K,C,yes,,0\n")
+    assert [lb.scored for lb in read_labels(old)] == [True]  # older copies: every label scored
+    bad = tmp_path / "bad.csv"
+    bad.write_text(head + "1,1,K,C,yes,maybe,,0\n")
+    with pytest.raises(ValueError, match="scored"):
+        read_labels(bad)
