@@ -123,21 +123,14 @@ def folder_bytes(reports_dir: Path) -> int:
     return total
 
 
-def _warn_when_nearly_full(count: int, max_reports: int) -> None:
+def _warn_when_nearly_full(used: int, limit: int, unit: str) -> None:
+    """`unit` is what is counted: "reports" or "bytes"."""
     log.warning(
-        "REPORTS_DIR holds %d of at most %d reports (%d%%): analyse and delete some",
-        count,
-        max_reports,
-        round(100 * count / max_reports),
-    )
-
-
-def _warn_when_bytes_nearly_full(used: int, max_bytes: int) -> None:
-    log.warning(
-        "REPORTS_DIR holds %d of at most %d bytes (%d%%): analyse and delete some",
+        "REPORTS_DIR holds %d of at most %d %s (%d%%): analyse and delete some",
         used,
-        max_bytes,
-        round(100 * used / max_bytes),
+        limit,
+        unit,
+        round(100 * used / limit),
     )
 
 
@@ -220,11 +213,11 @@ def tidy(
         removed += expire(reports_dir, max_age_days, now=moment)
     count = count_reports(reports_dir)
     if count >= math.ceil(WARN_FRACTION * max_reports):
-        _warn_when_nearly_full(count, max_reports)
+        _warn_when_nearly_full(count, max_reports, "reports")
     if max_bytes is not None:
         used = folder_bytes(reports_dir)
         if used >= WARN_FRACTION * max_bytes:
-            _warn_when_bytes_nearly_full(used, max_bytes)
+            _warn_when_nearly_full(used, max_bytes, "bytes")
     return removed
 
 
@@ -321,7 +314,7 @@ def save_report(
         shutil.rmtree(staging, ignore_errors=True)
         raise
     if count + 1 == math.ceil(WARN_FRACTION * max_reports):
-        _warn_when_nearly_full(count + 1, max_reports)
+        _warn_when_nearly_full(count + 1, max_reports, "reports")
     if used < WARN_FRACTION * max_bytes <= used + new_bytes:
-        _warn_when_bytes_nearly_full(used + new_bytes, max_bytes)
+        _warn_when_nearly_full(used + new_bytes, max_bytes, "bytes")
     return True

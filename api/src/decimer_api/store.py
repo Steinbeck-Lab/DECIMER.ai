@@ -313,10 +313,7 @@ class JobStore:
         for _ in range(ADMIT_ATTEMPTS):
             # The client's own count first: a client over its limit is refused here, without the
             # queue being looked at at all.
-            if (
-                len(await self._live_active_members(ip_hash))
-                >= self.settings.max_active_jobs_per_ip
-            ):
+            if await self.active_count(ip_hash) >= self.settings.max_active_jobs_per_ip:
                 return Admission.RATE_LIMITED
             waiting = await self.queue_length()
             async with self.redis.pipeline(transaction=True) as pipe:

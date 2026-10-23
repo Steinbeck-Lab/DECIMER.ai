@@ -28,7 +28,7 @@ import pypdfium2 as pdfium
 from PIL import Image, ImageOps
 from pypdfium2 import raw as pdfium_raw
 
-from .errors import ApiError
+from .errors import ApiError, unavailable
 from .models import JobWarning
 from .uploads import (
     FileKind,
@@ -72,6 +72,12 @@ def _too_many_pixels(limits: Limits, *, together: bool = False) -> ApiError:
     )
 
 
+def _corrupt_image(position: int, upload: Upload) -> ApiError:
+    return ApiError(
+        400, "corrupt_file", f"File {position} {label(upload.name)} could not be read as an image."
+    )
+
+
 def _write_failure(error: OSError, corrupt: ApiError) -> ApiError:
     """An OSError is usually a decoder complaining about the file. Not when it is the limits:
     RLIMIT_FSIZE makes a write fail with EFBIG (Python ignores SIGXFSZ), and a full disk is
@@ -79,7 +85,7 @@ def _write_failure(error: OSError, corrupt: ApiError) -> ApiError:
     if error.errno == errno.EFBIG:
         return processing_limit("would be too large")
     if error.errno in (errno.ENOSPC, errno.EDQUOT):
-        return ApiError(503, "unavailable", "The service is temporarily unavailable. Please retry.")
+        return unavailable()
     return corrupt
 
 
@@ -212,11 +218,7 @@ def _header_pixels(upload: Upload, kind: FileKind, position: int, limits: Limits
     except MemoryError:
         raise
     except Exception as error:
-        raise ApiError(
-            400,
-            "corrupt_file",
-            f"File {position} {label(upload.name)} could not be read as an image.",
-        ) from error
+        raise _corrupt_image(position, upload) from error
     # Pillow's own guard only warns between 1x and 2x of its cap, and may be switched off:
     # this check is ours, and runs before any pixel is decoded.
     if width * height > limits.max_image_pixels:
@@ -247,11 +249,7 @@ def _store_images(
         except (ApiError, MemoryError):
             raise
         except Exception as error:  # the decoders (libheif in particular) raise many types
-            corrupt = ApiError(
-                400,
-                "corrupt_file",
-                f"File {position} {label(upload.name)} could not be read as an image.",
-            )
+            corrupt = _corrupt_image(position, upload)
             if isinstance(error, OSError):
                 raise _write_failure(error, corrupt) from error
             raise corrupt from error

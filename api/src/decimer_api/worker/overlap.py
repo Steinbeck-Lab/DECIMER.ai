@@ -10,9 +10,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from ..models import Stage, StageName, StageState
-
-PIPELINE_STAGES = (StageName.RENDER, StageName.SEGMENT, StageName.RECOGNISE, StageName.CHECK)
+from ..models import PIPELINE_STAGES, Stage, StageName, StageState
 
 
 @dataclass(frozen=True)

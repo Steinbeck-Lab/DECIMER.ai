@@ -64,7 +64,7 @@ from .errors import (
     ServiceUnavailable,
     ServiceUnreachable,
 )
-from .files import png_size
+from .files import PNG_SIGNATURE, png_size
 from .replicas import (
     OUTSIDE_A_JOB,
     Clock,
@@ -78,7 +78,6 @@ from .settings import WorkerSettings
 
 log = logging.getLogger("decimer_api.worker.services")
 
-PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 SERVICES = ("seg", "ocsr", "cls", "chem")
 
 Sleep = Callable[[float], Awaitable[None]]
@@ -291,9 +290,8 @@ class ServiceCaller:
         settings = self._settings
         busy = resent = connect_attempts = switches = 0
         waited = 0.0  # backing off, after a connection could not be made
-        spent = (
-            0.0  # in connection attempts that failed (a black hole takes the connect timeout each)
-        )
+        # in connection attempts that failed (a black hole takes the connect timeout each)
+        spent = 0.0
         budget = settings.connect_retry_budget(service)
         try:
             while True:
@@ -426,11 +424,6 @@ class ServiceCaller:
             return json_module.loads(body)
         except ValueError as error:
             raise ServiceFailed(service, "the answer is not JSON") from error
-
-
-def _detail(response: httpx.Response) -> str:
-    """What the service said, shortened, for the log."""
-    return response.text[:200].replace("\n", " ")
 
 
 class Services:

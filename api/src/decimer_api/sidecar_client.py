@@ -27,10 +27,10 @@ from . import sidecar_wire as wire
 from .analysis_pool import TOO_COMPLEX, Session
 from .capacity import Capacity
 from .chemistry import Chemistry
-from .errors import ApiError, ErrorCode
+from .errors import ApiError, ErrorCode, unavailable
 from .models import JobWarning
 from .molfile import MolfileError, TooComplex
-from .settings import MIB, Settings
+from .settings import INGEST_MARGIN_SECONDS, MIB, Settings
 from .uploads import FileKind, Ingested, Limits, Upload, classify
 
 log = logging.getLogger("decimer_api.sidecar_client")
@@ -38,17 +38,15 @@ log = logging.getLogger("decimer_api.sidecar_client")
 CONNECT_TIMEOUT_SECONDS = 3.0
 # Round trip and framing around the sidecar's own deadlines, which come first.
 MARGIN_SECONDS = 2.0
-INGEST_MARGIN_SECONDS = 5.0  # the same allowance as `settings.INGEST_MARGIN_SECONDS`
 NAME_CHARS = 255
 CODE = re.compile(r"[a-z0-9_]{1,64}")
 MAX_WARNINGS = 8
 MAX_WARNING_CHARS = 300
-UNAVAILABLE = "The service is temporarily unavailable. Please retry."
 
 
 def _unavailable(why: str) -> ApiError:
     log.error("the ingest sidecar: %s", why)
-    return ApiError(503, ErrorCode.UNAVAILABLE, UNAVAILABLE)
+    return unavailable()
 
 
 def _endpoint(settings: Settings) -> tuple[str, int]:
@@ -98,9 +96,7 @@ class RemoteIngest:
         self._limits = Limits.from_settings(settings)
         self._deadline = settings.ingest_timeout_seconds + INGEST_MARGIN_SECONDS
         # A normalised page is a PNG of at most the pixel bound; a PDF is the upload itself.
-        self._max_file_bytes = max(
-            3 * settings.max_image_pixels + 64 * MIB, settings.max_upload_bytes
-        )
+        self._max_file_bytes = max(settings.max_page_png_bytes, settings.max_upload_bytes)
         self._max_total_bytes = (
             max(settings.max_upload_bytes, 3 * settings.max_job_pixels) + 64 * MIB
         )

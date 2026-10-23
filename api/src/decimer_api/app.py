@@ -171,7 +171,7 @@ def create_app(
         # of the OpenAPI schema.)
         sidecar_ping = getattr(deps_ingest, "ping", None)
         if ready and sidecar_ping is not None:
-            ready = bool(await sidecar_ping())  # uploads cannot work without the sidecar
+            ready = bool(await sidecar_ping())
         if ready:
             return JSONResponse({"status": "ready"})
         return JSONResponse({"status": "not ready"}, status_code=503)

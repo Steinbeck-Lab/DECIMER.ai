@@ -1,14 +1,42 @@
-"""Process hardening for the API process."""
+"""Process hardening for the API process, and what its child processes (ingest, analysis, render)
+share. Standard library only: the children import it before they apply their limits."""
 
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import logging
+import os
+import signal
 import sys
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import asyncio
 
 log = logging.getLogger("decimer_api.hardening")
 
 PR_SET_DUMPABLE = 4
+# The whole environment of a child process: only what Python needs, none of the parent's variables
+# (REDIS_URL, IP_HASH_SECRET, ...).
+CHILD_ENV = {"PATH": "/usr/bin:/bin", "LC_ALL": "C.UTF-8"}
+
+
+async def kill_child(process: asyncio.subprocess.Process) -> None:
+    """Make sure the child, and anything it started, is gone and reaped."""
+    if process.returncode is None:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+        await process.wait()
+
+
+def current_address_space() -> int:
+    """Bytes of address space in use now (Linux), or 0 when unknown."""
+    try:
+        with open("/proc/self/statm") as statm:
+            return int(statm.read().split()[0]) * os.sysconf("SC_PAGE_SIZE")
+    except (OSError, ValueError, IndexError):
+        return 0
 
 
 def _is_linux() -> bool:

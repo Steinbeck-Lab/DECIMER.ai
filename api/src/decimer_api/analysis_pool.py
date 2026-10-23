@@ -38,8 +38,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-import os
-import signal
 import sys
 from collections.abc import AsyncIterator, Callable
 from typing import Any, Protocol
@@ -47,7 +45,8 @@ from typing import Any, Protocol
 from . import analysis_protocol as protocol
 from .capacity import Capacity
 from .chemistry import Chemistry, analyse_molfile
-from .errors import ApiError, ErrorCode
+from .errors import ApiError, unavailable
+from .hardening import CHILD_ENV, kill_child
 from .molfile import MolfileError, TooComplex
 from .settings import Settings
 
@@ -201,8 +200,7 @@ class AnalysisPool:
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL,
-                # Only what Python needs, as for the ingest child.
-                env={"PATH": "/usr/bin:/bin", "LC_ALL": "C.UTF-8"},
+                env=CHILD_ENV,  # as for the ingest child
                 start_new_session=True,
             )
         except OSError as error:
@@ -214,23 +212,21 @@ class AnalysisPool:
             await process.stdin.drain()
             ready = await asyncio.wait_for(self._read(process), self._startup)
         except (TimeoutError, OSError, protocol.FrameError, asyncio.IncompleteReadError) as error:
-            await _kill(process)
+            await kill_child(process)
             raise self._unavailable("did not become ready") from error
         except asyncio.CancelledError:
             # The pool is closing: the process is not the child's yet, so nobody else would.
-            await _kill(process)
+            await kill_child(process)
             raise
         if ready.get("ready") is not True:
-            await _kill(process)
+            await kill_child(process)
             raise self._unavailable("answered nonsense at start-up")
         return process
 
     @staticmethod
     def _unavailable(why: str) -> ApiError:
         log.error("the analysis process %s", why)
-        return ApiError(
-            503, ErrorCode.UNAVAILABLE, "The service is temporarily unavailable. Please retry."
-        )
+        return unavailable()
 
     @staticmethod
     async def _read(process: asyncio.subprocess.Process) -> dict[str, Any]:
@@ -250,7 +246,7 @@ class AnalysisPool:
     async def _kill(self, child: _Child) -> None:
         process = self._detach(child)
         if process is not None:
-            await _kill(process)
+            await kill_child(process)
 
     async def _replace(self, child: _Child) -> None:
         """Kill the child's process and start another ahead of the next request."""
@@ -258,16 +254,8 @@ class AnalysisPool:
 
     async def _dispose(self, process: asyncio.subprocess.Process | None, child: _Child) -> None:
         if process is not None:
-            await _kill(process)
+            await kill_child(process)
         self._later(self._warm(child))
-
-
-async def _kill(process: asyncio.subprocess.Process) -> None:
-    """Make sure the process, and anything it started, is gone and reaped."""
-    if process.returncode is None:
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(process.pid, signal.SIGKILL)
-        await process.wait()
 
 
 class _PoolSession:

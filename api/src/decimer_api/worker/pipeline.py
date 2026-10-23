@@ -100,6 +100,7 @@ import asyncio
 import bisect
 import contextlib
 import functools
+import itertools
 import logging
 import os
 import re
@@ -129,6 +130,7 @@ from ..models import (
     is_valid_job_id,
 )
 from ..molfile import MolfileError, MolfileTooBig
+from ..names import MAX_SMILES_CHARS, nameable
 from ..settings import Settings
 from ..store import JobStore
 from ..usage import NullUsage, Usage
@@ -163,9 +165,8 @@ IMAGE_INPUT = re.compile(r"[0-9]{4}\.png")
 Name = tuple[str | None, str | None, str | None]
 NO_NAME: Name = (None, None, None)
 CHEMISTRY_THREADS = 4  # structures analysed with RDKit at once (each in its own thread)
-CHEM_MAX_SMILES = 2000  # the longest SMILES chem accepts
 # What chem takes as a SMILES (its request rule): printable ASCII, no space.
-CHEM_SMILES = re.compile(rf"[\x21-\x7e]{{1,{CHEM_MAX_SMILES}}}")
+CHEM_SMILES = re.compile(rf"[\x21-\x7e]{{1,{MAX_SMILES_CHARS}}}")
 # Why CDK has no molblock for a structure, when it is CDK's own business: it cannot read the SMILES
 # or lay it out, or the structure is more than DECIMER can write. Any other reason (timeout, engine
 # trouble) means CDK did not get to decide.
@@ -729,8 +730,7 @@ class _Run:
         self._segmentation_done = True
         self._stages.finish(StageName.SEGMENT)
         self._recognition_may_be_done()
-        self._stages.apply(self.job.stages)
-        await self.save()  # always: this is where the structure count first reaches the record
+        await self._publish(force=True)  # always: the structure count first reaches the record here
 
     def _whole_page_crop(self) -> Crop:
         """The single-image fallback: the crop is another name for the page file (a hard link)."""
@@ -779,11 +779,7 @@ class _Run:
                 png = await asyncio.to_thread(prepare)
             except (OSError, ValueError) as error:
                 log.warning("job %s: structure %d: %s", self.job.id, number, error)
-                self.warn(
-                    StageName.RECOGNISE,
-                    "recognition_failed",
-                    f"Structure {number} could not be recognised.",
-                )
+                self._not_recognised(number)
                 return Recognition(smiles=None, confidence=0.0, is_structure=None)
             ocsr, is_structure = await _both(
                 self._ocsr(crop, png, lease), self._classify(crop, png)
@@ -832,12 +828,15 @@ class _Run:
                 raise PipelineFailure(SERVICE_UNAVAILABLE) from error
         except ServiceError as error:
             log.warning("job %s: structure %d: %s", self.job.id, number, error)
+        self._not_recognised(number)
+        return None
+
+    def _not_recognised(self, number: int) -> None:
         self.warn(
             StageName.RECOGNISE,
             "recognition_failed",
             f"Structure {number} could not be recognised.",
         )
-        return None
 
     async def _classify(self, crop: Crop, png: bytes) -> bool | None:
         if "cls" in self.down:
@@ -923,9 +922,7 @@ class _Run:
             for index, chem in enumerate(chemistry)
             if not chem.valid and CHEM_SMILES.fullmatch(texts[index])
         ]
-        size = self.worker.chem_batch_size
-        for start in range(0, len(asked), size):
-            batch = asked[start : start + size]
+        for batch in itertools.batched(asked, self.worker.chem_batch_size):
             try:
                 answers = await self.services.cdk([texts[index] for index in batch])
             except ServiceError as error:
@@ -975,17 +972,13 @@ class _Run:
         if not self.services.chem_enabled:
             return names
         asked = [
-            index
-            for index, chem in enumerate(chemistry)
-            if chem.valid and "*" not in chem.smiles and len(chem.smiles) <= CHEM_MAX_SMILES
+            index for index, chem in enumerate(chemistry) if chem.valid and nameable(chem.smiles)
         ]
         if asked and self.chem_hung:
             # The CDK call timed out or could not reach chem: the names would meet the same.
             self._names_unavailable("IUPAC names are unavailable at the moment.")
             return names
-        size = self.worker.chem_batch_size
-        for start in range(0, len(asked), size):
-            batch = asked[start : start + size]
+        for batch in itertools.batched(asked, self.worker.chem_batch_size):
             try:
                 answers = await self.services.names([chemistry[index].smiles for index in batch])
             except ServiceError as error:

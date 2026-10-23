@@ -293,3 +293,9 @@ class Settings(BaseSettings):
     @property
     def max_upload_bytes(self) -> int:
         return self.max_upload_mb * BYTES_PER_MB
+
+    @property
+    def max_page_png_bytes(self) -> int:
+        """A worst-case PNG of the biggest allowed image or page: what a child that writes one may
+        write (RLIMIT_FSIZE)."""
+        return 3 * self.max_image_pixels + 64 * MIB
