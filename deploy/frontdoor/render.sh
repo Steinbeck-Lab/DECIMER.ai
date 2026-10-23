@@ -58,13 +58,13 @@ for cidr in $(printf '%s' "$proxies" | tr ',' ' '); do
         for octet in "${BASH_REMATCH[@]:1}"; do [ "$octet" -le 255 ] || { echo "render.sh: TRUSTED_PROXY_CIDR entry '$cidr' is not an address" >&2; exit 1; }; done
     elif [[ $addr =~ ^[0-9a-fA-F:]+$ && $addr == *:*:* ]]; then :
     else echo "render.sh: TRUSTED_PROXY_CIDR entry '$cidr' is not an IPv4 or IPv6 address" >&2; exit 1; fi
-    case $cidr in */*) [ "${cidr#*/}" -le "$max" ] 2> /dev/null || { echo "render.sh: TRUSTED_PROXY_CIDR entry '$cidr' has a prefix length above $max" >&2; exit 1; } ;; esac
     # A proxy is an address, or at most a small group of them: refuse any network wider than IPv4 /16 or IPv6 /48 (so that
     # 0.0.0.0/1 plus 128.0.0.0/1 cannot add up to "everyone"); warn from there down to /23 (IPv4).
     case $cidr in
         */*)
             prefix=${cidr#*/}
-            case $prefix in ''|*[!0-9]*) echo "render.sh: TRUSTED_PROXY_CIDR entry '$cidr' has no valid prefix length" >&2; exit 1 ;; esac
+            # (`[` fails on anything but a whole number, and the characters allowed above leave no sign or space.)
+            [ "$prefix" -le "$max" ] 2> /dev/null || { echo "render.sh: TRUSTED_PROXY_CIDR entry '$cidr' has a prefix length above $max" >&2; exit 1; }
             case $cidr in
                 *:*) [ "$prefix" -ge 48 ] || { echo "render.sh: TRUSTED_PROXY_CIDR entry '$cidr' is a network wider than /48: list the proxy's address(es), not a client network" >&2; exit 1; } ;;
                 *) [ "$prefix" -ge 16 ] || { echo "render.sh: TRUSTED_PROXY_CIDR entry '$cidr' is a network wider than /16: list the proxy's address(es), not a client network (0.0.0.0/1 and 128.0.0.0/1 would add up to everyone)" >&2; exit 1; }

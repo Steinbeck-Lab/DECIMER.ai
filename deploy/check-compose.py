@@ -326,8 +326,7 @@ def main(argv: list[str] | None = None) -> int:
         sys.exit("usage: check-compose.py [--env FILE]")
     compose = shlex.split(os.environ.get("COMPOSE", "docker compose"))
     problems: list[str] = []
-    runs = [(None, False)] if env_file else [(None, False), (None, True)]
-    for _, example in runs:
+    for example in [False] if env_file else [False, True]:
         label = str(env_file) if env_file else (".env.example" if example else "secrets only")
         config = load_config(compose, example=example, env_file=env_file)
         problems += [f"{problem} [env: {label}]" for problem in check(config, defaults=env_file is None)]

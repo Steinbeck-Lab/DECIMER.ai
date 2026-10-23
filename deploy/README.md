@@ -840,8 +840,7 @@ None of this has been done; the proxy values are open (TODO Q3). In order:
 The edge publishes `127.0.0.1:8090` only. To show it on `/beta/` of the public site, something has to
 carry `/beta/` **and `/api/`** to it: the legacy nginx after being attached to `decimer-next_public` (a
 change to the running legacy container, so it needs the owner's go-ahead), or the campus proxy routing both
-paths (TODO Q3). At cutover the same build serves `/`. `edge.conf` ends with a commented variant for a front
-door that does not strip the prefix.
+paths (TODO Q3). At cutover the same build serves `/`.
 
 ## For the coordinator: documents that disagree with this directory
 

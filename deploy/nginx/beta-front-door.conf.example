@@ -1,6 +1,6 @@
 # SUPERSEDED (2026-10-23, D22: there is no public beta, no /beta and no beta. host). The public front door is now
 # deploy/frontdoor/ (template, render.sh, check.sh, compose.yaml), switched on by deploy/cutover/cutover.sh and rolled
-# back by rollback.sh; the operator's side is docs/RUNBOOK.md. This file is kept because deploy/README.md, edge.conf and
+# back by rollback.sh; the operator's side is docs/RUNBOOK.md. This file is kept because deploy/README.md and
 # compose.yaml still point to it, and for its notes on legacy's http-level settings and on the three X-Forwarded-For cases
 # (section 0), which the new files carry over. The /beta blocks below are not used by anything.
 #
