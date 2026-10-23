@@ -14,6 +14,8 @@ import io
 import logging
 import os
 import re
+import threading
+import time
 from collections.abc import Callable, Mapping, Sequence
 from importlib import resources
 from pathlib import Path
@@ -31,6 +33,11 @@ Image = NDArray[np.uint8]
 SegmentFn = Callable[[Image], tuple[Sequence[Image], Sequence[Sequence[int]]]]
 
 WEIGHTS_NAME = "mask_rcnn_molecule.h5"
+
+# A call into the library that has run longer than this is hung, not slow: /readyz fails then. The
+# pages measured take 3 to 8 s (2 to 4 threads); the biggest page the service admits (40 Mpx) has
+# not been timed, so the limit is generous.
+HANG_AFTER_SECONDS = 300.0
 
 
 def weights_file() -> Path:
@@ -129,8 +136,24 @@ def selftest_png() -> bytes:
 class SegModel:
     name = "seg"
 
-    def __init__(self, segment_fn: SegmentFn | None = None) -> None:
+    def __init__(
+        self,
+        segment_fn: SegmentFn | None = None,
+        *,
+        hang_after: float = HANG_AFTER_SECONDS,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self._segment_fn = segment_fn
+        # decimer_segmentation is not thread-safe: two segment_chemical_structures() calls at once
+        # (Mask R-CNN's detect() on TensorFlow), even from just two threads, corrupt the heap and
+        # abort the whole process, not just a request. The HTTP skeleton limits /infer to one call
+        # at a time (`decimer_seg.app.LIMITS`) but runs /readyz's selftest outside that limit (so
+        # a probe is not queued behind a slow request), and the two reach the library from
+        # different threads: this lock is what keeps them apart, whoever the caller is.
+        self._library_lock = threading.Lock()
+        self._hang_after = hang_after
+        self._clock = clock
+        self._running_since: float | None = None  # set while a call is inside the library
 
     def load(self) -> None:
         if self._segment_fn is None:
@@ -138,9 +161,23 @@ class SegModel:
             self._segment_fn = _real_segment_fn()
 
     def selftest(self) -> None:
+        # /readyz can arrive while a page is being segmented. It must not call the library beside
+        # that page (see `_library_lock`), and it has no reason to wait for it either: a page in
+        # progress shows that the model is alive (the skeleton counts the request's own success as
+        # a pass), unless that page has been going on for too long.
+        if self._library_lock.locked():
+            self._raise_if_hung()
+            return
         # The whole path (decode, segment, encode) on a real structure; it must be found.
         if not self.infer(selftest_png(), {})["segments"]:
             raise RuntimeError("selftest: no structure found in the embedded test image")
+
+    def _raise_if_hung(self) -> None:
+        started = self._running_since
+        if started is not None and (running := self._clock() - started) > self._hang_after:
+            raise RuntimeError(
+                f"selftest failed: a segmentation has been running for {int(running)} s"
+            )
 
     def infer(self, image: bytes, params: Mapping[str, str]) -> dict[str, Any]:
         page_index = _parse_page_index(params)
@@ -162,11 +199,15 @@ class SegModel:
     def _segment(self, page: Image) -> list[tuple[Image, Sequence[int]]]:
         if self._segment_fn is None:
             raise RuntimeError("model not loaded; call load() first")
-        try:
-            segments, bboxes = self._segment_fn(page)
-        except ValueError as exc:
-            # create_app maps ValueError to 422 (bad input); a failure inside the library is ours.
-            raise RuntimeError(f"segmentation failed: {exc}") from exc
+        with self._library_lock:
+            self._running_since = self._clock()
+            try:
+                segments, bboxes = self._segment_fn(page)
+            except ValueError as exc:
+                # create_app maps ValueError to 422 (bad input); a failure in the library is ours.
+                raise RuntimeError(f"segmentation failed: {exc}") from exc
+            finally:
+                self._running_since = None
         if len(segments) != len(bboxes):
             raise RuntimeError(
                 f"segmentation returned {len(segments)} segments but {len(bboxes)} bboxes"

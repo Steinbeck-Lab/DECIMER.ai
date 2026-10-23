@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import logging
@@ -9,7 +10,7 @@ import numpy as np
 import pytest
 import uvicorn
 from decimer_service import Limits, create_app
-from helpers import FakeSegmenter, png_bytes, rgba_crop
+from helpers import FakeSegmenter, OverlapProbe, png_bytes, rgba_crop
 
 from decimer_seg import __main__ as entry
 from decimer_seg import app as seg_app
@@ -141,6 +142,28 @@ async def test_readyz_is_503_when_the_model_finds_nothing_in_its_test_image() ->
             r = await c.get("/readyz")
     assert r.status_code == 503
     assert "no structure" in r.json()["detail"]
+
+
+async def test_a_probe_during_a_request_never_runs_a_second_inference() -> None:
+    # The 2026-10-23 crash loop: Docker's health check called /readyz (a selftest on the model)
+    # while the worker's /infer was running, two inferences in one process, heap corruption.
+    # Production wiring (build_app: real SegModel, production limits), cold readiness cache.
+    probe = OverlapProbe([rgba_crop(30, 20)], [(10, 20, 40, 40)])
+    app = seg_app.build_app(SegModel(probe))
+    async with app.router.lifespan_context(app):
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://seg") as c:
+            files = {"image": ("page.png", png_bytes(300, 200), "image/png")}
+            infer = asyncio.create_task(c.post("/infer", files=files))
+            await asyncio.to_thread(probe.wait_until_inside)
+            probes = [asyncio.create_task(c.get("/readyz")) for _ in range(2)]
+            await asyncio.sleep(0.2)  # long enough for an unguarded selftest to get in
+
+            assert probe.inside == 1
+            probe.release.set()
+            assert (await infer).status_code == 200
+            assert [(await p).status_code for p in probes] == [200, 200]
+    assert probe.peak == 1
 
 
 def test_main_serves_the_seg_app_on_all_interfaces_and_port_from_env(

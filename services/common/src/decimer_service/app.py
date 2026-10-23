@@ -31,7 +31,12 @@ class Model(Protocol):
     def load(self) -> None: ...
 
     def selftest(self) -> None:
-        """Run one tiny real inference; raise if the model cannot answer."""
+        """Run one tiny real inference; raise if the model cannot answer.
+
+        /readyz calls this outside the /infer gate (a probe must not queue behind a slow request),
+        from another thread, so it can run while `infer` is running. A model that cannot run two
+        calls at once must guard itself (the seg, ocsr and cls models hold a lock).
+        """
 
     def infer(self, image: bytes, params: Mapping[str, str]) -> dict[str, Any]:
         """Raise ValueError for bad input (answered 422); anything else is a 500."""

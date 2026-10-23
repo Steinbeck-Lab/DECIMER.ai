@@ -44,7 +44,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = '-m "not slow"'
 markers = [
-    "slow: runs the real Mask R-CNN on rendered pages of the golden PDF (CPU, about 35 s); select with -m slow",
+    "slow: runs the real Mask R-CNN on rendered pages of the golden PDF, in process and in a service process of its own under concurrent requests (CPU, about 100 s); select with -m slow",
 ]
 
 [tool.uv]
