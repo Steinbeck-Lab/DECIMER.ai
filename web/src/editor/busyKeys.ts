@@ -6,7 +6,7 @@ import type { KeyboardEvent } from 'react';
  * (or that is the wrong one). Tab still works, so focus can leave the canvas. Escape passes too: with focus in the
  * canvas the panel leaves it to Ketcher (EditorPanel's `onKeyDown`), and Ketcher's Escape only switches back to the
  * select tool, which does no harm in the middle of a swap. Meant for the capture phase of the canvas host, which
- * comes before Ketcher's own listener.
+ * comes before Ketcher's own listener. Shift+Tab never reaches Ketcher at all, busy or not (focusKeys.ts, run first).
  */
 export function blockKeysWhileBusy(event: Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'metaKey' | 'altKey' | 'stopPropagation' | 'preventDefault'>): void {
   if (event.key === 'Tab' || event.key === 'Escape') return;
