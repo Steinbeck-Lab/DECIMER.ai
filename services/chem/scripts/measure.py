@@ -49,6 +49,22 @@ DENDRIMER = (
     "C(CN(CCC(=O)NCCN(CCC(=O)OC)CCC(=O)OC)CCC(=O)NCCN(CCC(=O)OC)CCC(=O)OC)N(CCC(=O)NCCN(CCC(=O)OC)"
     "CCC(=O)OC)CCC(=O)NCCN(CCC(=O)OC)CCC(=O)OC"
 )
+# CDK (POST /cdk, TODO): DECIMER writes at most 302 tokens, so the service lays out 300 atoms
+# at most. The chain of 300 and `C(C)(C)` x100 (which DECIMER cannot write) are the slowest allowed;
+# the rest are declined after the parse (855 atoms would take 19 s, a chain of 999 8 s, 2000 44 s).
+CDK_PATHOLOGICAL = {
+    "chain of 300 carbons (layout ~0.7 s)": "C" * 300,
+    "C(C)(C) x100, 300 atoms (layout ~1.5 s)": "C(C)(C)" * 100,
+    "C(C)(C) x285, 855 atoms (too_large, declined after the parse)": "C(C)(C)" * 285,
+    "chain of 2000 carbons (too_large, declined after the parse)": "C" * 2000,
+}
+# SMILES RDKit rejects and CDK 2.8 lays out (README, "CDK fallback")
+CDK_ONLY = [
+    "CC(C)(C)(C)c1ccccc1",
+    "C[N](C)(C)(C)C",
+    "C1=CC=CC=C1=O",
+    "CS(=O)(=O)(=O)(=O)C",
+]
 PATHOLOGICAL = {
     "vancomycin (declined by Orthonym in ~9 s)": VANCOMYCIN,
     "PEG-50 (STRUCTURE_TOO_LARGE after ~10 s)": "OCC" + "OCC" * 50 + "O",
@@ -151,6 +167,43 @@ def main() -> None:
             )
         engine = engine_pid(server.pid)  # it may have been replaced if a kill happened
         print(f"RSS before soak: naming process {mb(rss_kb(engine))}")
+
+        cdk_singles = []
+        for smiles in golden:
+            t = time.perf_counter()
+            status, body = post(port, "/cdk", {"smiles": [smiles]})
+            cdk_singles.append((time.perf_counter() - t) * 1000)
+            assert status == 200, body
+        print(
+            "POST /cdk, the 12 Figure 2 compounds (ms, HTTP round trip): "
+            f"min {min(cdk_singles):.0f}, median {statistics.median(cdk_singles):.0f}, "
+            f"max {max(cdk_singles):.0f}"
+        )
+        t = time.perf_counter()
+        status, body = post(port, "/cdk", {"smiles": golden + DRUGS[:8]})
+        laid_out = sum(r["molfile"] is not None for r in body["results"])  # type: ignore[attr-defined]
+        print(
+            f"POST /cdk, 20 structures: {(time.perf_counter() - t) * 1000:.0f} ms "
+            f"(status {status}, {laid_out} laid out)"
+        )
+        status, body = post(port, "/cdk", {"smiles": CDK_ONLY})
+        print(
+            f"POST /cdk, the 4 RDKit-rejected examples: status {status}, "
+            + ", ".join(
+                str(r["reason"] or "molblock")
+                for r in body["results"]  # type: ignore[attr-defined]
+            )
+        )
+        for label, smiles in CDK_PATHOLOGICAL.items():
+            t = time.perf_counter()
+            status, body = post(port, "/cdk", {"smiles": [smiles]})
+            [only] = body["results"]  # type: ignore[misc]
+            print(
+                f"CDK {label}: {time.perf_counter() - t:.1f} s -> {status} "
+                f"molblock={only['molfile'] is not None} reason={only['reason']!r}"
+            )
+        engine = engine_pid(server.pid)
+        print(f"RSS after CDK: naming process {mb(rss_kb(engine))}")
 
         pool = golden + DRUGS
         sent = 0

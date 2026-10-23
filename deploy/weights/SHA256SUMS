@@ -50,15 +50,24 @@ d3b124e3ad4b0ed57ff834e2c8cb8b2e3d4aee4b0546b138634d26e58979e6e5  ocsr/DECIMER-V
 7c2c678eea80be1ce42bca1029f63ca3322cc6f9649ef70da21e5c37ad18a376  ocsr/DECIMER-V2/DECIMER_HandDrawn_model/variables/variables.data-00000-of-00001
 98938e8df526dcd638e6c71c3d73aa48cd36d0ebbcee8128f8c0f3f0d6aa786e  ocsr/DECIMER-V2/DECIMER_HandDrawn_model/variables/variables.index
 #
-# --- chem: Orthonym's two jars ----------------------------------------------------------------
-# Root in the image: $CHEM_JARS_DIR (/opt/orthonym/jars). The service checks both against these same
-# hashes before it builds its engine and never downloads (services/chem/README.md "Java and jars").
-# The hashes are the ones Orthonym pins in orthonym/jars.py (it verified its own downloads) and the
-# ones services/chem/README.md lists; a slow test of that service checks that the files equal them.
+# --- chem: Orthonym's two jars, and CDK 2.8 --------------------------------------------------
+# Root in the image: $CHEM_JARS_DIR (/opt/orthonym/jars). The service checks all three against these
+# same hashes before it builds its engine and never downloads (services/chem/README.md "Java and jars").
+# The OPSIN and centres hashes are the ones Orthonym pins in orthonym/jars.py (it verified its own
+# downloads) and the ones services/chem/README.md lists; a slow test of that service checks that the
+# files equal them.
 #   opsin-cli-2.9.0-jar-with-dependencies.jar  OPSIN 2.9.0, 14,335,652 bytes
 #       https://github.com/dan2097/opsin/releases/download/2.9.0/opsin-cli-2.9.0-jar-with-dependencies.jar
 #   centres-cli-1.2.1.jar                      centres 1.2.1, 2,291,742 bytes; published as centres.jar
 #       https://github.com/SiMolecule/centres/releases/download/1.2.1/centres.jar
-# (Orthonym writes them 0600; fetch.sh and chem.Dockerfile make them world-readable.)
+#   cdk-2.8.jar                                CDK 2.8 bundle, 47,174,875 bytes (TODO, D4)
+#       https://github.com/cdk/cdk/releases/download/cdk-2.8/cdk-2.8.jar
+# The CDK file is the exact one legacy uses (DECIMER_Web app/Python/cdk-2.8.jar). Evidence, checked
+# 2026-10-23: a fresh https download from the cdk-2.8 release of github.com/cdk/cdk (published
+# 2022-09-14) has the same SHA-256 as the legacy file, and its size equals the asset size the GitHub
+# API reports (47,174,875 bytes). GitHub publishes no digest for the asset, so the legacy file is the
+# second witness. The same hash is pinned in services/chem (decimer_chem.cdk.CDK_JAR_SHA256).
+# (Orthonym writes its jars 0600; fetch.sh and chem.Dockerfile make them world-readable.)
 c2e29326c281f87b59a05d934d8589adac6e9d17b95b984931b3e739111b360f  chem/opsin-cli-2.9.0-jar-with-dependencies.jar
 6c5d5cafa9393ed7b667a2340222348cd15a9bbdd0d1b92518229f26cc5e87fb  chem/centres-cli-1.2.1.jar
+5dff6e365ecc21020e44aa31861b36a9cce34c51ed0b8713b8d25275552239b4  chem/cdk-2.8.jar

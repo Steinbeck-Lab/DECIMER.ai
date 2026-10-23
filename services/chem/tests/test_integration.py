@@ -1,7 +1,8 @@
 """The real thing: Orthonym in a JVM, behind the real service. Slow: `pytest -m slow -s`.
 
-Needs a Java 11+ runtime (JAVA_HOME or `java` on PATH) and the two jars in CHEM_JARS_DIR (default:
-Orthonym's cache, filled by `scripts/fetch_jars.py`). Nothing here downloads anything.
+Needs a Java 11+ runtime (JAVA_HOME or `java` on PATH) and the three jars in CHEM_JARS_DIR (OPSIN,
+centres and cdk-2.8.jar; default: Orthonym's cache, filled by `scripts/fetch_jars.py`). Nothing here
+downloads anything. CDK is tested in `test_cdk_integration.py`.
 """
 
 from __future__ import annotations
@@ -51,6 +52,7 @@ TIERS = {"pin_verified", "pin_unverified", "systematic_verified"}
 # The jars Orthonym pins (also in README.md: the image build bakes exactly these).
 OPSIN_SHA256 = "c2e29326c281f87b59a05d934d8589adac6e9d17b95b984931b3e739111b360f"
 CENTRES_SHA256 = "6c5d5cafa9393ed7b667a2340222348cd15a9bbdd0d1b92518229f26cc5e87fb"
+CDK_SHA256 = "5dff6e365ecc21020e44aa31861b36a9cce34c51ed0b8713b8d25275552239b4"  # legacy's CDK 2.8
 
 RDLogger.DisableLog("rdApp.*")
 
@@ -531,6 +533,7 @@ def test_the_jars_on_disk_are_the_ones_the_readme_records() -> None:
     for filename, digest in (
         ("opsin-cli-2.9.0-jar-with-dependencies.jar", OPSIN_SHA256),
         ("centres-cli-1.2.1.jar", CENTRES_SHA256),
+        ("cdk-2.8.jar", CDK_SHA256),
     ):
         on_disk = hashlib.sha256((jars_dir() / filename).read_bytes()).hexdigest()
         assert on_disk == digest
@@ -567,6 +570,14 @@ def test_python_dash_m_serves_json_logs_without_structure_names_and_stops_cleanl
         )
         with urllib.request.urlopen(request, timeout=30) as answer:  # noqa: S310
             assert json.load(answer)["name"] == "2-(acetyloxy)benzoic acid"
+        cdk_request = urllib.request.Request(  # noqa: S310
+            f"http://127.0.0.1:{port}/cdk",
+            data=json.dumps({"smiles": ["CC(C)(C)(C)c1ccccc1"]}).encode(),
+            headers={"content-type": "application/json"},
+        )
+        with urllib.request.urlopen(cdk_request, timeout=30) as answer:  # noqa: S310
+            [laid_out] = json.load(answer)["results"]
+            assert laid_out["reason"] is None and "V2000" in laid_out["molfile"]
     finally:
         process.send_signal(signal.SIGTERM)
         try:
@@ -584,5 +595,8 @@ def test_python_dash_m_serves_json_logs_without_structure_names_and_stops_cleanl
     assert any(r["message"] == "named" for r in records)
     assert any(r["message"] == "Application shutdown complete." for r in records)
     assert "acetyloxy" not in output  # Orthonym's INFO lines carry the name it chose
+    assert "CC(C)(C)(C)c1ccccc1" not in output and "V2000" not in output  # nor structures, for CDK
+    cdk_record = next(r for r in records if r["message"] == "cdk")
+    assert (cdk_record["structures"], cdk_record["laid_out"]) == (1, 1)
     ready = next(r for r in records if r["message"] == "naming process ready")
     assert not Path(f"/proc/{ready['pid']}").exists()  # the naming process went with the service

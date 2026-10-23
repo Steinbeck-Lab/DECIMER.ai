@@ -22,17 +22,20 @@ import orthonym
 import orthonym.jars
 import pytest
 
+import decimer_chem.engine as engine_module
+from decimer_chem.cdk import CDK_JAR_NAME, CDK_JAR_SHA256, CdkLayout
 from decimer_chem.engine import (
     ALLOWED_ORTHONYM_ENV,
     JAVA_OPTION_ENV,
     OrthonymEngine,
     apply_jar_policy,
+    check_cdk_jar,
     check_environment,
     check_jars,
     disable_runtime_caches,
     refuse_java_subprocess,
 )
-from decimer_chem.results import INVALID_SMILES_REASON, TIMEOUT_REASON
+from decimer_chem.results import INVALID_SMILES_REASON, TIMEOUT_REASON, CdkResult
 from decimer_chem.settings import Settings
 
 SPECS = orthonym.jars.JARS
@@ -494,3 +497,130 @@ def test_the_guard_can_be_lifted() -> None:
     restore()
     out = subprocess.run([sys.executable, "-c", "print(2)"], capture_output=True, check=True)
     assert out.stdout.strip() == b"2"
+
+
+# --- the CDK jar ---------------------------------------------------------------
+
+REPO = Path(__file__).resolve().parents[3]
+
+
+def test_the_cdk_jar_is_pinned_to_the_file_legacy_uses_and_the_pin_is_everywhere_it_must_be() -> (
+    None
+):
+    # Written out, not taken from the code under test: the 2.8 bundle legacy ships as
+    # app/Python/cdk-2.8.jar, which equals a fresh download of the official release asset.
+    assert CDK_JAR_NAME == "cdk-2.8.jar"
+    assert CDK_JAR_SHA256 == "5dff6e365ecc21020e44aa31861b36a9cce34c51ed0b8713b8d25275552239b4"
+    sums = (REPO / "deploy" / "weights" / "SHA256SUMS").read_text()
+    assert f"{CDK_JAR_SHA256}  chem/{CDK_JAR_NAME}" in sums.splitlines()
+    fetch = (REPO / "deploy" / "weights" / "fetch.sh").read_text()
+    assert "https://github.com/cdk/cdk/releases/download/cdk-2.8/cdk-2.8.jar" in fetch
+    assert "http://" not in fetch.replace("--proto", "")  # https only
+    dockerfile = (REPO / "deploy" / "chem.Dockerfile").read_text()
+    assert (
+        f"/opt/orthonym/jars/{CDK_JAR_NAME}" in dockerfile
+    )  # checked at build time like the others
+
+
+def test_a_missing_cdk_jar_is_a_runtime_error_naming_the_path_and_nothing_is_downloaded(
+    tmp_path: Path, no_network: list[str]
+) -> None:
+    with pytest.raises(RuntimeError) as info:
+        check_cdk_jar(tmp_path)
+    assert str(tmp_path / CDK_JAR_NAME) in str(info.value)
+    assert "never downloads" in str(info.value)
+    assert no_network == []
+
+
+def test_a_cdk_jar_with_another_checksum_is_refused_with_both_hashes(tmp_path: Path) -> None:
+    (tmp_path / CDK_JAR_NAME).write_bytes(b"x")
+    with pytest.raises(RuntimeError) as info:
+        check_cdk_jar(tmp_path)
+    message = str(info.value)
+    assert hashlib.sha256(b"x").hexdigest() in message  # what is on disk
+    assert CDK_JAR_SHA256 in message  # what is pinned
+    assert str(tmp_path / CDK_JAR_NAME) in message
+
+
+def test_the_pinned_cdk_jar_is_accepted_and_its_hash_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    digest = hashlib.sha256(b"x").hexdigest()
+    monkeypatch.setattr(engine_module, "CDK_JAR_SHA256", digest)
+    (tmp_path / CDK_JAR_NAME).write_bytes(b"x")
+    assert check_cdk_jar(tmp_path) == digest
+
+
+def test_a_cdk_jar_the_service_cannot_read_gets_a_permissions_hint(tmp_path: Path) -> None:
+    jar = tmp_path / CDK_JAR_NAME
+    jar.write_bytes(b"x")
+    jar.chmod(0o000)
+    try:
+        if os.access(jar, os.R_OK):
+            pytest.skip("running as a user that can read anything")
+        with pytest.raises(RuntimeError) as info:
+            check_cdk_jar(tmp_path)
+    finally:
+        jar.chmod(0o600)
+    assert str(jar) in str(info.value)
+    assert "chmod" in str(info.value)
+
+
+@pytest.mark.parametrize("state", ["missing", "wrong"])
+@pytest.mark.parametrize("opt_in", [False, True])
+def test_start_refuses_a_bad_cdk_jar_before_any_engine_is_built_even_with_the_download_opt_in(
+    state: str,
+    opt_in: bool,
+    clean_orthonym_env: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    pin_to_x(clean_orthonym_env)
+    write_jars(tmp_path, b"x")  # the two Orthonym jars are fine
+    if state == "wrong":
+        (tmp_path / CDK_JAR_NAME).write_bytes(b"not cdk")
+
+    def refuse() -> None:
+        raise AssertionError("Orthonym was built although the CDK jar is bad")
+
+    clean_orthonym_env.setattr(OrthonymEngine, "_build_namer", lambda self: refuse())
+    # CHEM_ALLOW_JAR_DOWNLOAD lets Orthonym fetch its own jars; it never covers the CDK jar
+    engine = OrthonymEngine(Settings(jars_dir=tmp_path, allow_jar_download=opt_in))
+    with pytest.raises(RuntimeError, match=str(tmp_path / CDK_JAR_NAME)):
+        engine.start()
+
+
+# --- CDK through the engine ------------------------------------------------------------------
+
+
+class FakeLayout(CdkLayout):
+    """A layout that never touches a JVM: answers by rule and records what it was asked."""
+
+    def __init__(self, answer: CdkResult, needs_new_process: bool = False) -> None:
+        super().__init__(Path("/nonexistent/cdk-2.8.jar"))
+        self.answer = answer
+        self.asked: list[tuple[str, float]] = []
+        self.needs_new_process = needs_new_process
+
+    def molfile(self, smiles: str, timeout_s: float) -> CdkResult:
+        self.asked.append((smiles, timeout_s))
+        return self.answer
+
+
+def test_the_engine_passes_a_cdk_result_through_with_the_soft_limit() -> None:
+    layout = FakeLayout(CdkResult("MOLBLOCK", None))
+    engine = OrthonymEngine(Settings(), cdk=layout)
+    assert engine.cdk("CC(C)(C)(C)C", 7.5) == CdkResult("MOLBLOCK", None)
+    assert layout.asked == [("CC(C)(C)(C)C", 7.5)]
+    assert engine.recycle_requested is False
+
+
+def test_a_cdk_call_that_left_a_java_thread_running_asks_for_a_new_process() -> None:
+    layout = FakeLayout(CdkResult(None, "timeout"), needs_new_process=True)
+    engine = OrthonymEngine(Settings(), cdk=layout)
+    assert engine.cdk("C", 1.0) == CdkResult(None, "timeout")
+    assert engine.recycle_requested is True  # the supervisor kills this process after the answer
+
+
+def test_cdk_before_start_is_an_error_not_a_silent_decline() -> None:
+    with pytest.raises(RuntimeError, match="not started"):
+        OrthonymEngine(Settings()).cdk("CCO", 1.0)

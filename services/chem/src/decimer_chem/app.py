@@ -1,11 +1,11 @@
-"""The chem service's HTTP layer: /healthz, /readyz, POST /name and POST /names.
+"""The chem service's HTTP layer: /healthz, /readyz, POST /name, POST /names and POST /cdk.
 
-The naming itself happens in a separate process (see `supervisor`), which owns Orthonym and its
-JVM. This module only validates requests, bounds how many wait, maps errors to status codes and
-keeps the readiness check honest. It takes JSON, so it does not use the image-upload skeleton in
-`decimer_service.create_app`; it follows the same conventions (a gate that answers 503 with
-Retry-After instead of queueing forever, ValueError as 422, any other error as 500 with an
-error_id, a readiness check that really runs the model).
+The naming and the CDK layout happen in a separate process (see `supervisor`), which owns Orthonym,
+CDK and the one JVM. This module only validates requests, bounds how many wait, maps errors to
+status codes and keeps the readiness check honest. It takes JSON, so it does not use the
+image-upload skeleton in `decimer_service.create_app`; it follows the same conventions (a gate that
+answers 503 with Retry-After instead of queueing forever, ValueError as 422, any other error as 500
+with an error_id, a readiness check that really runs the model).
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ import asyncio
 import logging
 import time
 import uuid
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Annotated, Any, Protocol
@@ -24,8 +24,16 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
+from .cdk import counts_of
 from .logs import log_failure
-from .results import INVALID_SMILES_REASON, TIMEOUT_REASON, NameResult
+from .results import (
+    INVALID_SMILES_REASON,
+    MAX_SMILES_CHARS,
+    TIMEOUT_REASON,
+    CdkResult,
+    NameResult,
+    looks_like_molfile,
+)
 from .settings import Settings
 from .supervisor import EngineUnavailable, ProcessNamer
 
@@ -36,7 +44,10 @@ log = logging.getLogger("decimer_chem")
 CAFFEINE_SMILES = "Cn1cnc2c1c(=O)n(C)c(=O)n2C"
 CAFFEINE_NAME = "1,3,7-trimethyl-3,7-dihydro-1H-purine-2,6-dione"
 
-MAX_SMILES_CHARS = 2000
+#: The CDK selftest: CDK lays caffeine out as a molblock with its 14 heavy atoms (8 C, 4 N, 2 O) and
+#: 15 bonds (13 for a tree of 14 atoms, plus one for each of the two rings).
+CDK_SELFTEST_COUNTS = (14, 15)
+
 MAX_BATCH = 20
 
 #: A SMILES is printable ASCII without spaces. RDKit would read anything after a space as the
@@ -73,6 +84,15 @@ class NamesBody(BaseModel):
     results: list[NameBody]
 
 
+class CdkBody(BaseModel):
+    molfile: str | None
+    reason: str | None
+
+
+class CdkResultsBody(BaseModel):
+    results: list[CdkBody]
+
+
 class Namer(Protocol):
     """What the app needs from the naming machinery (the supervisor, or a fake in tests)."""
 
@@ -89,6 +109,9 @@ class Namer(Protocol):
         """One result per SMILES, in order. Everything that goes wrong with one structure (an
         unreadable SMILES, a timeout, an engine error) is that structure's result with a reason.
         Raise EngineUnavailable when no structure at all could be tried."""
+
+    async def cdk_many(self, smiles: Sequence[str]) -> list[CdkResult]:
+        """Like `name_many`, for CDK: a V2000 molblock per SMILES, or a decline with a reason."""
 
 
 @dataclass(frozen=True)
@@ -126,7 +149,7 @@ class _Gate:
         self._inside -= 1
 
 
-async def selftest(namer: Namer) -> None:
+async def selftest_names(namer: Namer) -> None:
     """Name caffeine through the whole stack and require Orthonym's documented answer."""
     [result] = await namer.name_many([CAFFEINE_SMILES])
     if result.name != CAFFEINE_NAME or result.verified != "opsin":
@@ -135,6 +158,28 @@ async def selftest(namer: Namer) -> None:
             f"got name={result.name!r}, tier={result.tier!r}, verified={result.verified!r}, "
             f"reason={result.reason!r}"
         )
+
+
+async def selftest_cdk(namer: Namer) -> None:
+    """Have CDK lay caffeine out through the whole stack; require a molblock of the right size."""
+    [result] = await namer.cdk_many([CAFFEINE_SMILES])
+    if (
+        result.molfile is None
+        or not looks_like_molfile(result.molfile)
+        or counts_of(result.molfile) != CDK_SELFTEST_COUNTS
+    ):
+        raise RuntimeError(
+            "selftest failed: CDK should lay caffeine out as a molblock of "
+            f"{CDK_SELFTEST_COUNTS[0]} atoms and {CDK_SELFTEST_COUNTS[1]} bonds, "
+            f"got reason={result.reason!r}"
+            + ("" if result.molfile is None else f", counts={counts_of(result.molfile)!r}")
+        )
+
+
+async def selftest(namer: Namer) -> None:
+    """Both selftests: the names, and CDK."""
+    await selftest_names(namer)
+    await selftest_cdk(namer)
 
 
 async def _read_json[M: BaseModel](request: Request, model: type[M], limit: int) -> M:
@@ -158,7 +203,9 @@ async def _read_json[M: BaseModel](request: Request, model: type[M], limit: int)
 
 def create_app(namer: Namer, limits: Limits | None = None) -> FastAPI:
     limits = limits or Limits()
-    ready = {"at": 0.0}
+    #: When each half of the service last proved itself: names (an OPSIN-verified name, or the
+    #: selftest) and CDK (a molblock, or the selftest). A pass of one never vouches for the other.
+    ready = {"names": 0.0, "cdk": 0.0}
     gate = _Gate(limits.max_concurrency, limits.max_waiting)
 
     @asynccontextmanager
@@ -170,7 +217,7 @@ def create_app(namer: Namer, limits: Limits | None = None) -> FastAPI:
         except BaseException:
             await namer.stop()
             raise
-        ready["at"] = time.monotonic()
+        ready["names"] = ready["cdk"] = time.monotonic()
         log.info("chem ready", extra={"seconds": round(time.monotonic() - start, 2)})
         try:
             yield
@@ -186,22 +233,31 @@ def create_app(namer: Namer, limits: Limits | None = None) -> FastAPI:
 
     @app.get("/readyz")
     async def readyz() -> dict[str, str]:
-        stale = time.monotonic() - ready["at"] > limits.ready_cache_seconds
+        now = time.monotonic()
+        stale = {part for part, at in ready.items() if now - at > limits.ready_cache_seconds}
         # A call in flight is the engine working (deadlines bound it), and a selftest would only
         # queue behind it, so a busy service reports ready instead of timing out its health check.
         if stale and not namer.busy:
-            try:
-                await selftest(namer)
-            except Exception as exc:
-                log.warning("selftest failed", extra={"error": str(exc)})
-                raise HTTPException(status_code=503, detail=f"selftest failed: {exc}") from exc
-            ready["at"] = time.monotonic()
+            tests = {"names": selftest_names, "cdk": selftest_cdk}
+            for part in sorted(stale):
+                try:
+                    await tests[part](namer)
+                except Exception as exc:
+                    log.warning("selftest failed", extra={"error": str(exc)})
+                    raise HTTPException(status_code=503, detail=f"selftest failed: {exc}") from exc
+                ready[part] = time.monotonic()
         return {"status": "ready", "service": "chem"}
 
     def busy_response() -> JSONResponse:
         return JSONResponse({"detail": "busy"}, status_code=503, headers={"Retry-After": "5"})
 
-    async def run(request: Request, smiles: list[str]) -> list[NameResult] | JSONResponse:
+    async def run[R](
+        request: Request,
+        call: Callable[[], Awaitable[list[R]]],
+        record: Callable[[list[R], int], None],
+    ) -> list[R] | JSONResponse:
+        """Run `call` (a batch for the one process) behind the gate and map its failures; `record`
+        gets the results and the milliseconds the call took (the wait for the slot not counted)."""
         if not gate.try_enter():
             return busy_response()
         try:
@@ -215,7 +271,7 @@ def create_app(namer: Namer, limits: Limits | None = None) -> FastAPI:
                     return JSONResponse({"detail": "client disconnected"}, status_code=499)
                 start = time.monotonic()
                 try:
-                    results = await namer.name_many(smiles)
+                    results = await call()
                 except EngineUnavailable:
                     log.error("naming engine unavailable")
                     return JSONResponse(
@@ -229,31 +285,48 @@ def create_app(namer: Namer, limits: Limits | None = None) -> FastAPI:
                     return JSONResponse(
                         {"detail": "naming failed", "error_id": error_id}, status_code=500
                     )
-                if any(r.name is not None and r.verified == "opsin" for r in results):
-                    # A name that OPSIN read back in full shows the engine works, as the selftest
-                    # does. A decline, a timeout or a name checked another way does not: they
-                    # would keep readiness green while the selftest fails.
-                    ready["at"] = time.monotonic()
-                log.info(
-                    "named",
-                    extra={
-                        "structures": len(results),
-                        "named": sum(r.name is not None for r in results),
-                        "declined": sum(r.name is None for r in results),
-                        "timeouts": sum(r.reason == TIMEOUT_REASON for r in results),
-                        "ms": round((time.monotonic() - start) * 1000),
-                    },
-                )
+                record(results, round((time.monotonic() - start) * 1000))
                 return results
             finally:
                 gate.semaphore.release()
         finally:
             gate.leave()
 
+    def record_names(results: list[NameResult], ms: int) -> None:
+        if any(r.name is not None and r.verified == "opsin" for r in results):
+            # A name that OPSIN read back in full shows the engine works, as the selftest does. A
+            # decline, a timeout or a name checked another way does not: they would keep readiness
+            # green while the selftest fails.
+            ready["names"] = time.monotonic()
+        log.info(
+            "named",
+            extra={
+                "structures": len(results),
+                "named": sum(r.name is not None for r in results),
+                "declined": sum(r.name is None for r in results),
+                "timeouts": sum(r.reason == TIMEOUT_REASON for r in results),
+                "ms": ms,
+            },
+        )
+
+    def record_cdk(results: list[CdkResult], ms: int) -> None:
+        if any(r.molfile is not None for r in results):
+            ready["cdk"] = time.monotonic()  # a molblock shows CDK works; a decline shows nothing
+        log.info(
+            "cdk",
+            extra={
+                "structures": len(results),
+                "laid_out": sum(r.molfile is not None for r in results),
+                "declined": sum(r.molfile is None for r in results),
+                "timeouts": sum(r.reason == TIMEOUT_REASON for r in results),
+                "ms": ms,
+            },
+        )
+
     @app.post("/name", response_model=NameBody)
     async def name(request: Request) -> Any:
         body = await _read_json(request, NameRequest, limits.max_body_bytes)
-        outcome = await run(request, [body.smiles])
+        outcome = await run(request, lambda: namer.name_many([body.smiles]), record_names)
         if isinstance(outcome, JSONResponse):
             return outcome
         if outcome[0].reason == INVALID_SMILES_REASON:
@@ -273,7 +346,17 @@ def create_app(namer: Namer, limits: Limits | None = None) -> FastAPI:
     @app.post("/names", response_model=NamesBody)
     async def names(request: Request) -> Any:
         body = await _read_json(request, NamesRequest, limits.max_body_bytes)
-        outcome = await run(request, body.smiles)
+        outcome = await run(request, lambda: namer.name_many(body.smiles), record_names)
+        if isinstance(outcome, JSONResponse):
+            return outcome
+        return {"results": [r.as_dict() for r in outcome]}
+
+    @app.post("/cdk", response_model=CdkResultsBody)
+    async def cdk(request: Request) -> Any:
+        # Same request rules as /names: 1 to 20 SMILES, each checked the same way. A SMILES CDK
+        # cannot read is that entry's decline (`invalid_smiles`), never a 422 or a failed batch.
+        body = await _read_json(request, NamesRequest, limits.max_body_bytes)
+        outcome = await run(request, lambda: namer.cdk_many(body.smiles), record_cdk)
         if isinstance(outcome, JSONResponse):
             return outcome
         return {"results": [r.as_dict() for r in outcome]}

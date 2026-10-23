@@ -15,7 +15,7 @@ with its own networks and volumes, and publishes one port: `127.0.0.1:8090`.
 | `compose.yaml` | The project: redis, seg, cls, ocsr (replicated), chem, api, worker, sweep, edge, and `worker-fast` (the fast lane, part of the default start) |
 | `.env.example` | Every setting a deployment sets (copy to `deploy/.env`, which is never committed) |
 | `seg.Dockerfile`, `cls.Dockerfile`, `ocsr.Dockerfile` | TensorFlow 2.15.1 model services, Python 3.11, weights baked in and checked |
-| `chem.Dockerfile` | Python 3.12 + Temurin 21 JRE + Orthonym and its two jars, baked in and checked |
+| `chem.Dockerfile` | Python 3.12 + Temurin 21 JRE + Orthonym, its two jars and the CDK 2.8 jar (the layout fallback), baked in and checked |
 | `api.Dockerfile` | Python 3.12; one image for the API, the arq worker and the sweep |
 | `web.Dockerfile` | Node 24 build of the React app, then nginx with the app and the edge configuration |
 | `*.Dockerfile.dockerignore` | The build context of each image (BuildKit reads these next to the Dockerfile): an allow-list |
@@ -78,15 +78,19 @@ are never pulled (`pull_policy: never`): there is no registry namespace somebody
   files; not yet with `docker build`. Sources and evidence are in the comments of `SHA256SUMS`: the seg
   file's MD5 equals the one Zenodo publishes, both ocsr zips' MD5 and SHA-256 equal Zenodo's and
   `services/ocsr/README.md`'s, the extracted files equal the legacy archive and the files the ocsr
-  service's own download made, and the chem jars' hashes are the ones Orthonym pins and
-  `services/chem/README.md` lists (a download from the GitHub releases verified against them).
+  service's own download made, and the chem jars' hashes are the ones Orthonym pins (OPSIN, centres) and
+  `services/chem/README.md` lists (a download from the GitHub releases verified against them); the third
+  chem jar, `cdk-2.8.jar` (CDK 2.8, the fallback of D4), is the file legacy ships, and a fresh https download of
+  the `cdk-2.8` release asset of github.com/cdk/cdk has the same SHA-256 and size.
 * **ocsr bakes BOTH DECIMER models (owner decision D15).** `import DECIMER` loads the printed and the
   hand-drawn model and would download a missing one at start-up, so both are in the image (about 650 MB).
   The hand-drawn one is never used by the service and costs 1.9 GB of memory and 26 s of start-up: that is
   why ocsr's limit is **6 GB** and its health check waits (**start period 180 s**, probes every 5 s during
   start-up, every 120 s afterwards; start-up is about 50 s). Reopen only if memory gets tight on the VM
   (then make the hand-drawn load lazy upstream in DECIMER).
-* **chem (services/chem).** `CHEM_JARS_DIR=/opt/orthonym/jars`; the jars are made world-readable (Orthonym
+* **chem (services/chem).** `CHEM_JARS_DIR=/opt/orthonym/jars` holds three jars (OPSIN, centres and
+  `cdk-2.8.jar`, all root-owned and read-only for the service user; the service re-checks all three against
+  their hashes before it starts and never downloads one); the jars are made world-readable (Orthonym
   writes them 0600) and read as uid 10001 at build time; `ORTHONYM_JVM_XMX=512m` is the heap cap
   (an explicit `-Xmx` wins over `-XX:MaxRAMPercentage`, so the image sets no `JAVA_TOOL_OPTIONS`);
   none of `ORTHONYM_ALLOW_REDUCED`, `ORTHONYM_OPSIN_JAR`, `ORTHONYM_CENTRES_JAR`,
@@ -452,11 +456,11 @@ cd /opt/decimer
 DC="docker compose -p decimer-next -f deploy/compose.yaml --env-file deploy/.env"
 ```
 
-**1. Weights and jars** (about 650 MB for ocsr, 270 MB for seg, 16 MB for chem; `--zenodo` downloads seg and
+**1. Weights and jars** (about 650 MB for ocsr, 270 MB for seg, 64 MB for chem; `--zenodo` downloads seg and
 ocsr instead of using the archive; downloads are https only):
 
 ```bash
-deploy/weights/fetch.sh seg ocsr chem   # archive for seg and DECIMER_model, Zenodo for the hand-drawn model, GitHub for the jars
+deploy/weights/fetch.sh seg ocsr chem   # archive for seg and DECIMER_model, Zenodo for the hand-drawn model, GitHub for the three jars
 # cls: nothing to fetch.
 ```
 

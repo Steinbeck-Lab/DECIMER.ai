@@ -1,7 +1,8 @@
-"""The engine that runs inside the naming process: Orthonym's `valid` tier, labelled.
+"""The engine that runs inside the naming process: Orthonym's `valid` tier, labelled, and CDK.
 
 Nothing here is imported by the HTTP process. Orthonym (and RDKit, and the JVM it starts through
 JPype) are imported lazily, so importing this module is cheap and the parent never pays for them.
+CDK (`cdk.py`, the D4 fallback) runs in the same JVM, which Orthonym starts.
 """
 
 from __future__ import annotations
@@ -17,7 +18,14 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from .results import INVALID_SMILES_REASON, TIMEOUT_REASON, NameResult, result_from_row
+from .cdk import CDK_JAR_NAME, CDK_JAR_SHA256, CdkLayout
+from .results import (
+    INVALID_SMILES_REASON,
+    TIMEOUT_REASON,
+    CdkResult,
+    NameResult,
+    result_from_row,
+)
 from .settings import Settings
 
 log = logging.getLogger("decimer_chem")
@@ -153,6 +161,37 @@ def check_jars(directory: Path, *, allow_download: bool) -> dict[str, str]:
     return found
 
 
+def check_cdk_jar(directory: Path) -> str:
+    """Check that the CDK 2.8 jar is in `directory` with the pinned SHA-256; return its SHA-256.
+
+    Same rules as `check_jars`, with one difference: the service never downloads this jar, whatever
+    `CHEM_ALLOW_JAR_DOWNLOAD` says (`scripts/fetch_jars.py` and `deploy/weights/fetch.sh` put it
+    on disk). A missing jar, a jar the service cannot read and a jar with another hash are each a
+    RuntimeError that names the path.
+    """
+    path = directory / CDK_JAR_NAME
+    try:
+        if not path.is_file():
+            raise RuntimeError(
+                f"the CDK jar is not at {path}. Put {CDK_JAR_NAME} in {directory} (CHEM_JARS_DIR; "
+                "the image bakes it in; scripts/fetch_jars.py fetches it for development). The "
+                "service never downloads it."
+            )
+        actual = _sha256(path)
+    except PermissionError as exc:
+        raise RuntimeError(
+            f"cannot read {path}: {exc.strerror}. The user that runs the service must be able to "
+            f"read it: chmod 0644 {path}, or chown it to that user."
+        ) from exc
+    if actual != CDK_JAR_SHA256:
+        raise RuntimeError(
+            f"{path} has SHA-256 {actual}, but the service pins the CDK jar to {CDK_JAR_SHA256}. "
+            "Replace it with cdk-2.8.jar from the official release "
+            "(https://github.com/cdk/cdk/releases/tag/cdk-2.8)."
+        )
+    return actual
+
+
 def _runs_java(args: object) -> bool:
     if isinstance(args, str):
         try:
@@ -204,9 +243,12 @@ def refuse_java_subprocess() -> Callable[[], None]:
 class OrthonymEngine:
     """Orthonym at its `valid` tier, one structure at a time, on the calling (main) thread."""
 
-    def __init__(self, settings: Settings, namer: Any | None = None) -> None:
+    def __init__(
+        self, settings: Settings, namer: Any | None = None, cdk: CdkLayout | None = None
+    ) -> None:
         self._settings = settings
         self._namer: Any = namer
+        self._cdk = cdk
         #: Set when a timeout left Orthonym's process-wide state dirty: the supervisor then
         #: replaces this process after delivering the answer.
         self.recycle_requested = False
@@ -224,6 +266,7 @@ class OrthonymEngine:
         refuse_java_subprocess()
         directory = apply_jar_policy(self._settings)
         hashes = check_jars(directory, allow_download=self._settings.allow_jar_download)
+        hashes["cdk"] = check_cdk_jar(directory)  # before the JVM starts, like the other two
         from rdkit import rdBase
 
         # Orthonym probes many candidate names; RDKit writes a "Can't kekulize" line to stderr for
@@ -241,11 +284,20 @@ class OrthonymEngine:
                 "call (or none at all). Check that a Java 11+ runtime is installed and JAVA_HOME "
                 "points at it."
             )
+        # CDK is opened in a class loader of its own once Orthonym's JVM is up (see cdk.py), and
+        # warmed up here, so no request pays for loading its classes and layout templates.
+        if self._cdk is None:
+            self._cdk = CdkLayout(directory / CDK_JAR_NAME)
+        cdk_info = self._cdk.start()
+        warmed = self._cdk.molfile(_WARMUP_SMILES, self._settings.startup_timeout_s)
+        if warmed.molfile is None:
+            raise RuntimeError(f"CDK could not lay out caffeine at start (reason: {warmed.reason})")
         import orthonym
 
         return {
             "orthonym": orthonym.__version__,
             "tier": "valid",
+            **cdk_info,
             "java": str(jpype.java.lang.System.getProperty("java.version")),
             "jars": hashes,
             "jar_dir": str(directory),
@@ -288,3 +340,13 @@ class OrthonymEngine:
             clear_leaked_naming_state()
             raise
         return result_from_row(row)
+
+    def cdk(self, smiles: str, timeout_s: float) -> CdkResult:
+        """The V2000 molblock CDK lays out for `smiles`, or a decline; see `CdkLayout.molfile`."""
+        if self._cdk is None:
+            raise RuntimeError("the engine was not started")
+        try:
+            return self._cdk.molfile(smiles, timeout_s)
+        finally:
+            if self._cdk.needs_new_process:
+                self.recycle_requested = True  # a Java thread is still running: replace us

@@ -11,21 +11,23 @@ from typing import Any
 
 import httpx
 import pytest
-from fakes import FakeNamer, named
+from fakes import FakeNamer, fake_molfile, molfile_for, named
 from fastapi import FastAPI
 
 from decimer_chem.app import (
     CAFFEINE_NAME,
     CAFFEINE_SMILES,
+    CDK_SELFTEST_COUNTS,
     LIMITS,
     Limits,
     build_app,
     create_app,
 )
-from decimer_chem.results import TIMEOUT_REASON, NameResult
+from decimer_chem.results import TIMEOUT_REASON, CdkResult, NameResult
 from decimer_chem.supervisor import EngineUnavailable, ProcessNamer
 
 KEYS = {"name", "tier", "verified", "reason"}
+CDK_KEYS = {"molfile", "reason"}
 
 
 @pytest.fixture
@@ -603,3 +605,327 @@ def test_build_app_serves_through_a_process_namer_by_default() -> None:
     app = build_app()
     assert app.title == "decimer-chem"
     assert isinstance(app.state.namer, ProcessNamer)
+
+
+# --- /cdk (owner decision D4, TODO) -----------------------------------------------------
+
+
+def declines(reason: str, only: str | None = None) -> Any:
+    return lambda s: CdkResult(None, reason) if only in (None, s) else molfile_for(s)
+
+
+async def test_cdk_returns_exactly_two_keys_per_result_in_request_order(
+    namer: FakeNamer, client: httpx.AsyncClient
+) -> None:
+    smiles = ["CC(C)(C)(C)C", "CCN", "CCC", "CO"]
+    r = await client.post("/cdk", json={"smiles": smiles})
+    assert r.status_code == 200
+    assert set(r.json()) == {"results"}
+    results = r.json()["results"]
+    assert all(set(x) == CDK_KEYS for x in results)
+    # the fake puts each SMILES in the title line of its molblock: order is the request's
+    assert [x["molfile"].splitlines()[0] for x in results] == smiles
+    assert [x["reason"] for x in results] == [None] * 4
+    assert namer.cdk_calls[-1] == smiles  # one call for the whole batch
+    assert namer.calls == [
+        [CAFFEINE_SMILES]
+    ]  # and /cdk never names (only the startup selftest did)
+
+
+async def test_cdk_mixes_molblocks_declines_and_timeouts_in_place(
+    namer: FakeNamer, client: httpx.AsyncClient
+) -> None:
+    def rule(s: str) -> CdkResult:
+        return {
+            "bad": CdkResult(None, "invalid_smiles"),
+            "slow": CdkResult(None, TIMEOUT_REASON),
+            "big": CdkResult(None, "too_large"),
+            "odd": CdkResult(None, "layout_failed"),
+        }.get(s) or molfile_for(s)
+
+    namer.cdk_rule = rule
+    r = await client.post("/cdk", json={"smiles": ["a", "bad", "slow", "big", "odd", "b"]})
+    assert r.status_code == 200  # a decline, even a timeout, is a 200 with that entry's reason
+    results = r.json()["results"]
+    assert [x["reason"] for x in results] == [
+        None,
+        "invalid_smiles",
+        "timeout",
+        "too_large",
+        "layout_failed",
+        None,
+    ]
+    assert [x["molfile"] is None for x in results] == [False, True, True, True, True, False]
+
+
+async def test_a_smiles_cdk_cannot_read_is_that_entrys_decline_never_a_422(
+    namer: FakeNamer, client: httpx.AsyncClient
+) -> None:
+    namer.cdk_rule = declines("invalid_smiles")
+    r = await client.post("/cdk", json={"smiles": ["C1CC"]})
+    assert r.status_code == 200
+    assert r.json() == {"results": [{"molfile": None, "reason": "invalid_smiles"}]}
+
+
+async def test_cdk_accepts_twenty_and_refuses_twenty_one(
+    namer: FakeNamer, client: httpx.AsyncClient
+) -> None:
+    assert (await client.post("/cdk", json={"smiles": ["C"] * 20})).status_code == 200
+    before = len(namer.cdk_calls)
+    assert (await client.post("/cdk", json={"smiles": ["C"] * 21})).status_code == 422
+    assert len(namer.cdk_calls) == before
+
+
+async def test_a_smiles_of_exactly_2000_characters_is_accepted_for_cdk_and_2001_is_not(
+    namer: FakeNamer, client: httpx.AsyncClient
+) -> None:
+    assert (await client.post("/cdk", json={"smiles": ["C" * 2000]})).status_code == 200
+    before = len(namer.cdk_calls)
+    assert (await client.post("/cdk", json={"smiles": ["C" * 2001]})).status_code == 422
+    assert len(namer.cdk_calls) == before
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {},
+        {"smiles": []},
+        {"smiles": "CCO"},
+        {"smiles": ["CCO", ""]},
+        {"smiles": ["CCO", "C C"]},
+        {"smiles": ["CCO", "C\tC"]},
+        {"smiles": ["CCO", 3]},
+        {"smiles": ["CÄO"]},
+        {"smiles": ["CCO"], "extra": 1},
+        {"smiles": None},
+    ],
+    ids=[
+        "missing",
+        "empty-list",
+        "string",
+        "empty-item",
+        "inner-space",
+        "inner-tab",
+        "number",
+        "non-ascii",
+        "extra-field",
+        "null",
+    ],
+)
+async def test_cdk_422_on_bad_input_with_the_same_shape_as_names(
+    namer: FakeNamer, client: httpx.AsyncClient, body: dict[str, object]
+) -> None:
+    before = len(namer.cdk_calls)
+    r = await client.post("/cdk", json=body)
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    assert isinstance(detail, list) and detail
+    assert all({"loc", "msg", "type"} <= set(entry) for entry in detail)
+    assert all(entry["loc"][0] == "body" for entry in detail)
+    assert len(namer.cdk_calls) == before
+
+
+@pytest.mark.parametrize("raw", [b"", b"{", b"[1,2", b"not json", b"\xff\xfe"])
+async def test_cdk_422_on_a_body_that_is_not_json(client: httpx.AsyncClient, raw: bytes) -> None:
+    r = await client.post("/cdk", content=raw, headers={"content-type": "application/json"})
+    assert r.status_code == 422
+
+
+async def test_a_cdk_body_over_the_size_limit_is_413_and_not_read_into_the_engine(
+    namer: FakeNamer,
+) -> None:
+    async for client in client_for(namer, Limits(max_body_bytes=64)):
+        before = len(namer.cdk_calls)
+        r = await client.post("/cdk", json={"smiles": ["C" * 100]})
+        assert r.status_code == 413
+        assert len(namer.cdk_calls) == before
+
+
+async def test_a_chunked_cdk_body_over_the_limit_is_413_too(namer: FakeNamer) -> None:
+    async def body() -> AsyncIterator[bytes]:
+        for _ in range(10):
+            yield b'{"smiles": ["' + b"C" * 20 + b'"]}'
+
+    async for client in client_for(namer, Limits(max_body_bytes=64)):
+        before = len(namer.cdk_calls)
+        r = await client.post("/cdk", content=body(), headers={"content-type": "application/json"})
+        assert r.status_code == 413
+        assert len(namer.cdk_calls) == before
+
+
+async def test_an_unavailable_engine_is_a_503_with_retry_after_for_cdk_too(
+    namer: FakeNamer, client: httpx.AsyncClient
+) -> None:
+    namer.error = EngineUnavailable("naming process could not start")
+    r = await client.post("/cdk", json={"smiles": ["CCO", "CCN"]})
+    assert r.status_code == 503
+    assert r.headers["retry-after"] == "5"
+    assert r.json() == {"detail": "naming engine unavailable"}
+
+
+async def test_an_unexpected_error_in_cdk_is_a_500_with_an_error_id_and_no_internals(
+    namer: FakeNamer, client: httpx.AsyncClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    namer.error = RuntimeError("jvm exploded: secret-path CC(C)(C)(C)C")
+    with caplog.at_level(logging.ERROR, logger="decimer_chem"):
+        r = await client.post("/cdk", json={"smiles": ["CC(C)(C)(C)C"]})
+    assert r.status_code == 500
+    body = r.json()
+    assert set(body) == {"detail", "error_id"}
+    assert "secret-path" not in r.text
+    assert "secret-path" not in " ".join(str(rec.__dict__) for rec in caplog.records)
+    assert "CC(C)(C)(C)C" not in " ".join(str(rec.__dict__) for rec in caplog.records)
+    namer.error = None
+    assert (await client.post("/cdk", json={"smiles": ["CCO"]})).status_code == 200  # still up
+
+
+async def test_cdk_and_names_share_the_one_slot_and_the_503_when_it_is_full(
+    namer: FakeNamer,
+) -> None:
+    async for client in client_for(namer, Limits(max_concurrency=1, max_waiting=1)):
+        namer.hold = asyncio.Event()
+        namer.entered.clear()
+        first = asyncio.create_task(client.post("/names", json={"smiles": ["C"]}))
+        await asyncio.wait_for(namer.entered.wait(), 5)
+        second = asyncio.create_task(client.post("/cdk", json={"smiles": ["CC"]}))
+        await asyncio.sleep(0.05)  # the /cdk call is now waiting for the slot
+        third = await asyncio.wait_for(client.post("/cdk", json={"smiles": ["CCC"]}), 5)
+        assert third.status_code == 503
+        assert third.headers["retry-after"] == "5"
+        assert third.json() == {"detail": "busy"}
+        namer.hold.set()
+        assert (await first).status_code == 200
+        assert (await second).status_code == 200  # it waited its turn and was served
+        assert ["CCC"] not in namer.cdk_calls
+
+
+async def test_a_cdk_request_logs_counts_and_time_but_never_the_smiles(
+    namer: FakeNamer, client: httpx.AsyncClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    namer.cdk_rule = lambda s: (
+        CdkResult(None, "invalid_smiles") if s == "NC(C)(C)(C)C" else molfile_for(s)
+    )
+    with caplog.at_level(logging.INFO, logger="decimer_chem"):
+        r = await client.post("/cdk", json={"smiles": ["CC(C)(C)(C)C", "NC(C)(C)(C)C"]})
+    rec = next(rec for rec in caplog.records if rec.getMessage() == "cdk")
+    assert (rec.structures, rec.laid_out, rec.declined, rec.timeouts) == (2, 1, 1, 0)  # type: ignore[attr-defined]
+    assert rec.ms >= 0  # type: ignore[attr-defined]
+    logged = json.dumps([x.__dict__ for x in caplog.records], default=str)
+    assert "NC(C)(C)(C)C" not in logged and "CC(C)(C)(C)C" not in logged
+    # the molblock goes to the caller only: not into the log either
+    assert "V2000" not in logged
+    assert r.status_code == 200
+
+
+# --- the selftest covers CDK ---------------------------------------------------------------------
+
+
+async def test_startup_has_cdk_lay_caffeine_out_before_serving(namer: FakeNamer) -> None:
+    async for _ in client_for(namer):
+        assert namer.cdk_calls == [[CAFFEINE_SMILES]]
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        CdkResult(None, "invalid_smiles"),
+        CdkResult(None, "timeout"),
+        CdkResult(fake_molfile(3, 2), None),  # a molblock, but not caffeine's
+        CdkResult(fake_molfile(14, 14), None),  # right atoms, wrong bonds
+        CdkResult(fake_molfile(15, 15), None),
+        CdkResult("this is not a molblock", None),
+    ],
+    ids=["declined", "timeout", "wrong-size", "wrong-bonds", "wrong-atoms", "not-a-molblock"],
+)
+async def test_startup_fails_when_cdk_cannot_lay_caffeine_out(
+    namer: FakeNamer, answer: CdkResult
+) -> None:
+    namer.cdk_rule = lambda s: answer
+    app = create_app(namer, Limits())
+    with pytest.raises(RuntimeError, match="selftest failed: CDK"):
+        async with app.router.lifespan_context(app):
+            pytest.fail("the service must not start")
+    assert namer.stopped
+
+
+async def test_the_selftest_counts_are_the_ones_of_caffeine() -> None:
+    assert CDK_SELFTEST_COUNTS == (14, 15)  # C8H10N4O2: 14 heavy atoms, 13 + 2 rings = 15 bonds
+
+
+async def test_readyz_runs_both_selftests_again_once_the_pass_is_old(namer: FakeNamer) -> None:
+    async for client in client_for(namer, Limits(ready_cache_seconds=0.0)):
+        names, cdk = len(namer.calls), len(namer.cdk_calls)
+        assert (await client.get("/readyz")).status_code == 200
+        assert namer.calls[names:] == [[CAFFEINE_SMILES]]
+        assert namer.cdk_calls[cdk:] == [[CAFFEINE_SMILES]]
+
+
+async def test_readyz_503_when_only_cdk_has_stopped_working(namer: FakeNamer) -> None:
+    async for client in client_for(namer, Limits(ready_cache_seconds=0.0)):
+        namer.cdk_rule = declines("engine_error")  # the names are fine
+        r = await client.get("/readyz")
+        assert r.status_code == 503
+        assert "selftest failed: CDK" in r.json()["detail"]
+        namer.cdk_rule = molfile_for  # and it recovers
+        assert (await client.get("/readyz")).status_code == 200
+
+
+async def test_readyz_503_when_only_the_names_have_stopped_working(namer: FakeNamer) -> None:
+    async for client in client_for(namer, Limits(ready_cache_seconds=0.0)):
+        namer.rule = lambda s: NameResult(None, "abstain", None, "UNNAMEABLE")
+        assert (await client.get("/readyz")).status_code == 503
+
+
+async def test_good_names_do_not_keep_readyz_green_while_cdk_is_broken(namer: FakeNamer) -> None:
+    async for client in client_for(namer, Limits(ready_cache_seconds=0.3)):
+        namer.cdk_rule = declines("engine_error")
+        await asyncio.sleep(0.4)  # the startup pass is old now
+        for _ in range(3):  # names keep succeeding, each with a full OPSIN read-back
+            assert (await client.post("/name", json={"smiles": "CCO"})).status_code == 200
+        assert (
+            await client.get("/readyz")
+        ).status_code == 503  # the pass of one is not the other's
+
+
+async def test_good_molblocks_do_not_keep_readyz_green_while_the_names_are_broken(
+    namer: FakeNamer,
+) -> None:
+    async for client in client_for(namer, Limits(ready_cache_seconds=0.3)):
+        namer.rule = lambda s: NameResult(None, "abstain", None, "UNNAMEABLE")
+        await asyncio.sleep(0.4)
+        for _ in range(3):
+            assert (await client.post("/cdk", json={"smiles": ["CCO"]})).status_code == 200
+        assert (await client.get("/readyz")).status_code == 503
+
+
+async def test_steady_cdk_declines_do_not_keep_readyz_green(namer: FakeNamer) -> None:
+    async for client in client_for(namer, Limits(ready_cache_seconds=0.3)):
+        namer.cdk_rule = declines("timeout")
+        await asyncio.sleep(0.4)
+        for _ in range(3):  # answered, but only with declines
+            assert (await client.post("/cdk", json={"smiles": ["CCO"]})).status_code == 200
+        assert (await client.get("/readyz")).status_code == 503
+
+
+async def test_a_molblock_does_refresh_the_cdk_half_of_readyz(namer: FakeNamer) -> None:
+    async for client in client_for(namer, Limits(ready_cache_seconds=0.3)):
+        await asyncio.sleep(0.4)
+        assert (await client.post("/name", json={"smiles": "CCO"})).status_code == 200
+        assert (await client.post("/cdk", json={"smiles": ["CCO"]})).status_code == 200
+        names, cdk = len(namer.calls), len(namer.cdk_calls)
+        assert (await client.get("/readyz")).status_code == 200
+        assert (len(namer.calls), len(namer.cdk_calls)) == (names, cdk)  # no selftest was needed
+
+
+async def test_readyz_does_not_queue_behind_a_running_cdk_batch(namer: FakeNamer) -> None:
+    async for client in client_for(namer, Limits(ready_cache_seconds=0.0)):
+        namer.hold = asyncio.Event()
+        namer.entered.clear()
+        running = asyncio.create_task(client.post("/cdk", json={"smiles": ["C", "CC"]}))
+        await asyncio.wait_for(namer.entered.wait(), 5)
+        calls = len(namer.cdk_calls)
+        r = await asyncio.wait_for(client.get("/readyz"), 2)
+        assert r.status_code == 200
+        assert len(namer.cdk_calls) == calls  # it did not run a selftest behind the batch
+        namer.hold.set()
+        await running
