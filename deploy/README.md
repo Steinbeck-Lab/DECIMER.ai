@@ -309,6 +309,12 @@ hash routes. HSTS is left to the TLS terminator (commented line in the snippet).
 
 ## Replicas, threads and memory
 
+> **Amended 2026-10-23:** OCSR is the bottleneck (P5-03 load test, `golden/runs/measure-20261023`), so the
+> defaults are now **2 seg / 3 ocsr / 2 cls beside legacy** and **6 seg / 4 ocsr / 3 cls after cutover**. One more ocsr
+> replica adds about 4.4 GB resident and 6 GB of limit to the tables below, which still show the earlier 2/2/2 and
+> 6/3/3 layouts: beside legacy about 22 GB resident for the stack, after cutover about 36 GB. Measured beside legacy
+> with 3 ocsr: the host kept about 20 GB available.
+
 Legacy runs 6 segmentation, 3 OCSR and 3 classifier socket servers in one container (about 22 GB). The new
 stack must never be slower or more blocking than that, so the model services are **replicated** (counts
 from `deploy/.env`, chem always 1), each replica with a **fixed thread count**, so that all replicas together

@@ -18,8 +18,8 @@
 # editing this file. Values given under `environment:` win over env_file.
 #
 # Model-service replicas. seg, ocsr and cls run as N identical containers each, N from deploy/.env
-# (SEG_REPLICAS, OCSR_REPLICAS, CLS_REPLICAS; chem is always 1): 2/2/2 while legacy runs on the same VM
-# (the default), 6/3/3 after cutover (legacy's own layout). `deploy.replicas` is how: Compose creates N
+# (SEG_REPLICAS, OCSR_REPLICAS, CLS_REPLICAS; chem is always 1): 2/3/2 while legacy runs on the same VM
+# (the default), 6/4/3 after cutover (legacy's layout plus one ocsr; D18 amended 2026-10-23). `deploy.replicas` is how: Compose creates N
 # containers (decimer-next-seg-1 ... -N) and the SERVICE NAME resolves, on the `models` network, to the
 # addresses of all of them (Docker's embedded DNS answers with every replica's A record, in rotating
 # order). That is the whole discovery contract for the worker (TODO, done), and nothing else is promised:
@@ -336,7 +336,7 @@ services:
       args:
         OPENCV_GUI_LIBS: ${OPENCV_GUI_LIBS:-0}
     deploy:
-      replicas: ${OCSR_REPLICAS:-2}
+      replicas: ${OCSR_REPLICAS:-3}
     environment:
       TF_NUM_INTRAOP_THREADS: ${OCSR_TF_INTRAOP_THREADS:-2}
       TF_NUM_INTEROP_THREADS: ${OCSR_TF_INTEROP_THREADS:-1}
