@@ -16,6 +16,7 @@ from decimer_golden.score import (
 CAFFEINE = "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"
 CAFFEINE_KEY = "RYYVLZVUVIJVGH-UHFFFAOYSA-N"
 BENZENE = "c1ccccc1"
+GOLDEN = Path(__file__).resolve().parents[1]
 
 
 def label(number: str, smiles: str) -> Label:
@@ -133,7 +134,7 @@ def test_any_other_valid_value_is_an_error_not_a_silent_false(tmp_path: Path, te
 
 
 def test_legacy_runs_still_read_and_score() -> None:
-    run = Path(__file__).resolve().parents[1] / "runs" / "legacy-20261022-140954"
+    run = GOLDEN / "runs" / "legacy-20261022-140954"
     predictions = read_predictions(run / "predictions.csv")
     assert len(predictions) == 32
     legacy_only = (None, None, None, "", "")
@@ -145,9 +146,6 @@ def test_legacy_runs_still_read_and_score() -> None:
     assert s.dropped == 12
     assert s.invalid == 1
     assert s.refused == 0
-
-
-GOLDEN = Path(__file__).resolve().parents[1]
 
 
 def test_the_committed_legacy_run_scores_exactly_as_the_baseline_against_the_real_labels() -> None:

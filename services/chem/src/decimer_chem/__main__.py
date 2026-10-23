@@ -6,23 +6,13 @@ which imports this module again in the child, and the child needs none of the we
 
 from __future__ import annotations
 
-import os
-
 
 def main() -> None:
-    import uvicorn
-    from decimer_service.logs import configure
+    from decimer_service.server import serve
 
     from .app import build_app
 
-    configure()
-    # log_config=None: leave uvicorn's loggers to propagate into the JSON handler set above.
-    uvicorn.run(
-        build_app(),
-        host="0.0.0.0",  # noqa: S104  # inside the container; compose decides who can reach it
-        port=int(os.environ.get("PORT", "8004")),
-        log_config=None,
-    )
+    serve(build_app, default_port=8004)
 
 
 if __name__ == "__main__":
