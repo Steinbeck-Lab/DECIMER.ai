@@ -1,0 +1,175 @@
+# decimer-front-door
+# THE PUBLIC FRONT DOOR OF decimer.ai AFTER THE CUTOVER (TODO, P5-07; D22: no /beta, one switch).
+# Do not edit the rendered copy: edit this template and render it (deploy/frontdoor/render.sh); the first
+# line above is how deploy/cutover/*.sh tell this file from legacy's default.conf.
+#
+# WHERE THIS RUNS AND HOW TLS WORKS (read from the VM, 2026-10-23)
+#   Public https://decimer.ai terminates at the campus proxy (the university's reverse proxy, which holds the
+#   certificate). It forwards plain http to this VM, host port 8080. Nothing on the VM holds a certificate or
+#   listens on 80/443 (no /etc/letsencrypt, no host nginx; `ss -ltn` shows ssh, 8080, 127.0.0.1:8090 and 9090). Port 8080 is
+#   published by legacy's nginx container (decimer_web-nginx-1, nginx 1.27.0, container port 80). Cutover does
+#   not move any port and does not touch the proxy: this file REPLACES legacy's conf.d/default.conf inside that
+#   same container, which then relays everything to the new stack's edge over the docker network
+#   decimer-next_public (`docker network connect`, done by deploy/cutover/cutover.sh). After legacy is retired
+#   the same file runs in deploy/frontdoor/compose.yaml and takes over host port 8080.
+#
+#   client -- https --> campus proxy -- http --> VM:8080 = THIS FILE -- http --> edge:8080 -- http --> api:8000
+#
+# WHAT THIS FILE DOES NOT DO, ON PURPOSE
+#   * No security headers, no CSP, no cache headers of its own: the edge sets them (deploy/nginx/security-headers.conf
+#     and edge.conf: the CSP with 'wasm-unsafe-eval', `no-cache` for index.html, a year `immutable` for /assets/) and
+#     proxy_pass hands them on untouched. Adding any here would double or contradict them.
+#   * No compression (`gzip off`): the edge compresses (gzip_static, application/wasm included); a second layer
+#     would only cost CPU and could not make 11.8 MB of WASM smaller than the edge already does.
+#   * No HSTS: whoever terminates TLS (the campus proxy) owns it.
+#   * No normal access log. Job ids in /api/ URLs are bearer tokens and legacy's http-level access_log would record the URI and the
+#     client address. The edge keeps the scrubbed log (`docker logs decimer-next-edge-1`). What this file logs instead is ONE short
+#     line for a refusal or a failure only: `<time> <status> <request_time> <upstream_status>` for status 429 or 5xx (a 502/503/504
+#     of the front door, a 413, the edge's 429s), to stderr, which is legacy's docker log. No address, no URI, no header: a line
+#     cannot identify anyone, so it needs no retention rule beyond docker's rotation.
+#   * No client address in an error log either: `error_log stderr crit`. nginx's error level writes "client: <address>, request:
+#     <line with the job id>" for every failed proxying and every refused upload, into a docker json-file log that nothing ages out
+#     (the edge's own error log is rotated daily and deleted after seven days, deploy/README.md, "Error log"). At crit nothing
+#     request-specific is logged, so the seven-day promise holds here too; the one-line access log above says THAT and WHEN
+#     something failed, the edge's log says why. To debug, set `error` here, render, apply, and set `crit` again when done.
+#
+# THE REAL CLIENT ADDRESS (TODO Q3: the proxy's address is still to be confirmed with its owner)
+#   TRUSTED_PROXY_CIDR (deploy/.env: the same variable the edge reads) lists the campus proxy's ADDRESS(ES), never a
+#   client network: every host inside a trusted network can put any address into X-Forwarded-For and so choose the
+#   identity its limits are counted against; /0 is refused. The default is EMPTY, which is safe (nobody can
+#   choose an identity) but means every visitor is "the proxy" to the limits below the edge. Then this file
+#   enforces no limit of its own (a shared per-IP limit would throttle the whole campus) and the cutover script
+#   refuses to apply unless told `--accept-shared-limits`.
+#   With the proxy listed, nginx's realip module sets $remote_addr to the client taken from X-Forwarded-For
+#   (rightmost entry that is not a listed proxy), and this file passes exactly that ONE address on to the edge as
+#   X-Forwarded-For. The edge trusts this container because it sits on the `public` network (PUBLIC_SUBNET), takes
+#   that entry as the client and counts its own per-IP limits (10 r/s API, 12 uploads/min, 2 active jobs in the
+#   API) on it. What the proxy does with a client-supplied X-Forwarded-For (append, replace or send none) decides
+#   whether the client is visible at all: see docs/RUNBOOK.md, "Campus proxy and the client address".
+#
+# LIMITS
+#   The product limits (per-IP rates, upload limits, 413/429 bodies in the API's error shape) live in the edge. The
+#   front door adds only a generous per-real-IP flood limit (30 r/s, burst 100, 40 connections), rendered only when
+#   a proxy is listed. Request bodies are streamed to the edge (`proxy_request_buffering off`): the edge buffers an
+#   upload once, to its disk-backed volume, and decides on it. The body limit here is MAX_UPLOAD_MB + 2, one MB above the
+#   edge's, so the edge's own JSON 413 ("too_large", with the limit in its message) is what a client sees;
+#   anything bigger still gets the same JSON shape from this file.
+#
+# WHY A RESOLVER AND A VARIABLE IN proxy_pass
+#   With a literal host, nginx resolves the name at load time and refuses to START or RELOAD ("host not found in
+#   upstream") whenever the edge container is stopped, being recreated or the network is disconnected. With a variable
+#   the name is looked up per request through docker's resolver, a missing edge is a 502/503 for visitors only, and
+#   rollback (a reload) can never be blocked by the new stack.
+#
+# This file is included inside http { } (conf.d/*.conf), as legacy's default.conf was. Legacy's nginx.conf already
+# sets limit_req_status/limit_conn_status at http level, a duplicate in the same context is an error, so the
+# per-server copies below are inside `server`. Names of zones start with fd_ (legacy has heavy_req, heavy_conn).
+
+log_format fd_failures '$time_iso8601 $status $request_time $upstream_status';
+map $status $fd_log_failure {
+    default 0;
+    429     1;
+    ~^5     1;
+}
+
+# @if proxy@
+limit_req_zone  $binary_remote_addr zone=fd_req:10m rate=30r/s;
+limit_conn_zone $binary_remote_addr zone=fd_conn:10m;
+# @endif@
+
+server {
+    listen 80 default_server;
+    server_name _;
+    server_tokens off;
+    access_log /dev/stderr fd_failures if=$fd_log_failure;
+    error_log stderr crit;
+    gzip off;
+
+    # @if proxy@
+    @SET_REAL_IP_FROM@
+    real_ip_header X-Forwarded-For;
+    real_ip_recursive on;
+    limit_req_status 429;
+    limit_conn_status 429;
+    limit_req_log_level warn;
+    limit_conn_log_level warn;
+    # @endif@
+
+    resolver 127.0.0.11 valid=10s ipv6=off;
+    set $fd_edge @EDGE_ORIGIN@;
+
+    client_header_timeout 15s;
+    client_body_timeout 60s;
+    client_max_body_size @MAX_BODY_MB@m;
+
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    # One entry: the client as established above (or the proxy itself while TRUSTED_PROXY_CIDR is empty).
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_redirect off;
+    proxy_request_buffering off;
+    proxy_connect_timeout 5s;
+    proxy_send_timeout 65s;
+    # Just above the edge's own PROXY_READ_TIMEOUT_SECONDS (+ 5 s): the edge's answer for a slow request
+    # arrives before this one gives up. Legacy's http level says 300 and would otherwise be inherited.
+    proxy_read_timeout @READ_TIMEOUT@s;
+    proxy_buffer_size 16k;
+    proxy_buffers 8 32k;
+    proxy_max_temp_file_size 0;   # stream the export ZIP instead of spooling it to the container's disk
+
+    error_page 413 = @fd_too_large;
+    error_page 429 = @fd_rate_limited;
+    error_page 502 503 504 = @fd_unavailable;
+
+    # The start page: a person who lands here while the edge is down gets a sentence, not JSON.
+    location ~ ^/(?:index\.html)?$ {
+        # @if proxy@
+        limit_req zone=fd_req burst=100 nodelay;
+        limit_conn fd_conn 40;
+        # @endif@
+        error_page 502 503 504 = @fd_unavailable_html;
+        proxy_pass $fd_edge$request_uri;
+    }
+
+    # Everything else: the app's files, /api/, /healthz, /readyz. $request_uri is the request exactly as the
+    # client sent it, so nothing is decoded or rewritten on the way (no header injection through %0d%0a).
+    location / {
+        # @if proxy@
+        limit_req zone=fd_req burst=100 nodelay;
+        limit_conn fd_conn 40;
+        # @endif@
+        proxy_pass $fd_edge$request_uri;
+    }
+
+    # --- errors this file makes itself, in the API's error shape ({"detail":{"code":...,"message":...}}). Errors
+    # that come from the edge or the API pass through untouched (proxy_intercept_errors stays off).
+    location @fd_too_large {
+        default_type application/json;
+        add_header Cache-Control "no-store" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        return 413 '{"detail":{"code":"too_large","message":"The upload is too large. The limit is @MAX_UPLOAD_MB@ MB in total."}}';
+    }
+    location @fd_rate_limited {
+        default_type application/json;
+        add_header Cache-Control "no-store" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Retry-After "5" always;
+        return 429 '{"detail":{"code":"rate_limited","message":"Too many requests. Please wait a few seconds and try again."}}';
+    }
+    location @fd_unavailable {
+        default_type application/json;
+        add_header Cache-Control "no-store" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Retry-After "30" always;
+        return 503 '{"detail":{"code":"unavailable","message":"The service is temporarily unavailable. Please retry in a moment."}}';
+    }
+    location @fd_unavailable_html {
+        default_type text/html;
+        add_header Cache-Control "no-store" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'" always;
+        add_header Retry-After "30" always;
+        return 503 '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>DECIMER.ai</title></head><body style="font-family:system-ui,sans-serif;max-width:32rem;margin:4rem auto;padding:0 1rem"><h1>DECIMER.ai is briefly unavailable</h1><p>Please try again in a minute.</p></body></html>';
+    }
+}

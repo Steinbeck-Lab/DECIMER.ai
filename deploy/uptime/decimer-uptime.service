@@ -1,0 +1,16 @@
+# systemd alternative to cron (docs/RUNBOOK.md, "Uptime check"). Copy to /etc/systemd/system/ (root) or ~/.config/systemd/user/ (a user
+# unit needs `loginctl enable-linger $USER` to run while nobody is logged in; then drop User= and use `systemctl --user`).
+[Unit]
+Description=decimer.ai uptime check
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=decimer
+# BASE_URL, ALERT_CMD, ALERT_EMAIL, HEARTBEAT_URL, ERROR_DASHBOARD_URL: see the header of uptime-check.sh. Mode 0600.
+EnvironmentFile=-/etc/decimer/uptime.env
+ExecStart=/opt/decimer/deploy/uptime/uptime-check.sh
+# Exit 1 means "down": the alert logic already ran; do not mark the unit failed for it.
+SuccessExitStatus=1
+Nice=10
+NoNewPrivileges=true
