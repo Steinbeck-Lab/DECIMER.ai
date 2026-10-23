@@ -22,6 +22,8 @@ One open-access paper with hand-checked labels, used to check scientific output 
 ```bash
 uv run decimer-golden legacy --base-url http://127.0.0.1:8080   # run the paper through the live legacy site
 uv run decimer-golden next --base-url http://127.0.0.1:8090     # run the paper through the new stack's /api
+uv run decimer-golden single-image --crops runs/<run>/crops      # every crop as a pasted image
+uv run decimer-golden multi-image --crops runs/<run>/crops       # crops in groups of 2 and 5
 uv run decimer-golden score runs/<run>/predictions.csv          # score a run against labels.csv
 uv run decimer-golden draft-labels runs/<run>/predictions.csv   # first-pass labels from a run
 ```
@@ -54,9 +56,22 @@ Measures D20 (a job of one pasted image where seg finds exactly one structure co
 
 - `--crops`: the crops of a `next` run (`NN_crop-K.png`). Each is already one seg crop, so the rule should fire on all of them; its label is the one whose `legacy_segment` is `NN`, crops without one (the 3D conformer image) are measured but not scored.
 - `--negatives`: `single-negatives/`, regions of the paper's pages where the rule should not fire (or may fire on a box that is mostly structure): a structure with its number, with a reaction arrow, with a dashed box, with the text next to it, with rows of Table 1 (a composite), and two structures side by side. `negatives.csv` says what each contains and which labels (numbers of `labels.csv`, `;`-separated) it holds; `single-negatives/render.py` regenerates them from the PDF (`cd api && uv run python ../golden/single-negatives/render.py`, pypdfium2 at 300 DPI).
-- `--also-without-rule`: repeats every image as a job of two images (the image and a blank one). The rule never applies to a job like that, so it shows seg's own box and what the crop path reads, to set beside the single-image job; this is how a negative is judged. The columns `off_*` hold it.
+- `--also-without-rule`: repeats every image as a job of two images (the image and a blank one). The rule never applies to a job like that, so on a stack before D23 it shows seg's own box and what the crop path reads, to set beside the single-image job; this is how a negative is judged. The columns `off_*` hold it. From D23 on such a job never calls seg (each image is read whole), so the option no longer shows seg's box; see `multi-image`.
 - Scoring is by full InChIKey: an image is right when every label it contains is among its results. `fired` is the rule having made the job read the image whole (exact with `--also-without-rule`; without it a seg that found nothing, the older fallback, looks the same). `--before` compares with an earlier CSV per crop (predicted against fired, right before and after).
 - **The labels are mostly drafts.** The table marks a label that no human has checked with `*` and the command ends with the same kind of WARNING as `score`; the CSV has a `checked` column. An absolute count ("13/19 right") is against those drafts, only the before/after difference is solid evidence.
+
+### `multi-image`
+
+```bash
+uv run decimer-golden multi-image --crops runs/<run>/crops [--base-url http://127.0.0.1:8090] \
+    [--sizes 2,5] [--limit N] [--before runs/multi-<run>/multi-image.csv] [--poll 1.0] [--timeout 300]
+```
+
+Measures D23 (a job of several images never calls seg: every image is read whole, numbered in image order, the box is the image) from outside, through the API. The crops of a `next` run are sent together, in consecutive groups of each `--sizes` size (pairs and groups of five by default; a leftover shorter than a group is not sent; `--limit` caps the jobs per size), one job at a time, every job deleted afterwards. Writes `runs/multi-<timestamp>/multi-image.csv` and `run.json`, and prints one line per job.
+
+- Each image is scored by FULL InChIKey against the results with its own `pageIndex`, so a stack that still segments (more than one result for an image, a shifted numbering) is scored fairly too.
+- The signs of D23 per job: `found` (`structuresFound`) and `job_results` equal the number of images, `ordered` (result N is `index` N on `pageIndex` N) and every box the whole image; `job_whole` is all of them. A stack before D23 shows `job_whole=False` on every job; the number of D23-shaped jobs is the before/after check, the right/scored count the accuracy one (the labels are drafts, as for `single-image`).
+- Run it before and after a change of the worker and compare with `--before`.
 
 ## Baseline
 

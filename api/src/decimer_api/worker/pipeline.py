@@ -17,6 +17,16 @@ are exactly those of running the four stages one after the other:
   exactly one structure covering at least `SINGLE_IMAGE_WHOLE_FRACTION` of the image recognises
   the whole image instead of seg's crop: the image is already a tight crop and seg's box can clip
   its edge. The result's box is then the whole image, as for the zero-structure fallback below.
+* A job of SEVERAL uploaded images never calls seg (D23, legacy's rule: it never segments such an
+  upload): each image is one structure, read whole by ocsr and cls, numbered in image order, and
+  its box is the whole image. The images are numbered by the same prefix rule (an image "settles"
+  as soon as it is in place) and by the same cap, and every image keeps its place, as in legacy:
+  one that cannot be read (or whose crop cannot be written) is a result with an empty SMILES and
+  the warning `recognition_failed`, and the images after it are not renumbered. The cap: the
+  first `MAX_STRUCTURES` images are recognised, `structuresFound` counts them all, and the warning
+  for more than that (`structures_truncated`) is raised. Such a job takes no seg slot and holds no
+  seg ticket (its segment stage is active only until the numbering is done); its crops are fitted
+  for the models like any other crop.
 * The names (chem) are asked for in the same batches as before, once every structure is checked.
   So is CDK: once every structure is checked, the SMILES that RDKit refused go
   to chem's `POST /cdk` in one batch (chunks of at most 20), before the names are asked for. A
@@ -45,9 +55,10 @@ Contract with the API (see "Worker contract" in the project README):
 What goes wrong, and what the user gets:
 
 * a page cannot be rendered: it is skipped, warning `page_render_failed`; no page at all: the
-  job fails, `render_failed`;
+  job fails, `render_failed` (not for a job of several images: there every image keeps its place,
+  an unreadable one is a result that failed to be recognised, D23);
 * seg or ocsr is unreachable or busy for good, or ocsr times out `OCSR_MAX_TIMEOUTS` times: the
-  job fails, `service_unavailable`;
+  job fails, `service_unavailable` (seg is not called for a job of several images, D23);
 * seg refuses, crashes or times out on one page (or its image cannot be fitted to seg's limits):
   that page is skipped, warning `page_segmentation_failed`; on every page: the job fails,
   `segmentation_failed`;
@@ -204,6 +215,9 @@ class Page:
     path: Path
     width: int
     height: int
+    # False: the image could not be read: there is no page file
+    # and no crop, and the size is unknown (0 x 0).
+    readable: bool = True
 
 
 @dataclass(frozen=True)
@@ -368,6 +382,7 @@ class _Run:
         self.cdk_warned = False
         self.chem_hung = False  # a call to chem timed out: it is not asked again in this job
         self.single_image = False
+        self.whole_images = False  # several images: read whole, seg is never called
         self.crops: list[Crop] = []  # numbered crops, as they were released: result order
         self.recognitions: dict[int, Recognition] = {}  # by crop index
         self.chemistry: dict[int, Chemistry] = {}
@@ -389,7 +404,7 @@ class _Run:
         self._ordering = asyncio.Lock()  # one page is released at a time
         self._pages: dict[int, Page] = {}  # rendered pages, by position
         self._rendering = 0  # pages whose render has not ended
-        self._segmented = 0  # pages seg answered for
+        self._segmented = 0  # pages that have crops to number: seg answered, or read whole
         self._segmentation_done = False
         self._recognising = 0  # crops numbered whose recognition has not ended
 
@@ -467,6 +482,7 @@ class _Run:
                 for index in range(self.job.pages_processed)
             ]
         self.single_image = len(inputs.images) == 1
+        self.whole_images = len(inputs.images) > 1
         return [
             functools.partial(self._copy_image, index, source)
             for index, source in enumerate(inputs.images)
@@ -479,14 +495,16 @@ class _Run:
         self._rendering -= 1
         if page is not None:
             self._pages[position] = page
-            self._stages.start(StageName.SEGMENT)
+            self._stages.start(StageName.SEGMENT)  # also for D23: the stage ends with the numbering
         if self._rendering == 0:
             if not self._pages:
                 raise PipelineFailure(RENDER_FAILED)
             self._stages.finish(StageName.RENDER)
         await self._publish()
         parts: PageParts | None = None
-        if page is not None:
+        if page is not None and self.whole_images:
+            parts = await self._read_whole(page)
+        elif page is not None:
             async with self._seg_slots():
                 parts = await self._segment_page(page)
         await self._settle(position, parts)
@@ -526,6 +544,14 @@ class _Run:
         try:
             width, height = await asyncio.to_thread(work)
         except (OSError, ValueError) as error:
+            if self.whole_images:
+                # D23, legacy's rule: an unreadable image keeps its place (an empty result, its
+                # warning comes when its crop is looked for). It gets no page file and no crop
+                # (a link to bytes that are no PNG would be served as one), and its size is
+                # unknown: a zero box.
+                log.warning("job %s: image %d: %s", self.job.id, index + 1, error)
+                await asyncio.to_thread(out.unlink, missing_ok=True)
+                return Page(index, out, 0, 0, readable=False)
             self._page_not_rendered(index, error)
             return None
         return Page(index, out, width, height)
@@ -606,10 +632,38 @@ class _Run:
             self.job.id,
             100 * covered / (page.width * page.height),
         )
+        return self._whole_parts(page, number)
+
+    def _whole_parts(self, page: Page, number: int) -> PageParts:
+        """The page itself as the one structure on it, box and all: its part file is another name
+        for the page file (a hard link), which `_finalise` renames to crop-<n>.png. Synchronous (a
+        thread)."""
         part = self.folder / f"seg-{page.index}-{number}.part"
-        link_or_copy(page.path, part)  # what `_finalise` renames to crop-<n>.png
+        link_or_copy(page.path, part)
         return PageParts(
             found=1, refs=[CropRef(page_index=page.index, bbox=_whole(page), part=part)]
+        )
+
+    async def _read_whole(self, page: Page) -> PageParts:
+        """D23: an image of a job of several images is one structure, read whole. Nothing is read
+        or sent here (the crop is a link to the image); ocsr and cls get it later, under their
+        slots, fitted like any crop. An image whose crop cannot be written keeps its place all the
+        same: it has no crop file, so its recognition fails (`recognition_failed`), as legacy
+        gives an image it cannot read its place with an empty SMILES."""
+        if page.readable:
+            try:
+                return await asyncio.to_thread(self._whole_parts, page, 0)
+            except OSError as error:
+                log.warning(
+                    "job %s: image %d: its crop cannot be written: %s",
+                    self.job.id,
+                    page.index + 1,
+                    error,
+                )
+        part = self.folder / f"seg-{page.index}-0.part"  # never written: see `CropRef.written`
+        return PageParts(
+            found=1,
+            refs=[CropRef(page_index=page.index, bbox=_whole(page), part=part, written=False)],
         )
 
     def _page_not_searched(self, page: Page, error: Exception) -> None:
@@ -974,7 +1028,10 @@ def _finalise(folder: Path, released: Released[CropRef]) -> list[Crop]:
     crops: list[Crop] = []
     for index, ref in released.kept:
         path = folder / f"crop-{index}.png"
-        os.replace(ref.part, path)
+        if ref.written:
+            os.replace(ref.part, path)
+        else:  # no crop could be written: none is left over from an earlier run either
+            path.unlink(missing_ok=True)
         crops.append(Crop(index, ref.page_index, ref.bbox, path))
     for ref in released.dropped:
         ref.part.unlink(missing_ok=True)

@@ -109,6 +109,12 @@
   border-top: 2px solid var(--dc-ink);
 }
 
+.dc-footer__about {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .dc-footer__coffee {
   display: inline-flex;
   align-items: center;

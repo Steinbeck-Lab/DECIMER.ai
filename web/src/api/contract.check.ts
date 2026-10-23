@@ -34,6 +34,8 @@ export type Checks = [
   // Nullable fields the UI treats as "absent", not as zero or false.
   Assert<Equal<Job['queuePosition'], number | null>>,
   Assert<Equal<Job['error'], string | null>>,
+  // One URL per page of the upload, in page order, for the "Display uploaded document" strip.
+  Assert<Equal<Job['pageUrls'], string[]>>,
   Assert<Equal<Result['isStructure'], boolean | null>>,
   Assert<Equal<Result['name'], string | null>>,
   // Who accepted the SMILES: the tile and the editor have wording for exactly these (strings.ts, `cdkOnly`).

@@ -31,6 +31,12 @@ async def test_get_returns_the_job(client: httpx.AsyncClient) -> None:
     assert response.headers["cache-control"] == "no-store"
 
 
+async def test_get_lists_the_page_images_of_the_upload(client: httpx.AsyncClient) -> None:
+    created = await create(client)
+    assert created["pagesProcessed"] == 1
+    assert created["pageUrls"] == [f"/api/jobs/{created['id']}/media/page-0.png"]
+
+
 async def test_queue_position_disappears_once_the_job_runs(
     client: httpx.AsyncClient, store: JobStore
 ) -> None:
@@ -139,6 +145,7 @@ async def test_openapi_describes_the_endpoints_and_camel_case_fields(
     assert {
         "queuePosition",
         "pagesProcessed",
+        "pageUrls",
         "structuresDropped",
         "createdAt",
         "expiresAt",

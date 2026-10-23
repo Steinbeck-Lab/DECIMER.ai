@@ -46,6 +46,8 @@ export const strings = {
     contact: 'Contact us by email',
     contactUrl: 'mailto:kohulan.rajan@uni-jena.de;christoph.steinbeck@uni-jena.de',
     reportIssue: 'or open an issue on GitHub',
+    /** The legacy footer's line, as it worded it ("© 2025 DECIMER Project. All rights reserved."), with the current year. */
+    copyright: (year: number) => `© ${year} DECIMER Project. All rights reserved.`,
     builtWith: 'Built with',
     builtWithIcon: 'coffee',
     builtBy: 'by Kohulan',
@@ -126,7 +128,16 @@ export const strings = {
     elapsed: (time: string) => `Elapsed ${time}`,
     pages: (done: number, total: number) => `Page ${done} of ${total}`,
     found: (n: number) => `${n} ${plural(n, 'structure', 'structures')} found`,
-    slowNote: 'A 10-page PDF can take a minute or more.',
+    /**
+     * What to expect, from the job: the pages that will be processed (null while the upload is still being read) and
+     * whether it is a PDF. A single page is quick, a few take under a minute, a full 10 pages can take a minute or more.
+     */
+    slowNote: (pages: number | null, pdf: boolean) => {
+      if (pages === null) return 'How long this takes depends on the number of pages.';
+      if (pages <= 1) return pdf ? 'A one-page PDF usually takes only a few seconds.' : 'A single image usually takes only a few seconds.';
+      const noun = pdf ? 'pages' : 'images';
+      return pages <= 3 ? `${pages} ${noun} usually take under a minute.` : `${pages} ${noun} can take a minute or more.`;
+    },
     progressLabel: 'Progress',
     stage: STAGE_LABELS,
     sourcePreview: (name: string) => `Preview of ${name}`,
@@ -144,8 +155,11 @@ export const strings = {
     source: (name: string) => `Recognised from ${name}`,
     pastedSource: 'a pasted image',
     moreSources: (name: string, more: number) => `${name} and ${more} more`,
-    capacity: (structures: number, pages: number) =>
-      `${structures} of ${LIMITS.maxStructures} structures · ${pages} of ${LIMITS.maxPages} pages`,
+    /** A PDF has a page limit; images do not (one page each, up to the upload's file limit), so there is none to show. */
+    capacity: (structures: number, pages: number, pdf: boolean) =>
+      `${structures} of ${LIMITS.maxStructures} structures · ${
+        pdf ? `${pages} of ${LIMITS.maxPages} pages` : `${pages} ${plural(pages, 'image', 'images')}`
+      }`,
     countReview: (n: number) => `${n} to review`,
     countNotSure: (n: number) => `${n} not sure`,
     countEdited: (n: number) => `${n} edited`,
@@ -166,6 +180,14 @@ export const strings = {
     truncatedStructures: (dropped: number) =>
       `${dropped} more ${plural(dropped, 'structure was', 'structures were')} found. Only the first ${LIMITS.maxStructures} are shown.`,
     truncatedGeneric: 'This upload was longer than the limits, so only part of it was processed.',
+    document: {
+      /** Legacy's label for the same control. */
+      toggle: 'Display uploaded document',
+      region: (pages: number) =>
+        pages === 1 ? 'Uploaded document, 1 page' : `Uploaded document, ${pages} pages. Scroll sideways to see them all.`,
+      pageAlt: (page: number, pages: number) => `Page ${page} of ${pages}`,
+      pageMissing: (page: number) => `Page ${page} could not be shown.`,
+    },
     noneTitle: 'No structures were detected',
     noneBody:
       'Try a sharper or larger image, or a different page. Drawings that are very small or low-contrast are often missed.',
@@ -194,6 +216,8 @@ export const strings = {
     },
     noName: 'No verified name',
     noDepiction: 'No depiction',
+    /** Where the original crop should be and the picture is not there (an image that could not be read has none). */
+    noPicture: 'No picture',
     /**
      * A structure RDKit refused and CDK read (decision D4: CDK is kept as a fallback, as legacy used it). The flag is
      * the short form on the tile; the hover has the whole sentence, and says who could not read it.

@@ -407,16 +407,6 @@ async def test_the_single_image_fallback_is_unchanged_and_waits_for_seg(
     assert all(states[1] == "done" for states in progress if states[2] != "pending")
 
 
-async def test_several_images_with_nothing_found_get_no_fallback_either_way(
-    make_rig: RigFactory,
-) -> None:
-    rig = make_rig(backend=FakeBackend(layout={}))
-    job = await rig.run(await rig.image_job([(100, 100), (120, 100)]))
-    assert job.results == [] and job.status is JobStatus.DONE
-    assert rig.backend.count("ocsr") == 0
-    assert assert_legal_progress(rig.store.saves)[-1] == ("done",) * 4
-
-
 async def test_the_timeout_limit_of_ocsr_fails_the_job_as_before(make_rig: RigFactory) -> None:
     def times_out(_request: httpx.Request, _parts: dict[str, bytes]) -> httpx.Response:
         raise OCSR_TIMEOUT

@@ -5,6 +5,7 @@ import { strings } from '../strings';
 import type { Status } from '../state/model';
 import { useAppState, useController, useResultViews } from '../state/react';
 import { pageNumber, stepList, type ResultView } from '../state/selectors';
+import { CropImage } from '../ui/CropImage';
 import { IconCheck, IconChevronLeft, IconChevronRight, IconFlag, IconReset, IconX } from '../ui/icons';
 import { nameHover, statusLabel } from '../ui/format';
 import { KetcherPanel } from './KetcherPanel';
@@ -309,7 +310,7 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
 
           <div className="dc-facts">
             <figure className="dc-fact dc-fact--crop">
-              <img src={view.result.cropUrl} alt={strings.tile.cropAlt(view.number)} />
+              <CropImage src={view.result.cropUrl} alt={strings.tile.cropAlt(view.number)} />
               <figcaption>{strings.editor.original(pageNumber(view))}</figcaption>
             </figure>
             <dl className="dc-fact dc-fact--text">
