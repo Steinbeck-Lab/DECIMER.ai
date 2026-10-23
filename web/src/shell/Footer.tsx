@@ -23,7 +23,9 @@ export function Footer() {
         <nav className="dc-footer__nav" aria-label={strings.shell.footerNav}>
           <a href={hrefFor('/about')}>{strings.shell.about}</a>
           <a href={hrefFor('/privacy')}>{strings.shell.privacy}</a>
-          <a href={hrefFor('/impressum')}>{strings.shell.impressum}</a>
+          <a href={hrefFor('/impressum')} lang="de">
+            {strings.shell.impressum}
+          </a>
           <a href={strings.shell.githubUrl} target="_blank" rel="noreferrer">
             {strings.shell.github}
           </a>
