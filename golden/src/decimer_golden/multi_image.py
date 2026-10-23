@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import csv
 import time
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -37,7 +37,7 @@ from typing import Any
 import httpx
 
 from .score import to_inchikey
-from .single_image import Box, Item, Unfinished, png_size, run_job
+from .single_image import Box, Item, Unfinished, matched_labels, png_size, run_job
 
 DEFAULT_SIZES = (2, 5)
 COLUMNS = [
@@ -199,7 +199,6 @@ def _seen(results: list[dict[str, Any]], place: int, size: tuple[int, int], item
     if not own:
         return Seen()
     x0, y0, x1, y1 = (int(v) for v in own[0]["bbox"])
-    keys = {to_inchikey(str(r.get("smiles", ""))) for r in own}
     first = str(own[0].get("smiles", ""))
     return Seen(
         results=len(own),
@@ -207,7 +206,7 @@ def _seen(results: list[dict[str, Any]], place: int, size: tuple[int, int], item
         whole=(x0, y0, x1, y1) == (0, 0, size[0], size[1]),
         smiles=first,
         inchikey=to_inchikey(first) or "",
-        matched=sum(e.inchikey in keys for e in item.expected),
+        matched=matched_labels(own, item.expected),
     )
 
 
@@ -216,7 +215,7 @@ def _outcome(
 ) -> JobOutcome:
     """A finished job's record, read against the images that were sent. Raises KeyError,
     TypeError or ValueError for a record that is not the documented shape."""
-    results = [r for r in job.get("results") or []]
+    results = list(job.get("results") or [])
     warnings = tuple(str(w.get("code", "")) for w in job.get("warnings") or [])
     base: dict[str, Any] = {
         "found": int(job.get("structuresFound", 0)),
@@ -315,18 +314,12 @@ def unchecked(rows: list[Row]) -> list[str]:
     return numbers
 
 
-def _jobs(rows: list[dict[str, str]]) -> Iterator[tuple[tuple[str, str], list[dict[str, str]]]]:
-    """The rows of the CSV by job, in file order."""
-    keys: list[tuple[str, str]] = []
+def _jobs(rows: list[dict[str, str]]) -> dict[tuple[str, str], list[dict[str, str]]]:
+    """The rows of the CSV by job (size, group), in file order."""
     by_job: dict[tuple[str, str], list[dict[str, str]]] = {}
     for r in rows:
-        key = (r["size"], r["group"])
-        if key not in by_job:
-            keys.append(key)
-            by_job[key] = []
-        by_job[key].append(r)
-    for key in keys:
-        yield key, by_job[key]
+        by_job.setdefault((r["size"], r["group"]), []).append(r)
+    return by_job
 
 
 def table(rows: list[dict[str, str]]) -> str:
@@ -336,7 +329,7 @@ def table(rows: list[dict[str, str]]) -> str:
         f"{'job':<8}{'status':<8}{'sec':>5}{'found':>6}{'res':>5} {'ordered':>8} {'whole':>6}"
         f" {'right':>7}  images"
     ]
-    for (size, group), job in _jobs(rows):
+    for (size, group), job in _jobs(rows).items():
         first = job[0]
         scored = [r for r in job if r["correct"] != ""]
         right = sum(r["correct"] == "True" for r in scored)

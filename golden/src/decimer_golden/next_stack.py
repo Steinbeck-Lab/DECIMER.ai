@@ -16,7 +16,7 @@ import hashlib
 import re
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -56,12 +56,7 @@ class Failure:
     code: str | None = None  # the API's error code, or the failed job's warning code
 
     def as_dict(self) -> dict[str, Any]:
-        return {
-            "kind": self.kind,
-            "message": self.message,
-            "http_status": self.http_status,
-            "code": self.code,
-        }
+        return asdict(self)
 
 
 class _Abort(Exception):
