@@ -105,10 +105,7 @@ def structure_graph(cleaned: str) -> tuple[list[int], list[tuple[int, int]]]:
     """The graph the gate sees in a molfile that `clean_molfile` returned: its atom numbers in
     order, and its bonds as pairs of atom numbers (what `tests/test_molfile_fuzz.py` compares with
     the graph RDKit builds: the counts alone would not show two readers joining different atoms)."""
-    lines = cleaned.split("\n")[:-2]
-    if _version(lines[3]) == "V3000":
-        return _graph_v3000(lines)
-    return _graph_v2000(lines)
+    return _graph(cleaned.split("\n")[:-2])
 
 
 def _too_big(what: str, found: int, limit: int) -> MolfileError:
@@ -129,11 +126,7 @@ def check_cost(lines: list[str]) -> tuple[int, int]:
         # ...) where RDKit does not, so `k 1<NBSP>p q r` is the bond (q, r) to RDKit and (p, q) to
         # `str.split`. Only the three title lines may hold other text.
         raise MolfileError("its connection table has characters that are not ASCII")
-    version = _version(lines[3])
-    if version == "V3000":
-        atoms, bonds = _graph_v3000(lines)
-    else:
-        atoms, bonds = _graph_v2000(lines)
+    atoms, bonds = _graph(lines)
     if len(atoms) > MAX_ATOMS:
         raise _too_big("atoms", len(atoms), MAX_ATOMS)
     if len(bonds) > MAX_BONDS:
@@ -162,6 +155,12 @@ def check_cost(lines: list[str]) -> tuple[int, int]:
     if len(bonds) - len(atoms) + pieces > MAX_RING_RANK:
         raise _too_big("independent rings", len(bonds) - len(atoms) + pieces, MAX_RING_RANK)
     return len(atoms), len(bonds)
+
+
+def _graph(lines: list[str]) -> tuple[list[int], list[tuple[int, int]]]:
+    if _version(lines[3]) == "V3000":
+        return _graph_v3000(lines)
+    return _graph_v2000(lines)
 
 
 def _version(counts_line: str) -> str:

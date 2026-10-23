@@ -34,20 +34,12 @@ from typing import Any, BinaryIO
 
 from . import analysis_protocol as protocol
 from .chemistry import analyse_molfile, analyse_smiles
+from .hardening import current_address_space
 from .molfile import MolfileError
 
 MIB = 1024 * 1024
 OPEN_FILES = 16
 PR_SET_PDEATHSIG = 1
-
-
-def current_address_space() -> int:
-    """Bytes of address space in use now (Linux), or 0 when unknown."""
-    try:
-        with open("/proc/self/statm") as statm:
-            return int(statm.read().split()[0]) * os.sysconf("SC_PAGE_SIZE")
-    except (OSError, ValueError, IndexError):
-        return 0
 
 
 def apply_limits(*, memory_mb: int) -> None:

@@ -3,12 +3,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 
 import httpx
 
-from ..settings import MIB, Settings
+from ..settings import Settings
 from ..store import JobStore
 from ..usage import Usage
 from .pipeline import Deps
@@ -27,7 +28,7 @@ def build_deps(
     *,
     http: httpx.AsyncClient | None = None,
     renderer: Renderer | None = None,
-    sleep: Sleep | None = None,
+    sleep: Sleep = asyncio.sleep,
     resolver: Resolver = system_resolver,
     clock: Clock = time.monotonic,
     usage: Usage | None = None,
@@ -37,17 +38,13 @@ def build_deps(
     worker.check_against(settings)
     client = http or make_http_client(worker)
     gates = make_gates(worker)
-    services = (
-        make_services(client, worker, resolver=resolver, clock=clock)
-        if sleep is None
-        else make_services(client, worker, sleep=sleep, resolver=resolver, clock=clock)
-    )
+    services = make_services(client, worker, sleep=sleep, resolver=resolver, clock=clock)
     if renderer is None:
         renderer = SubprocessRenderer(
             timeout_seconds=worker.render_timeout_seconds,
             memory_mb=worker.render_memory_mb,
             # Same bound as the ingest child: a worst-case PNG of the biggest allowed page.
-            max_file_bytes=3 * settings.max_image_pixels + 64 * MIB,
+            max_file_bytes=settings.max_page_png_bytes,
         )
     if worker.cdk_fallback and worker.chem_url is None:
         log.info("CDK_FALLBACK is on, but CHEM_URL is not set: RDKit decides alone")

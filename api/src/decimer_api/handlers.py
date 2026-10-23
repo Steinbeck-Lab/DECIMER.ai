@@ -10,12 +10,11 @@ from fastapi.responses import JSONResponse
 from redis.exceptions import RedisError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from .errors import ApiError, ErrorCode, ErrorDetail, ErrorResponse
+from .errors import UNAVAILABLE_MESSAGE, ApiError, ErrorCode, ErrorDetail, ErrorResponse
 from .store import Contended
 
 log = logging.getLogger("decimer_api")
 
-UNAVAILABLE_MESSAGE = "The service is temporarily unavailable. Please retry."
 HTTP_CODES = {404: ErrorCode.NOT_FOUND, 405: ErrorCode.METHOD_NOT_ALLOWED}
 
 

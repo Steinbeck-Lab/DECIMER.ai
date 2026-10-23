@@ -21,9 +21,10 @@ import sys
 from pathlib import Path
 from typing import Protocol
 
-from .errors import ApiError
+from .errors import ApiError, unavailable
+from .hardening import CHILD_ENV, kill_child
 from .models import JobWarning
-from .settings import MIB, Settings
+from .settings import Settings
 from .uploads import Ingested, Limits, Upload, classify, processing_limit
 
 log = logging.getLogger("decimer_api.ingest")
@@ -75,9 +76,7 @@ class SubprocessIngest:
         self._limits = Limits.from_settings(settings)
         self._timeout = settings.ingest_timeout_seconds
         self._memory_mb = settings.ingest_memory_mb
-        self._max_file_bytes = max(
-            3 * settings.max_image_pixels + 64 * MIB, settings.max_upload_bytes
-        )
+        self._max_file_bytes = max(settings.max_page_png_bytes, settings.max_upload_bytes)
         self._argv = argv or [sys.executable, "-I", "-m", "decimer_api.ingest_worker"]
         self._retry_after = settings.queue_retry_after_seconds
         self.last_pid: int | None = None
@@ -126,10 +125,10 @@ class SubprocessIngest:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,  # captured, never forwarded to the server's stderr
             cwd=job_dir,
-            # Only what Python needs: the API's own environment is not handed down. (The child
-            # could still look at the API's /proc/<pid>/environ; the API is made non-dumpable
-            # to prevent that. It can still read files of this user and use the network.)
-            env={"PATH": "/usr/bin:/bin", "LC_ALL": "C.UTF-8"},
+            # The API's own environment is not handed down. (The child could still look at the
+            # API's /proc/<pid>/environ; the API is made non-dumpable to prevent that. It can
+            # still read files of this user and use the network.)
+            env=CHILD_ENV,
             start_new_session=True,
         )
         self.last_pid = process.pid
@@ -141,7 +140,7 @@ class SubprocessIngest:
             # Before the kill: how much CPU did the child get to use?
             raise self._deadline_error(_cpu_seconds(process.pid)) from error
         finally:
-            await _kill(process)
+            await kill_child(process)
 
         if stderr:
             log.warning(
@@ -158,16 +157,6 @@ def _cpu_seconds(pid: int) -> float | None:
         return (int(fields[11]) + int(fields[12])) / os.sysconf("SC_CLK_TCK")
     except (OSError, ValueError, IndexError):
         return None
-
-
-async def _kill(process: asyncio.subprocess.Process) -> None:
-    """Make sure the child, and anything it started, is gone and reaped."""
-    if process.returncode is None:
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        await process.wait()
 
 
 def _stage(uploads: list[Upload], incoming: Path) -> None:
@@ -190,7 +179,7 @@ def _interpret(returncode: int | None, stdout: bytes) -> Ingested:
             400, "corrupt_file", "The file could not be processed: it is damaged or malformed."
         )
     log.error("ingest child exited with %s and no usable answer", returncode)
-    raise ApiError(503, "unavailable", "The service is temporarily unavailable. Please retry.")
+    raise unavailable()
 
 
 def _parse(stdout: bytes) -> Ingested | None:
@@ -210,5 +199,5 @@ def _parse(stdout: bytes) -> Ingested | None:
         return None
     if code not in CHILD_ERRORS:  # "internal_error" and anything unexpected
         log.error("ingest child reported %s: %s", code, message)
-        raise ApiError(503, "unavailable", "The service is temporarily unavailable. Please retry.")
+        raise unavailable()
     raise ApiError(CHILD_ERRORS[code], code, message)

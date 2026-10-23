@@ -117,7 +117,9 @@ def test_the_ui_listener_is_a_server_of_its_own_and_has_no_ingest_path() -> None
 def test_the_gate_lets_the_python_sdks_reach_one_endpoint_and_nothing_else() -> None:
     gate = strip_comments((NGINX / "glitchtip-gate.conf").read_text())
     locations = re.findall(r"location\s+(=\s+\S+|~\s+\"[^\"]+\"|/)\s*\{", gate)
-    assert locations == ["= /healthz", '~ "^/api/(?<gt_project>[0-9]{1,9})/envelope/$"', "/"], locations
+    assert locations == ["= /healthz", '~ "^/api/(?<gt_project>[0-9]{1,9})/envelope/$"', "/"], (
+        locations
+    )
     # the upstream path is rebuilt from the captured id: a raw $request_uri with encoded "../" could
     # match this location yet be routed elsewhere by GlitchTip
     assert "$request_uri" not in gate
