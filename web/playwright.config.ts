@@ -9,6 +9,8 @@ const origin = (port: number) => `http://127.0.0.1:${port}`;
 
 export default defineConfig({
   testDir: './e2e',
+  // e2e/live/ runs against a stack that is already up, with its own config (e2e/live/live.config.ts, `npm run e2e:live`).
+  testIgnore: '**/live/**',
   timeout: 120_000,
   reporter: [['list']],
   use: {
