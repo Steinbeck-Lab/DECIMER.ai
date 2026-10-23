@@ -36,6 +36,9 @@ class CropRef:
     page_index: int
     bbox: tuple[int, int, int, int]  # in pixels of the page
     part: Path
+    # False: nothing could be written at `part` (D23: an image of a job of several images whose
+    # crop cannot be made). It still has its place in the numbering; its recognition fails.
+    written: bool = True
 
 
 @dataclass(frozen=True)

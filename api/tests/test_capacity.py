@@ -7,6 +7,8 @@ import io
 import threading
 import time
 import zipfile
+from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -241,13 +243,25 @@ async def test_a_zip_download_beyond_the_limit_is_503_busy_and_the_other_formats
 
 
 async def test_the_place_is_given_back_after_a_finished_download_and_after_a_failed_one(
-    client: httpx.AsyncClient, job: Job, app: FastAPI, settings: Settings
+    client: httpx.AsyncClient,
+    job: Job,
+    app: FastAPI,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     streams: Capacity = app.state.deps.streams
     response = await zip_export(client, job.id)
     assert zipfile.ZipFile(io.BytesIO(response.content)).testzip() is None
     assert streams.in_use == 0
-    crop_path(settings, job, 2).unlink()  # a crop is gone: 404 before the first byte
+    crop = crop_path(settings, job, 2)
+    real_open = Path.open
+
+    def unreadable(self: Path, *args: Any, **kwargs: Any) -> Any:
+        if self == crop:  # a crop that is there but cannot be opened: 404 before the first byte
+            raise PermissionError("denied")
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", unreadable)
     assert (await zip_export(client, job.id)).status_code == 404
     assert streams.in_use == 0
 

@@ -16,9 +16,11 @@ job it made (`DELETE /api/jobs/{id}`, also when it failed). Two sets of images:
   the labels each image contains.
 
 `--also-without-rule` repeats every image as a job of TWO images (the image and a blank one):
-the rule never applies to such a job, so it gives what seg's crop path reads and seg's own box, to
-compare with the single-image job. Scores are by FULL InChIKey: an image is right when every label
-it contains is among its results.
+the rule never applies to such a job, so on a stack BEFORE D23 it gives what seg's crop path reads
+and seg's own box, to compare with the single-image job. From D23 on a job of several images never
+calls seg (every image is read whole), so against such a stack these columns are the whole-image
+reading, not seg's: use `multi-image` for that, and this option only to judge a stack before D23.
+Scores are by FULL InChIKey: an image is right when every label it contains is among its results.
 
 Run it before and after a change of the worker and compare with `--before`. The box a job reports
 is seg's own box until the rule exists, and the whole image once it fires (or when seg found
@@ -284,7 +286,7 @@ def covers(bbox: Box, size: tuple[int, int], found: int, fraction: float) -> tup
 # --- one job -------------------------------------------------------------------------------------
 
 
-class _Unfinished(Exception):
+class Unfinished(Exception):
     def __init__(self, status: str, note: str) -> None:
         super().__init__(note)
         self.status = status
@@ -305,23 +307,23 @@ def _send(
         try:
             response = client.request(method, url, timeout=REQUEST_TIMEOUT, **kwargs)
         except httpx.TransportError as error:
-            raise _Unfinished("unreachable", f"{method} {url}: {error!r}") from error
+            raise Unfinished("unreachable", f"{method} {url}: {error!r}") from error
         if response.status_code not in busy:
             return response
         sleep(max(1.0, retry_after(response)))
-    raise _Unfinished(
+    raise Unfinished(
         "busy", f"{method} {url}: still {response.status_code} after {MAX_BUSY_RETRIES} tries"
     )
 
 
 def _record(response: httpx.Response, what: str) -> dict[str, Any]:
-    """The JSON object of an answer, or `_Unfinished("bad_response")`."""
+    """The JSON object of an answer, or `Unfinished("bad_response")`."""
     try:
         body = response.json()
     except ValueError as error:
-        raise _Unfinished("bad_response", f"{what}: the body is not JSON") from error
+        raise Unfinished("bad_response", f"{what}: the body is not JSON") from error
     if not isinstance(body, dict):
-        raise _Unfinished("bad_response", f"{what}: the body is not a JSON object")
+        raise Unfinished("bad_response", f"{what}: the body is not a JSON object")
     return body
 
 
@@ -338,7 +340,7 @@ def _job_id(response: httpx.Response) -> str:
     return candidate if JOB_ID.fullmatch(candidate) is not None else ""
 
 
-def _run_job(
+def run_job(
     client: httpx.Client,
     uploads: list[tuple[str, bytes]],
     *,
@@ -348,7 +350,7 @@ def _run_job(
     sleep: Callable[[float], None],
 ) -> dict[str, Any]:
     """Upload the images as pasted PNGs, wait for the job, return its record; the job is deleted
-    before this returns (or raises `_Unfinished`), whatever its answers looked like."""
+    before this returns (or raises `Unfinished`), whatever its answers looked like."""
     response = _send(
         client,
         "POST",
@@ -357,16 +359,16 @@ def _run_job(
         files=[("file", (name, data, "image/png")) for name, data in uploads],
     )
     if response.status_code != 202:
-        raise _Unfinished("rejected", f"upload: HTTP {response.status_code}: {response.text[:200]}")
+        raise Unfinished("rejected", f"upload: HTTP {response.status_code}: {response.text[:200]}")
     job_id = _job_id(response)
     try:
         if not job_id:
-            raise _Unfinished("bad_response", "upload: the answer has no job id")
+            raise Unfinished("bad_response", "upload: the answer has no job id")
         job = _record(response, "upload")
         deadline = clock() + timeout
         while job.get("status") not in ("done", "failed"):
             if clock() >= deadline:
-                raise _Unfinished("timeout", f"not done after {timeout:g} s")
+                raise Unfinished("timeout", f"not done after {timeout:g} s")
             sleep(poll)
             reply = _send(
                 client,
@@ -376,7 +378,7 @@ def _run_job(
                 busy=frozenset({429, 502, 503, 504}),
             )
             if not reply.is_success:
-                raise _Unfinished("http_error", f"poll: HTTP {reply.status_code}")
+                raise Unfinished("http_error", f"poll: HTTP {reply.status_code}")
             job = _record(reply, "poll")
         return job
     finally:
@@ -388,7 +390,7 @@ def _delete(client: httpx.Client, job_id: str, *, sleep: Callable[[float], None]
     """Never raises: a job that cannot be deleted is reported on stderr and left to expire."""
     try:
         response = _send(client, "DELETE", f"/api/jobs/{job_id}", sleep=sleep)
-    except _Unfinished as error:
+    except Unfinished as error:
         print(f"warning: job {job_id} was not deleted: {error.note}", file=sys.stderr)
         return
     if response.status_code not in (204, 404):
@@ -439,9 +441,9 @@ def run_outcome(
 ) -> Outcome:
     """One job's outcome. Never raises for what a job or the API answered: trouble is a status."""
     try:
-        job = _run_job(client, uploads, poll=poll, timeout=timeout, clock=clock, sleep=sleep)
+        job = run_job(client, uploads, poll=poll, timeout=timeout, clock=clock, sleep=sleep)
         return _outcome(job, size, expected)
-    except _Unfinished as error:
+    except Unfinished as error:
         return Outcome(status=error.status, note=error.note)
     except (KeyError, TypeError, ValueError, AttributeError) as error:
         return Outcome(status="bad_response", note=f"the record is not readable: {error!r}")

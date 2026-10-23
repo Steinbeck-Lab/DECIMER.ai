@@ -2,6 +2,7 @@ import { Tooltip } from '@mantine/core';
 import { memo } from 'react';
 import { strings } from '../strings';
 import type { ResultView } from '../state/selectors';
+import { CropImage } from '../ui/CropImage';
 import { IconAlert } from '../ui/icons';
 import { imageSrc, nameHover, statusLabel, validityHover } from '../ui/format';
 
@@ -67,7 +68,7 @@ export const Tile = memo(function Tile({ view, selected, order, onSelect }: Prop
                 {strings.tile.noDepiction}
               </span>
             )}
-            <img className="dc-tile__crop" src={view.result.cropUrl} alt="" />
+            <CropImage className="dc-tile__crop" src={view.result.cropUrl} alt="" />
           </span>
           <span className="dc-tile__id">
             <span className="dc-sr">{strings.tile.structure} </span>

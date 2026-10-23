@@ -198,20 +198,22 @@ def _edits(molfiles: dict[str, str], count: int, settings: Settings) -> dict[int
     return edits
 
 
-def _open_crops(data_dir: Path, job_id: str, indexes: list[int]) -> list[BinaryIO] | None:
-    """The crop images, open, in order; None (and nothing left open) when one is missing. They are
-    opened before the first byte is sent, so a job that expires or is deleted during the download
-    cannot cut the archive short: an open file stays readable."""
-    opened: list[BinaryIO] = []
+def _open_crops(data_dir: Path, job_id: str, indexes: list[int]) -> list[BinaryIO | None] | None:
+    """The crop images, open, in order; None for a result that has no crop file (an image that
+    could not be read has none, D23: the archive goes without that image, as does a symlink,
+    which is never followed). None for the whole list, and nothing left open, when a file that
+    is there cannot be opened. They are opened before the first byte is sent, so a job that
+    expires or is deleted during the download cannot cut the archive short: an open file stays
+    readable."""
+    opened: list[BinaryIO | None] = []
     try:
         for index in indexes:
             path = resolve_media(data_dir, job_id, f"crop-{index}.png")
-            if path is None:
-                raise FileNotFoundError(index)
-            opened.append(path.open("rb"))
+            opened.append(None if path is None else path.open("rb"))
     except OSError:
         for file in opened:
-            file.close()
+            if file is not None:
+                file.close()
         return None
     return opened
 
