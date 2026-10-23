@@ -64,6 +64,7 @@ Measures D20 (a job of one pasted image where seg finds exactly one structure co
 | `legacy-20261022-140954` (TF 2.7, DECIMER `3db6954`, segmentation 1.4.0) | 13 / 26 | 6 | 1 | 12 | 95.3 s |
 | `next-20261022-230836` (TF 2.15.1, DECIMER 2.8.0, 2 seg / 2 ocsr / 2 cls replicas, stages one after the other) | 13 / 26 | 5 | 2 | 12 | 98.3 s |
 | `next-20261023-071544` (same, stages overlapping, P3-04c / D19; every prediction identical to the row above) | 13 / 26 | 5 | 2 | 12 | 80.2 s |
+| `next-20261023-121537` (main after P3-04d, CDK on, quiet machine: load about 3) | 13 / 26 | 5 | 2 | 12 | 75.2 s |
 
 The two times are not measured alike. Legacy's 95.3 s is the sum of three step timers, one per request (upload 4.47 s + segmentation 38.85 s + recognition 52.0 s, from its `run.json`), not one wall-clock span: the page loads between the steps are not in it. `next`'s `total` is wall clock from the start of the upload to the poll that saw `done`, so it is good to one poll interval (1 s here), and its stage times to about 1 s.
 

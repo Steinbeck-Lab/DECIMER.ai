@@ -1,0 +1,226 @@
+{
+  "stack": "next",
+  "started_at": "2026-10-23T12:15:37+00:00",
+  "base_url": "http://127.0.0.1:8090/",
+  "pdf": "zou2024_penicillium_shentong.pdf",
+  "pdf_sha256": "9429f108fc81cb950e6042e71868d7c7ef2fd35372cc6b664a452b777aace849",
+  "poll_seconds": 1.0,
+  "timeout_seconds": 900.0,
+  "status": "done",
+  "failure": null,
+  "job_id": "ccede1521c95355b01a8ee9e43351dda",
+  "seconds": {
+    "upload": 0.59,
+    "processing": 74.6,
+    "total": 75.19,
+    "crops": 0.07,
+    "retry_wait": 0,
+    "per_page": 7.52
+  },
+  "queued_seconds": 1.01,
+  "stage_seconds": {
+    "render": 9.07,
+    "segment": 17.11,
+    "recognise": 46.38,
+    "check": 1.03
+  },
+  "stage_seen": {
+    "upload": {
+      "done": 0.59
+    },
+    "render": {
+      "active": 1.6,
+      "done": 10.67
+    },
+    "segment": {
+      "active": 2.61,
+      "done": 27.78
+    },
+    "recognise": {
+      "active": 12.68,
+      "done": 74.16
+    },
+    "check": {
+      "active": 16.71,
+      "done": 75.19
+    }
+  },
+  "trace": [
+    {
+      "t": 0.59,
+      "status": "queued",
+      "queue_position": 1,
+      "stages": {
+        "upload": "done",
+        "render": "pending",
+        "segment": "pending",
+        "recognise": "pending",
+        "check": "pending"
+      }
+    },
+    {
+      "t": 1.6,
+      "status": "running",
+      "queue_position": null,
+      "stages": {
+        "upload": "done",
+        "render": "active",
+        "segment": "pending",
+        "recognise": "pending",
+        "check": "pending"
+      }
+    },
+    {
+      "t": 2.61,
+      "status": "running",
+      "queue_position": null,
+      "stages": {
+        "upload": "done",
+        "render": "active",
+        "segment": "active",
+        "recognise": "pending",
+        "check": "pending"
+      }
+    },
+    {
+      "t": 10.67,
+      "status": "running",
+      "queue_position": null,
+      "stages": {
+        "upload": "done",
+        "render": "done",
+        "segment": "active",
+        "recognise": "pending",
+        "check": "pending"
+      }
+    },
+    {
+      "t": 12.68,
+      "status": "running",
+      "queue_position": null,
+      "stages": {
+        "upload": "done",
+        "render": "done",
+        "segment": "active",
+        "recognise": "active",
+        "check": "pending"
+      }
+    },
+    {
+      "t": 16.71,
+      "status": "running",
+      "queue_position": null,
+      "stages": {
+        "upload": "done",
+        "render": "done",
+        "segment": "active",
+        "recognise": "active",
+        "check": "active"
+      }
+    },
+    {
+      "t": 27.78,
+      "status": "running",
+      "queue_position": null,
+      "stages": {
+        "upload": "done",
+        "render": "done",
+        "segment": "done",
+        "recognise": "active",
+        "check": "active"
+      }
+    },
+    {
+      "t": 74.16,
+      "status": "running",
+      "queue_position": null,
+      "stages": {
+        "upload": "done",
+        "render": "done",
+        "segment": "done",
+        "recognise": "done",
+        "check": "active"
+      }
+    },
+    {
+      "t": 75.19,
+      "status": "done",
+      "queue_position": null,
+      "stages": {
+        "upload": "done",
+        "render": "done",
+        "segment": "done",
+        "recognise": "done",
+        "check": "done"
+      }
+    }
+  ],
+  "polls": 74,
+  "retries": [],
+  "pages": 10,
+  "pages_processed": 10,
+  "page_images": 10,
+  "truncated": true,
+  "structures_found": 32,
+  "structures_dropped": 12,
+  "segments": 32,
+  "results": 20,
+  "stages": {
+    "upload": "done",
+    "render": "done",
+    "segment": "done",
+    "recognise": "done",
+    "check": "done"
+  },
+  "warnings": [
+    {
+      "code": "structures_truncated",
+      "message": "32 structures were found. Only the first 20 were processed."
+    },
+    {
+      "code": "recognition_failed",
+      "message": "Structure 13 could not be recognised."
+    }
+  ],
+  "inchikey_differs_from_api": [],
+  "memory": {
+    "project": "decimer-next",
+    "interval_seconds": 2.0,
+    "samples": 38,
+    "baseline_mib": {
+      "decimer-next-api-1": 104.4,
+      "decimer-next-chem-1": 260.6,
+      "decimer-next-cls-1": 878.8,
+      "decimer-next-cls-2": 895.6,
+      "decimer-next-edge-1": 3.9,
+      "decimer-next-ocsr-2": 4402.2,
+      "decimer-next-ocsr-3": 4407.3,
+      "decimer-next-redis-1": 5.5,
+      "decimer-next-seg-1": 1527.8,
+      "decimer-next-seg-2": 2111.5,
+      "decimer-next-sweep-1": 26.8,
+      "decimer-next-worker-1": 46.5,
+      "decimer-next-worker-fast-1": 46.5
+    },
+    "peak_mib": {
+      "decimer-next-api-1": 116.2,
+      "decimer-next-chem-1": 270.2,
+      "decimer-next-cls-1": 882.0,
+      "decimer-next-cls-2": 897.0,
+      "decimer-next-edge-1": 4.0,
+      "decimer-next-ocsr-2": 4405.2,
+      "decimer-next-ocsr-3": 4407.3,
+      "decimer-next-redis-1": 7.2,
+      "decimer-next-seg-1": 1752.1,
+      "decimer-next-seg-2": 2424.8,
+      "decimer-next-sweep-1": 26.8,
+      "decimer-next-worker-1": 140.1,
+      "decimer-next-worker-fast-1": 60.9
+    },
+    "baseline_total_mib": 14717.3,
+    "peak_total_mib": 15204.5,
+    "peak_delta_total_mib": 487.2,
+    "errors": [],
+    "peak_delta_per_page_mib": 48.7
+  }
+}
