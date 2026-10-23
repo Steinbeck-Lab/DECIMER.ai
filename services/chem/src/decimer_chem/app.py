@@ -3,9 +3,9 @@
 The naming and the CDK layout happen in a separate process (see `supervisor`), which owns Orthonym,
 CDK and the one JVM. This module only validates requests, bounds how many wait, maps errors to
 status codes and keeps the readiness check honest. It takes JSON, so it does not use the
-image-upload skeleton in `decimer_service.create_app`; it follows the same conventions (a gate that
-answers 503 with Retry-After instead of queueing forever, ValueError as 422, any other error as 500
-with an error_id, a readiness check that really runs the model).
+image-upload skeleton in `decimer_service.create_app`; it shares its gate (`decimer_service.Gate`,
+503 with Retry-After instead of queueing forever) and follows its other conventions (ValueError as
+422, any other error as 500 with an error_id, a readiness check that really runs the model).
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Annotated, Any, Protocol
 
+from decimer_service import Gate
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -131,24 +132,6 @@ class Limits:
 LIMITS = Limits()
 
 
-class _Gate:
-    """A semaphore that refuses new work once `slots + waiting` callers are inside or waiting."""
-
-    def __init__(self, slots: int, waiting: int) -> None:
-        self.semaphore = asyncio.Semaphore(slots)
-        self._capacity = slots + waiting
-        self._inside = 0
-
-    def try_enter(self) -> bool:
-        if self._inside >= self._capacity:
-            return False
-        self._inside += 1
-        return True
-
-    def leave(self) -> None:
-        self._inside -= 1
-
-
 async def selftest_names(namer: Namer) -> None:
     """Name caffeine through the whole stack and require Orthonym's documented answer."""
     [result] = await namer.name_many([CAFFEINE_SMILES])
@@ -206,7 +189,7 @@ def create_app(namer: Namer, limits: Limits | None = None) -> FastAPI:
     #: When each half of the service last proved itself: names (an OPSIN-verified name, or the
     #: selftest) and CDK (a molblock, or the selftest). A pass of one never vouches for the other.
     ready = {"names": 0.0, "cdk": 0.0}
-    gate = _Gate(limits.max_concurrency, limits.max_waiting)
+    gate = Gate(limits.max_concurrency, limits.max_waiting)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
