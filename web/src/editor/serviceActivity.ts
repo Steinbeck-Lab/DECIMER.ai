@@ -43,7 +43,7 @@ export const CANVAS_WRITERS: ReadonlySet<string> = new Set([
 const HANDSHAKE: ReadonlySet<string> = new Set(['info']);
 
 /** How long a swap waits for a call of Ketcher to answer. After this the call stops counting and its answer is dropped. */
-export const SETTLE_CAP_MS = 5000;
+const SETTLE_CAP_MS = 5000;
 
 /** What a call of Ketcher's struct service gets back when its answer comes after the editor has left its result. */
 export class StaleAnswerError extends Error {

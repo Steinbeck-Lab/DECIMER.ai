@@ -1,18 +1,12 @@
 import { expect, test, type Page } from '@playwright/test';
 import { HTTP_API_PORT } from '../playwright.config';
 import { fakeApi, JOB_ID, wireJob, wireResult } from './fakeApi';
-import { atomCount, editorPanel, fixtureImage, layoutOnCanvas, waitForEditor, watchProblems } from './helpers';
+import { atomCount, editorPanel, fixtureImage, layoutOnCanvas, tile, waitForCanvas, waitForEditor, watchProblems } from './helpers';
 
 // Structures that RDKit refused and only CDK read (decision D4): the panel shows DECIMER's SMILES with a note, and the
 // editor loads CDK's molblock, hypervalent atoms included, without the load-failure overlay.
 
-const tile = (page: Page, n: number) => page.getByRole('button', { name: new RegExp(`^Structure ${n}\\b`) });
 const CDK_NOTE = 'Accepted by CDK only (RDKit could not read it)';
-
-/** The canvas shows the structure the heading names (see editor.spec.ts, `waitForCanvas`). */
-async function waitForCanvas(page: Page) {
-  await expect(page.locator('.dc-editor__canvas[data-active=true][aria-busy=false]')).toBeVisible({ timeout: 60_000 });
-}
 
 /** Select all, Layout. The panel is taller than the window: having used its buttons below the canvas, scroll the canvas back into view first. */
 async function layoutVisibleCanvas(page: Page) {

@@ -48,3 +48,8 @@ export function validityHover(validBy: ValidBy | null): string[] {
 export function statusLabel(status: Status): string {
   return strings.tile.status[status];
 }
+
+/** What stands in for a value from before an edit until the server answers it: on its way, or it failed. */
+export function staleLabel(validating: boolean): string {
+  return validating ? strings.editor.updatingShort : strings.editor.notUpdated;
+}

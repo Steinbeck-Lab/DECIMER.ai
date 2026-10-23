@@ -6,7 +6,7 @@ import type { SourceFile } from '../state/model';
 import { isPdfUpload, pagesToProcess, stageProgress } from '../state/selectors';
 import { IconFile } from '../ui/icons';
 
-export function formatElapsed(ms: number): string {
+function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
   const minutes = Math.floor(total / 60);
   const seconds = total % 60;
@@ -60,8 +60,8 @@ function ProgressRule({ job }: { job: Job | null }) {
       aria-valuetext={strings.working.stepsDone(doneCount, STAGE_ORDER.length)}
     >
       {STAGE_ORDER.map((name, i) => {
-        const state = job ? states[name] : i === 0 && !queued ? 'active' : 'pending';
-        return <span key={name} className="dc-rule__segment" data-state={queued ? 'pending' : state} data-index={i} data-current={i === current} />;
+        const state = queued ? 'pending' : job ? states[name] : i === 0 ? 'active' : 'pending';
+        return <span key={name} className="dc-rule__segment" data-state={state} data-index={i} data-current={i === current} />;
       })}
     </div>
   );

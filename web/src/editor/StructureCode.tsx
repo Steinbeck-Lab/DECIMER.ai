@@ -1,6 +1,6 @@
 import { strings } from '../strings';
 import type { ResultView } from '../state/selectors';
-import { validityHover } from '../ui/format';
+import { staleLabel, validityHover } from '../ui/format';
 import { CopyButton } from './CopyButton';
 
 /**
@@ -16,7 +16,7 @@ export function smilesLine(view: Pick<ResultView, 'stale' | 'validating' | 'vali
   /** Lines under the SMILES about who accepted it. */
   notes: string[];
 } {
-  if (view.stale) return { text: view.validating ? strings.editor.updatingShort : strings.editor.notUpdated, copy: '', notes: [] };
+  if (view.stale) return { text: staleLabel(view.validating), copy: '', notes: [] };
   if (view.valid && view.smiles) return { text: view.smiles, copy: view.smiles, notes: [] };
   if (view.validBy === 'cdk' && view.smiles) return { text: view.smiles, copy: view.smiles, notes: validityHover(view.validBy) };
   return { text: strings.editor.noSmiles, copy: '', notes: [] };

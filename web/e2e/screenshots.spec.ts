@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { clearCanvas, editorPanel, fixtureImage, fixturePdf, headerDownload, waitForEditor } from './helpers';
+import { clearCanvas, editorPanel, fixtureImage, fixturePdf, headerDownload, layoutOnCanvas, tile, waitForEditor } from './helpers';
 
 // Review screenshots (impeccable finish review). They land in test-results/screens/ and the
 // orchestrator copies them to .impeccable/review/. They double as a check that every state renders.
@@ -13,16 +13,9 @@ async function results(page: Page, file: Parameters<typeof fixtureImage>[0] | 'p
   await page.waitForTimeout(1800); // arrival animation
 }
 
-const tile = (page: Page, n: number) => page.getByRole('button', { name: new RegExp(`^Structure ${n}\\b`) });
-
 async function editInKetcher(page: Page) {
-  await page.waitForSelector('[data-testid=top-toolbar]', { state: 'attached', timeout: 90_000 });
-  await page.waitForTimeout(2500);
-  const box = await page.locator('.dc-editor__canvas[data-active=true]').boundingBox();
-  if (!box) throw new Error('no canvas');
-  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-  await page.keyboard.press('Control+a');
-  await page.keyboard.press('Control+l'); // Ketcher layout: the coordinates change, so the structure is edited
+  await waitForEditor(page, 2500);
+  await layoutOnCanvas(page); // Ketcher layout: the coordinates change, so the structure is edited
   await page.keyboard.press('Control+Shift+a'); // deselect all
   await expect(page.getByRole('list', { name: 'Status of the structures' })).toContainText('1 edited');
 }

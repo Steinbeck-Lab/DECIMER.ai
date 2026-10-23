@@ -9,6 +9,7 @@ import {
   waitForEditor,
   pasteImage,
   pasteText,
+  tile,
   watchProblems,
 } from './helpers';
 
@@ -23,8 +24,6 @@ async function upload(page: Page, name = 'figure2.png') {
 async function waitForResults(page: Page) {
   await expect(page.getByRole('list', { name: 'Recognised structures' })).toBeVisible({ timeout: 30_000 });
 }
-
-const tile = (page: Page, n: number) => page.getByRole('button', { name: new RegExp(`^Structure ${n}\\b`) });
 
 test('empty → upload → working → results, with no console errors or CSP violations', async ({ page }) => {
   const problems = watchProblems(page);
