@@ -63,11 +63,10 @@ def to_mib(amount: str) -> float:
 def parse_stats(output: str) -> dict[str, float]:
     """`{{.Name}} {{.MemUsage}}` lines ('name 1.2GiB / 15.5GiB') as {name: MiB in use}."""
     usage: dict[str, float] = {}
-    for line in output.splitlines():
-        if not line.strip():
-            continue
-        name, _, memory = line.strip().partition(" ")
-        usage[name] = to_mib(memory.split("/")[0])
+    for line in map(str.strip, output.splitlines()):
+        if line:
+            name, _, memory = line.partition(" ")
+            usage[name] = to_mib(memory.split("/")[0])
     return usage
 
 
