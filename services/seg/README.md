@@ -25,7 +25,7 @@ Startup takes about 9 s (the model loads inside the lifespan, so `/healthz` answ
 
 The production limits are `decimer_seg.app.LIMITS`, and `build_app()` is the app that `__main__` serves: one inference at a time, 8 waiting, uploads up to 40 MiB (413 above that, 503 with `Retry-After: 5` when the queue is full).
 
-`/readyz` runs a real selftest: the whole `infer()` path on a small PNG of one real structure that ships in the package (`src/decimer_seg/selftest.png`, 4 KB: daidzein cropped from the golden paper, centred on a white 512x512 page), and it fails unless at least one segment comes back. A successful `/infer` counts as a pass too (see `../common`), so under load the selftest does not run at all.
+`/readyz` runs a real selftest: the whole `infer()` path on a small PNG of one real structure that ships in the package (`src/decimer_seg/selftest.png`, 4 KB: daidzein cropped from the golden paper, centred on a white 512x512 page), and it fails unless at least one segment comes back. A successful `/infer` counts as a pass too (see `../common`), so under load the selftest does not run at all. `/readyz` is not behind the `/infer` limit (a probe must not queue behind a slow page), so `SegModel.selftest` itself keeps away from a page in progress: it does not call the library beside it (see "not thread-safe" below) and does not wait for it, it answers ready, unless that page has run for more than 300 s (`HANG_AFTER_SECONDS`), which fails the probe.
 
 ## `POST /infer`
 
@@ -59,7 +59,7 @@ Errors: `422` for an undecodable or oversized image, an unsupported pixel format
 
 ```bash
 uv run pytest               # fast tests, no TensorFlow import (slow tests are deselected)
-uv run pytest -m slow       # the real model on 5 pages of the golden paper (about 35 s on 8 cores; about 46 s with TF_NUM_INTRAOP_THREADS=2 TF_NUM_INTEROP_THREADS=1)
+uv run pytest -m slow       # the real model on 5 pages of the golden paper (about 35 s on 8 cores; about 46 s with TF_NUM_INTRAOP_THREADS=2 TF_NUM_INTEROP_THREADS=1), plus the concurrency test below (about 65 s more)
 uv run ruff check . && uv run ruff format --check . && uv run mypy
 ```
 
@@ -72,6 +72,8 @@ The slow tests start `build_app()` with the production limits (lifespan load, `/
 | `page7_bboxes.json` | 7 | Figure 5B biosynthesis scheme: 15 structures and one R-group fragment (its `checked` text lists three loose boxes) | 16 |
 | `page2_bboxes.json` | 2 | text plus an HPLC chromatogram, no structure | 0 |
 | `page10_bboxes.json` | 10 | text only | 0 |
+
+`tests/test_process.py` starts `python -m decimer_seg` as its own process (real socket, production limits, cold readiness cache) and fires 8 pages and 3 `/readyz` probes at it at once. It fails if the process dies (the failure message carries its exit code and a faulthandler dump) or if any answer differs from the fixtures. Without the lock it aborted every time. The fast tests that guard the same thing without TensorFlow are in `tests/test_model.py` ("one call into the library at a time": two calls, a probe during a page, two probes, a hung page) and `test_a_probe_during_a_request_never_runs_a_second_inference` in `tests/test_app.py` (production wiring).
 
 Fast tests check that the fixtures are well formed. To redo the hand check after a model or DPI change:
 
@@ -86,4 +88,5 @@ It prints the output path, load and inference times, and memory use, and draws e
 - **Importing it loads the model** (it builds the Mask R-CNN, reads the weights, and warms it up at module level, downloading the weights first if needed). `SegModel` therefore imports it only inside `load()`, after the weights check, so importing `decimer_seg.model` is cheap and the fast tests never touch TensorFlow.
 - It `print`s the weights directory at import; `load()` wraps the import in `contextlib.redirect_stdout` and logs the text instead. It also calls `logging.basicConfig`; the JSON log configuration is set up before the import, which makes that a no-op.
 - It **overrides `TF_ENABLE_ONEDNN_OPTS` (to `1`) and `TF_CPP_MIN_LOG_LEVEL` (to `2`) unconditionally** at import, so values set by the operator for those two are ignored. `TF_NUM_INTRAOP_THREADS` and `TF_NUM_INTEROP_THREADS` are not touched.
-- The mask-expansion step starts its own pool of up to 4 threads.
+- The mask-expansion step starts its own pool of up to 4 threads (only when a page has more than 3 detections). One call with that pool is safe: pages with 12 and 16 detections ran many times in a row without a crash.
+- **It is not thread-safe.** Two `segment_chemical_structures` calls at the same time, even from just two threads, abort the process (`free(): invalid pointer`, `corrupted double-linked list`, `double free or corruption`, or SIGSEGV; the dump we captured has both threads inside the batch-norm layers of `detect()`): 2 of 2 runs with 2 threads and 2 of 2 with 3 threads died, 1 thread never did. `SegModel` therefore holds a lock around the library call, so two calls cannot overlap whoever makes them. The skeleton alone does not guarantee it: it admits one `/infer` at a time, but `/readyz` runs its selftest outside that limit, from another thread. On 2026-10-23 Docker's health check (every 120 s, every 5 s during start-up; the selftest runs when no success is younger than 30 s) ran a selftest beside the worker's `/infer` and killed both replicas 14 times (the worker's retry hid it). The ocsr and cls models guard themselves with a lock for the same reason. Throughput comes from replicas, never from threads inside one process.

@@ -4,12 +4,14 @@ import json
 import os
 import subprocess
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import cv2
 import numpy as np
 import pytest
-from helpers import FakeSegmenter, encode_image, iou, png_bytes, rgba_crop
+from helpers import FakeSegmenter, OverlapProbe, encode_image, iou, png_bytes, rgba_crop
 from PIL import Image
 
 import decimer_seg.model as seg_model
@@ -44,6 +46,127 @@ def seen_by_segmenter(data: bytes) -> np.ndarray:
     SegModel(fake).infer(data, {})
     (image,) = fake.calls
     return image
+
+
+# --- one call into the library at a time ----------------------------------------------------
+#
+# decimer_segmentation is not thread-safe: two segment_chemical_structures() calls at once (even
+# from two threads) abort the process. /readyz runs the selftest outside the /infer gate (see
+# decimer_service), so the model has to protect the library itself, as the ocsr and cls models do.
+
+
+def test_the_library_is_never_entered_by_two_threads_at_once() -> None:
+    probe = OverlapProbe([rgba_crop(30, 20)], [(10, 20, 40, 40)])
+    model = SegModel(probe)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(model.infer, png_bytes(100, 100), {})
+        probe.wait_until_inside()
+        second = pool.submit(model.infer, png_bytes(100, 100), {})
+        time.sleep(0.2)  # long enough for an unguarded second call to get in
+
+        assert probe.inside == 1
+        probe.release.set()
+        first.result(timeout=10)
+        second.result(timeout=10)
+    assert probe.peak == 1
+    assert len(probe.calls) == 2  # both ran, one after the other
+
+
+def test_selftest_returns_at_once_while_a_page_is_being_segmented() -> None:
+    # No second call into the library, and no waiting for the first: a page in progress shows
+    # that the model is alive (and a probe that waited would time out behind a slow page).
+    probe = OverlapProbe([rgba_crop(30, 20)], [(10, 20, 40, 40)])
+    model = SegModel(probe)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        running = pool.submit(model.infer, png_bytes(100, 100), {})
+        probe.wait_until_inside()
+        probed = pool.submit(model.selftest)
+
+        probed.result(timeout=2)  # returned, while the page is still inside the library
+        assert probe.inside == 1
+        probe.release.set()
+        running.result(timeout=10)
+    assert probe.peak == 1
+    assert len(probe.calls) == 1  # the selftest did not segment anything
+
+
+def test_a_request_arriving_during_a_selftest_waits_for_it() -> None:
+    probe = OverlapProbe([rgba_crop(30, 20)], [(10, 20, 40, 40)])
+    model = SegModel(probe)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        selftest = pool.submit(model.selftest)
+        probe.wait_until_inside()
+        request = pool.submit(model.infer, png_bytes(100, 100), {})
+        time.sleep(0.2)  # long enough for an unguarded request to get in
+
+        assert probe.inside == 1
+        probe.release.set()
+        selftest.result(timeout=10)
+        request.result(timeout=10)
+    assert probe.peak == 1
+    assert len(probe.calls) == 2  # the selftest, then the request
+
+
+def test_two_probes_at_once_run_one_selftest_between_them() -> None:
+    probe = OverlapProbe([rgba_crop(30, 20)], [(10, 20, 40, 40)])
+    model = SegModel(probe)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(model.selftest)
+        probe.wait_until_inside()
+        second = pool.submit(model.selftest)
+
+        second.result(timeout=2)
+        probe.release.set()
+        first.result(timeout=10)
+    assert probe.peak == 1
+    assert len(probe.calls) == 1
+
+
+class Clock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+def test_a_segmentation_that_never_ends_fails_the_probe() -> None:
+    # "Alive and busy" must not last for ever: a hung call keeps the library busy for ever.
+    probe = OverlapProbe([rgba_crop(30, 20)], [(10, 20, 40, 40)])
+    clock = Clock()
+    model = SegModel(probe, hang_after=100.0, clock=clock)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        running = pool.submit(model.infer, png_bytes(100, 100), {})
+        probe.wait_until_inside()
+        try:
+            clock.now += 100.0  # exactly the limit: still fine
+            model.selftest()
+            clock.now += 1.0
+            with pytest.raises(RuntimeError, match=r"running for 101 s"):
+                model.selftest()
+        finally:
+            probe.release.set()
+            running.result(timeout=10)
+    model.selftest()  # it ended: the model is fine again
+
+
+def test_a_finished_segmentation_leaves_no_start_time_behind_to_look_like_a_hang() -> None:
+    # A stale start time would make a probe that finds the library just taken (a call that has
+    # not started its clock yet) report a hang. Held by hand here to stand for that moment.
+    fake = FakeSegmenter([rgba_crop(30, 20)], [(10, 20, 40, 40)])
+    clock = Clock()
+    model = SegModel(fake, hang_after=100.0, clock=clock)
+    model.infer(png_bytes(100, 100), {})
+    fake.error = ValueError("inside mrcnn")
+    with pytest.raises(RuntimeError, match="segmentation failed"):
+        model.infer(png_bytes(100, 100), {})  # a failed call must clear it too
+    clock.now += 10_000.0
+
+    assert model._library_lock.acquire(blocking=False)
+    try:
+        model.selftest()
+    finally:
+        model._library_lock.release()
 
 
 # --- result shape -------------------------------------------------------------------------
