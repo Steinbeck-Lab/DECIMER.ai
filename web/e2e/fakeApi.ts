@@ -51,6 +51,7 @@ export function wireJob(kind: 'queued' | 'running' | 'done', resultCount = 3, qu
     })),
     pages: 1,
     pagesProcessed: 1,
+    pageUrls: [`/api/jobs/${JOB_ID}/media/page-0.png`],
     truncated: false,
     structuresFound: kind === 'done' ? resultCount : 0,
     structuresDropped: 0,

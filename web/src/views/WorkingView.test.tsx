@@ -5,6 +5,7 @@ import { afterEach, expect, test } from 'vitest';
 import { STAGE_ORDER, type Job, type StageState } from '../api/contract';
 import { MockApiClient } from '../mocks/MockApiClient';
 import type { AppController } from '../state/controller';
+import type { SourceFile } from '../state/model';
 import { AppProvider, useController } from '../state/react';
 import { WorkingView } from './WorkingView';
 
@@ -23,6 +24,7 @@ const midway = (over: Partial<Job> = {}): Job => ({
   stages: STAGE_ORDER.map((name) => ({ name, state: name === 'check' ? 'active' : 'done' })),
   pages: 10,
   pagesProcessed: 10,
+  pageUrls: [],
   truncated: false,
   structuresFound: 12,
   structuresDropped: 0,
@@ -35,7 +37,7 @@ const midway = (over: Partial<Job> = {}): Job => ({
   ...over,
 });
 
-function mountWorking() {
+function mountWorking(sources: SourceFile[] = [{ name: 'paper.pdf', size: 1, kind: 'pdf' }]) {
   render(
     <MantineProvider>
       <AppProvider api={new MockApiClient({ latencyMs: 0 })}>
@@ -47,7 +49,7 @@ function mountWorking() {
   const c = controller as AppController | null;
   if (!c) throw new Error('no controller');
   act(() => {
-    c.store.dispatch({ type: 'submit', sources: [{ name: 'paper.pdf', size: 1 }], at: Date.now() });
+    c.store.dispatch({ type: 'submit', sources, at: Date.now() });
     c.store.dispatch({ type: 'jobCreated', id: 'job-1' });
   });
   return c;
@@ -138,4 +140,50 @@ test('the page count is shown as long as the render stage is not done, also besi
   expect(screen.getByText('Page 10 of 10')).toBeTruthy();
   act(() => c.store.dispatch({ type: 'jobUpdated', job: { ...overlapped('done', 'active'), pages: 14, pagesProcessed: 10 } }));
   expect(screen.queryByText(/^Page \d+ of \d+$/)).toBeNull();
+});
+
+// The hint says what to expect for this upload, not "a 10-page PDF" for everything.
+const note = () => document.querySelector('.dc-working__note')?.textContent;
+
+test('the hint for a single pasted image is short, and says nothing of PDFs', () => {
+  const c = mountWorking([{ name: 'pasted-image.png', size: 1, kind: 'image' }]);
+  expect(note()).toBe('A single image usually takes only a few seconds.'); // before the job is even known
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: midway({ pages: 1, pagesProcessed: 1 }) }));
+  expect(note()).toBe('A single image usually takes only a few seconds.');
+  expect(note()).not.toMatch(/PDF/);
+});
+
+test('the hint follows the job: a one-page PDF is quick, a few pages take under a minute, ten can take a minute or more', () => {
+  const c = mountWorking([{ name: 'paper.pdf', size: 1, kind: 'pdf' }]);
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: midway({ pages: 1, pagesProcessed: 1 }) }));
+  expect(note()).toBe('A one-page PDF usually takes only a few seconds.');
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: midway({ pages: 3, pagesProcessed: 3 }) }));
+  expect(note()).toBe('3 pages usually take under a minute.');
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: midway({ pages: 10, pagesProcessed: 10 }) }));
+  expect(note()).toBe('10 pages can take a minute or more.');
+  // Only the first 10 pages are processed.
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: midway({ pages: 14, pagesProcessed: 10 }) }));
+  expect(note()).toBe('10 pages can take a minute or more.');
+});
+
+test('several images are counted as images; a PDF whose pages are not known yet promises nothing', () => {
+  const images = mountWorking([
+    { name: 'a.png', size: 1, kind: 'image' },
+    { name: 'b.png', size: 1, kind: 'image' },
+  ]);
+  expect(note()).toBe('2 images usually take under a minute.');
+  act(() => images.store.dispatch({ type: 'jobUpdated', job: midway({ pages: 2, pagesProcessed: 2 }) }));
+  expect(note()).toBe('2 images usually take under a minute.');
+  cleanup();
+  mountWorking([{ name: 'Paper.PDF', size: 1, kind: 'pdf' }]);
+  expect(note()).toBe('How long this takes depends on the number of pages.');
+});
+
+test('images are not capped at the PDF page limit: 12 images are 12, in the hint and in "Page x of y"', () => {
+  const images = Array.from({ length: 12 }, (_, i): SourceFile => ({ name: `${i}.png`, size: 1, kind: 'image' }));
+  const c = mountWorking(images);
+  expect(note()).toBe('12 images can take a minute or more.');
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: { ...overlapped('active', 'active'), pages: 12, pagesProcessed: 12 } }));
+  expect(note()).toBe('12 images can take a minute or more.');
+  expect(screen.getByText('Page 12 of 12')).toBeTruthy();
 });

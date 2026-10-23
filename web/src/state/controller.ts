@@ -6,7 +6,7 @@ import {
 } from '../api/contract';
 import { saveBlob } from '../download';
 import { strings } from '../strings';
-import { checkSelection } from '../upload/files';
+import { checkSelection, kindOf } from '../upload/files';
 import { problemFromError } from '../upload/problems';
 import { initialState, type Filter, type SourceFile } from './model';
 import { reducer } from './reducer';
@@ -82,6 +82,7 @@ function toSource(file: File): SourceFile {
   return {
     name: file.name,
     size: file.size,
+    kind: kindOf(file) ?? 'image',
     ...(previewable && canUrl ? { previewUrl: URL.createObjectURL(file) } : {}),
   };
 }

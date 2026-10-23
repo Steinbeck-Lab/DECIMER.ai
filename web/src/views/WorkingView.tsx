@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { LIMITS, STAGE_ORDER, type Job, type StageName } from '../api/contract';
+import { STAGE_ORDER, type Job, type StageName } from '../api/contract';
 import { strings } from '../strings';
 import { useAppState } from '../state/react';
 import type { SourceFile } from '../state/model';
-import { stageProgress } from '../state/selectors';
+import { isPdfUpload, pagesToProcess, stageProgress } from '../state/selectors';
 import { IconFile } from '../ui/icons';
 
 export function formatElapsed(ms: number): string {
@@ -87,6 +87,11 @@ export function WorkingView() {
   const together = queued || alongside.length === 0 ? null : strings.working.alongside(alongside);
 
   const rendering = !queued && states.render !== 'done' && job && job.pages > 0;
+  // How long to expect depends on what was uploaded: the job's pages once it is known, else the images chosen (a
+  // PDF's page count is only known to the server).
+  const pdf = isPdfUpload(state.sources);
+  const jobPages = job && job.pages > 0 ? pagesToProcess(job, pdf) : 0;
+  const expectedPages = jobPages || (pdf ? 0 : state.sources.length) || null;
 
   return (
     <main id="main" tabIndex={-1} className="dc-working">
@@ -101,11 +106,11 @@ export function WorkingView() {
       <ProgressRule job={job} />
       <p className="dc-working__meta">
         <span>{strings.working.elapsed(formatElapsed(elapsed))}</span>
-        {rendering && <span>{strings.working.pages(job.pagesProcessed, Math.min(job.pages, LIMITS.maxPages))}</span>}
+        {rendering && <span>{strings.working.pages(job.pagesProcessed, pagesToProcess(job, pdf))}</span>}
         {/* The results themselves arrive with the finished job; until then a poll only carries this count. */}
         {job && job.structuresFound > 0 && <span>{strings.working.found(job.structuresFound)}</span>}
       </p>
-      <p className="dc-working__note">{strings.working.slowNote}</p>
+      <p className="dc-working__note">{strings.working.slowNote(expectedPages, pdf)}</p>
     </main>
   );
 }

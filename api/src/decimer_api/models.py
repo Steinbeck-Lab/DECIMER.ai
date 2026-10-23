@@ -5,7 +5,7 @@ Two layers, so that nothing derived is ever stored:
 * `Job` (with `Result`) is the **record** kept in Redis. It holds the client-address hash and
   nothing that can be computed from the rest.
 * `JobView` (with `ResultView`) is what the API **returns**: the record without the hash, plus
-  the queue position, the compound number and the media URL of every crop.
+  the queue position, the compound number, the media URL of every crop and of every page.
 """
 
 from __future__ import annotations
@@ -199,6 +199,15 @@ class JobView(JobBase):
     queue_position: int | None = Field(
         default=None, description="1-based place in the queue while `status` is queued."
     )
+    page_urls: list[str] = Field(
+        default_factory=list,
+        description="URLs of the page images of the upload, in page order: `page-0.png` to "
+        "`page-<pagesProcessed - 1>.png`, one for each page the job processes, and same-origin "
+        "like `cropUrl`. An upload of images lists every image; a PDF lists its first "
+        "`MAX_PDF_PAGES` pages (the pages past the cap are not processed, so they are not "
+        "listed). The list is the plan, not a check that the files exist: a page the worker "
+        "could not render (warning `page_render_failed`), or has not rendered yet, answers 404.",
+    )
     results: list[ResultView] = Field(default_factory=list)
 
     @classmethod
@@ -213,6 +222,9 @@ class JobView(JobBase):
         ]
         return cls(
             **base,
+            page_urls=[
+                f"/api/jobs/{job.id}/media/page-{index}.png" for index in range(job.pages_processed)
+            ],
             results=results,
             queue_position=queue_position if job.status is JobStatus.QUEUED else None,
         )

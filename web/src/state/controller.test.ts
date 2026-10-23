@@ -19,6 +19,7 @@ const doneJob = (id: string): Job => ({
   stages: STAGE_ORDER.map((name) => ({ name, state: 'done' })),
   pages: 1,
   pagesProcessed: 1,
+  pageUrls: ['/api/jobs/j/media/page-0.png'],
   truncated: false,
   structuresFound: 8,
   structuresDropped: 0,
@@ -92,6 +93,15 @@ test('a valid upload goes through working to results and then stops polling', as
   await new Promise((r) => setTimeout(r, 30));
   expect(polls).toBe(callsAtDone);
   expect(controller.store.getState().job?.results).toHaveLength(8);
+});
+
+test('what was uploaded is kept as a PDF or as images, which decides what its pages and limits mean', async () => {
+  const first = make(fakeApi());
+  await first.controller.submit([new File(['x'], 'paper.pdf', { type: 'application/pdf' })]);
+  expect(first.controller.store.getState().sources.map((s) => s.kind)).toEqual(['pdf']);
+  const second = make(fakeApi());
+  await second.controller.submit([png('a.png'), png('b.jpeg')]);
+  expect(second.controller.store.getState().sources.map((s) => s.kind)).toEqual(['image', 'image']);
 });
 
 test('429 from the API puts the user back on the empty screen with that reason', async () => {

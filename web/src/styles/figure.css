@@ -15,8 +15,11 @@
   }
 }
 
+/* `max-width`: on a phone the body is a column whose items are `align-items: start`, so the figure is as wide as its
+   content wants (the strip of pages, thousands of px) unless it is capped at the screen. */
 .dc-figure {
   min-width: 0;
+  max-width: 100%;
 }
 
 .dc-figure__head {
@@ -394,4 +397,102 @@
   margin: 0;
   color: var(--dc-muted);
   font-size: 0.9375rem;
+}
+
+/* "Display uploaded document": a quiet toggle, and a strip of the pages that scrolls inside its own box (never the page). */
+.dc-doc {
+  --dc-doc-h: min(62vh, 560px);
+  min-width: 0;
+  margin-top: 16px;
+}
+
+.dc-doc__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 16px 0 12px;
+  border: 0;
+  border-radius: 20px;
+  background: var(--dc-paper);
+  color: var(--dc-ink);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.dc-doc__toggle:hover {
+  background: var(--dc-sky);
+}
+
+.dc-doc__chevron {
+  transition: transform 0.15s ease;
+}
+
+.dc-doc__toggle[aria-expanded='true'] .dc-doc__chevron {
+  transform: rotate(90deg);
+}
+
+.dc-doc__strip {
+  max-width: 100%;
+  margin-top: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  border-radius: 14px;
+  background: var(--dc-paper);
+}
+
+.dc-doc__strip[hidden] {
+  display: none;
+}
+
+.dc-doc__pages {
+  display: flex;
+  gap: 12px;
+  width: max-content;
+  margin: 0;
+  padding: 12px;
+  list-style: none;
+}
+
+/* A page keeps its place (a portrait page's width) before its image arrives, so lazy loading does not shift the strip. */
+.dc-doc__page {
+  flex: none;
+  height: var(--dc-doc-h);
+  min-width: calc(var(--dc-doc-h) * 0.707);
+}
+
+.dc-doc__page img {
+  display: block;
+  width: auto;
+  height: 100%;
+  border: 1px solid var(--dc-line);
+  border-radius: 4px;
+  background: var(--dc-white);
+}
+
+.dc-doc__missing {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  margin: 0;
+  padding: 12px;
+  border: 1px dashed var(--dc-line);
+  border-radius: 4px;
+  color: var(--dc-muted);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+@media (max-width: 560px) {
+  .dc-doc {
+    --dc-doc-h: min(56vh, 420px);
+  }
+}
+
+/* The no-structures screen is centred and narrow: the toggle sits on its own line there. */
+.dc-working .dc-doc {
+  margin-top: 18px;
 }
