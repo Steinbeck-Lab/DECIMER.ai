@@ -79,6 +79,7 @@ All come from environment variables of the same name (case-insensitive); `.env.e
 | `VALIDATE_RATE_PER_MINUTE`, `EXPORT_RATE_PER_MINUTE`, `REPORT_RATE_PER_HOUR` | `60`, `10`, `30` | Requests per client address, a fixed window counted in Redis before the body is read. `429` with `Retry-After` beyond it. |
 | `REPORTS_DIR` | `/data/reports` | The private volume of problem reports (only the api mounts it). |
 | `MAX_REPORTS`, `REPORTS_MAX_BYTES`, `MAX_REPORT_IMAGE_BYTES` | `5000`, `2147483648`, `4194304` | At most this many report folders and this many bytes in all (counted from the disk, so a restart does not forget them; `503` beyond, a warning at 80 % of either); a crop image over the size is left out of its report. |
+| `REPORTS_MAX_AGE_DAYS` | `364` | A report older than this many days is deleted, whether or not anyone has analysed it: at start-up and then every hour, by the api itself. The privacy page says 12 months at the latest, the shortest of which is 365 days, so the default leaves the hour between runs (and a day's margin); keep it under 365 (`tests/test_privacy_promises.py` checks the examples and the default). |
 | `HOST`, `PORT` | `127.0.0.1`, `8000` | `python -m decimer_api` only. |
 
 ## Endpoints
@@ -189,8 +190,17 @@ the request; unknown JSON fields are refused.
   `MAX_REPORTS` or `REPORTS_MAX_BYTES`; `tidy` removes those older than an hour at start-up, and warns at 80 % of either cap) and
   renamed into place, with the cap checked and the rename done under one lock. A result reported
   twice is kept once (`204` both times). The folder name is built from a validated job id and an
-  integer; nothing from the client reaches a path. The privacy page's promise (kept until analysed, then
-  deleted) is kept by hand: delete the folder.
+  integer; nothing from the client reaches a path. What a report holds, and no more: the crop image,
+  and in `result.json` the job's id, the result as recognised (never the client's edits: only the
+  index comes from the client), the job's page counts and warning codes, the engines' versions and the
+  time. No client address. The privacy page says a report is deleted once it has been analysed (by hand:
+  delete the folder) and at the latest after 12 months (by the api: **`REPORTS_MAX_AGE_DAYS`**, 364:
+  a day short of a year, because the shortest twelve months are 365 days).
+  `tidy` deletes the reports older than that at start-up, and `tidy_every` (a task of the api's
+  lifespan, cancelled at shutdown) runs it again every hour, so a report is gone within an hour
+  after it reaches the age, which is a day before the 12 months are up. A report's age is the older of its folder's time and `reportedAt` in
+  its `result.json`; only folders named `<32 hex>-<index>` are ever deleted (no symlink is followed,
+  nothing else on the volume is touched). The volume is in no backup (`deploy/README.md`).
 * **engines.** The model versions are in `engines.py`, next to the pins in `services/*/uv.lock` that they
   mirror (a test compares them); RDKit's is read from the installed package. No service is called.
 

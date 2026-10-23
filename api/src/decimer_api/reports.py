@@ -20,16 +20,24 @@ and the rename are done together under a lock, so requests running at the same t
 room for one more; there is one api process, which is also why a process lock is enough. A warning
 is logged when the count reaches 80 % of the cap (and by `tidy` if it already is at start-up).
 
-The privacy page promises that a reported image is kept until it has been analysed, then deleted;
-deleting is done by hand, on the volume.
+The privacy page promises two things. A report is deleted once it has been analysed: that is done
+by hand, on the volume. And no report is kept longer than 12 months: `expire` deletes a report older
+than `REPORTS_MAX_AGE_DAYS` (364), from `tidy` at start-up and then every hour from `tidy_every`
+(`app.py` starts it). That is a day short of a year on purpose: the shortest twelve months are 365
+days, and a report can wait up to an hour (the interval) past the limit before a run finds it, so
+none is kept past 364 days and an hour. The age is the older of the folder's own time and
+`reportedAt` in its `result.json`; only folders named like a report are ever deleted. The volume is
+in no backup (deploy/README.md), so deleting it here deletes it everywhere.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import math
 import os
+import re
 import secrets
 import shutil
 import threading
@@ -48,6 +56,13 @@ COPY_CHUNK = 64 * 1024
 TEMP_PREFIX = ".tmp-"
 STALE_TEMP_SECONDS = 3600
 WARN_FRACTION = 0.8
+SECONDS_PER_DAY = 86400
+# How often `tidy_every` looks for reports past their age. The privacy page says 12 months at the
+# latest (365 days at the shortest): the age limit (364 days) plus this interval stays within it,
+# and test_a_report_never_outlives_the_twelve_months_the_page_promises holds the two together.
+TIDY_INTERVAL_SECONDS = 3600
+# What `report_name` makes: a job id (32 lowercase hex characters), a dash and a result index.
+REPORT_NAME = re.compile(r"[0-9a-f]{32}-[0-9]{1,6}")
 
 # Check the cap and create the folder as one step. One api process (compose runs exactly one).
 _cap_lock = threading.Lock()
@@ -126,12 +141,66 @@ def _warn_when_bytes_nearly_full(used: int, max_bytes: int) -> None:
     )
 
 
+def _made_at(folder: Path) -> float:
+    """When a report was made, in seconds since the epoch: the older of the folder's own time and
+    the `reportedAt` it records. The folder's time alone could be reset by a copy of the volume;
+    `reportedAt` alone by a folder without a readable `result.json`. Taking the older of the two
+    can only delete earlier, never keep longer."""
+    made = folder.stat().st_mtime
+    try:
+        with (folder / "result.json").open("rb") as record:
+            reported = datetime.fromisoformat(json.load(record)["reportedAt"]).timestamp()
+    except (OSError, ValueError, OverflowError, KeyError, TypeError, RecursionError):
+        # (JSON errors are ValueErrors; a record nested too deep is a RecursionError, which is not.)
+        return made
+    return min(made, reported)
+
+
+def expire(reports_dir: Path, max_age_days: int, *, now: float | None = None) -> int:
+    """Delete the reports older than `max_age_days` days. Returns how many it removed. Only folders
+    named like a report (`report_name`) are looked at: anything else on the volume, and a `.tmp-*`
+    folder, is left alone. A folder that cannot be judged or removed is logged and skipped; the
+    next run tries again."""
+    if not reports_dir.is_dir():
+        return 0
+    moment = time.time() if now is None else now
+    limit = max_age_days * SECONDS_PER_DAY
+    with os.scandir(reports_dir) as entries:
+        candidates = [
+            Path(entry.path)
+            for entry in entries
+            if REPORT_NAME.fullmatch(entry.name) and entry.is_dir(follow_symlinks=False)
+        ]
+    removed = 0
+    for folder in candidates:
+        try:
+            if moment - _made_at(folder) <= limit:
+                continue
+            shutil.rmtree(folder)
+        except FileNotFoundError:  # taken away since it was listed
+            continue
+        except OSError:
+            log.exception("could not delete the expired report %s", folder.name)
+            continue
+        removed += 1
+    if removed:
+        log.info("deleted %d reports older than %d days", removed, max_age_days)
+    return removed
+
+
 def tidy(
-    reports_dir: Path, max_reports: int, max_bytes: int | None = None, *, now: float | None = None
+    reports_dir: Path,
+    max_reports: int,
+    max_bytes: int | None = None,
+    max_age_days: int | None = None,
+    *,
+    now: float | None = None,
 ) -> int:
-    """At start-up: remove `.tmp-*` folders older than an hour (a request that died halfway) and
-    warn if the reports are at 80 % of the cap, in number or in bytes (counted from the disk).
-    Returns how many folders it removed. Nothing to do when the directory does not exist yet."""
+    """Housekeeping, at start-up and then hourly (`tidy_every`): remove `.tmp-*` folders older than
+    an hour (a request that died halfway), delete the reports older than `max_age_days` (none is
+    deleted for age when it is None), and warn if what is left is at 80 % of the cap, in number
+    or in bytes (counted from the disk). Returns how many folders it removed. Nothing to do when
+    the directory does not exist yet."""
     if not reports_dir.is_dir():
         return 0
     moment = time.time() if now is None else now
@@ -147,6 +216,8 @@ def tidy(
     for folder in stale:
         shutil.rmtree(folder, ignore_errors=True)
         removed += 1
+    if max_age_days is not None:
+        removed += expire(reports_dir, max_age_days, now=moment)
     count = count_reports(reports_dir)
     if count >= math.ceil(WARN_FRACTION * max_reports):
         _warn_when_nearly_full(count, max_reports)
@@ -155,6 +226,24 @@ def tidy(
         if used >= WARN_FRACTION * max_bytes:
             _warn_when_bytes_nearly_full(used, max_bytes)
     return removed
+
+
+async def tidy_every(
+    interval_seconds: float,
+    reports_dir: Path,
+    max_reports: int,
+    max_bytes: int | None,
+    max_age_days: int | None,
+) -> None:
+    """Run `tidy` every `interval_seconds`, forever (the first run is one interval from now: the api
+    tidies once at start-up itself). A failed run is logged and does not stop the loop. Meant to
+    be a task of the api's lifespan, cancelled at shutdown."""
+    while True:
+        await asyncio.sleep(interval_seconds)
+        try:
+            await asyncio.to_thread(tidy, reports_dir, max_reports, max_bytes, max_age_days)
+        except Exception:
+            log.exception("could not tidy REPORTS_DIR %s", reports_dir)
 
 
 def _write(path: Path, data: bytes) -> None:

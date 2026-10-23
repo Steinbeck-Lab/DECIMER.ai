@@ -10,7 +10,7 @@ import logging
 import os
 import secrets
 from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
 
 from fastapi import FastAPI, Response
@@ -26,7 +26,7 @@ from .ingest_gate import IngestGate
 from .ingest_runner import IngestRunner, SubprocessIngest
 from .names import Namer, build_namer
 from .queue import ArqEnqueuer, Enqueue
-from .reports import tidy
+from .reports import TIDY_INTERVAL_SECONDS, tidy, tidy_every
 from .result_routes import router as result_router
 from .routes import router
 from .settings import Settings
@@ -85,15 +85,26 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-        # `.tmp-*` folders a crash left in the reports volume; a warning if it is nearly full.
+        # `.tmp-*` folders a crash left in the reports volume, reports past their age (the privacy
+        # page promises 12 months at the latest); a warning if it is nearly full. Then again every
+        # hour. Whatever goes wrong here (a full or read-only volume, a tampered record) is logged:
+        # housekeeping never keeps the api from starting.
+        tidy_arguments = (
+            settings.reports_dir,
+            settings.max_reports,
+            settings.reports_max_bytes,
+            settings.reports_max_age_days,
+        )
         try:
-            await asyncio.to_thread(
-                tidy, settings.reports_dir, settings.max_reports, settings.reports_max_bytes
-            )
-        except OSError:
+            await asyncio.to_thread(tidy, *tidy_arguments)
+        except Exception:
             log.warning("could not tidy REPORTS_DIR %s", settings.reports_dir, exc_info=True)
         await deps_analysis.start()  # the molfile-reading children, ready before the first request
+        hourly_tidy = asyncio.create_task(tidy_every(TIDY_INTERVAL_SECONDS, *tidy_arguments))
         yield
+        hourly_tidy.cancel()
+        with suppress(asyncio.CancelledError):
+            await hourly_tidy
         await deps_analysis.aclose()
         await deps_namer.aclose()
         if on_shutdown is not None:

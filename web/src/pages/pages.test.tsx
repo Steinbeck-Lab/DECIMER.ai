@@ -1,4 +1,5 @@
 import { cleanup, render } from '@testing-library/react';
+import type { ReactElement } from 'react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { Footer } from '../shell/Footer';
 import { strings } from '../strings';
@@ -19,6 +20,23 @@ const PAGES = [
 
 const headings = (root: ParentNode) =>
   [...root.querySelectorAll('h1,h2,h3,h4,h5,h6')].map((h) => ({ level: Number(h.tagName[1]), text: h.textContent ?? '' }));
+
+/** The `[CONFIRM: ...]` markers a page shows, in order. */
+const markersOn = (page: ReactElement): string[] => {
+  render(page);
+  const found = (document.body.textContent ?? '').match(CONFIRM_MARKER) ?? [];
+  cleanup();
+  return found;
+};
+
+/** One section of the Privacy page, found by its heading: what it claims, and the open questions it still holds. */
+function privacySection(title: string): { text: string; open: string[] } {
+  render(<Privacy />);
+  const heading = [...document.querySelectorAll('h3')].find((h) => h.textContent === title);
+  expect(heading, title).toBeTruthy();
+  const text = heading!.closest('section')!.textContent ?? '';
+  return { text: text.replace(CONFIRM_MARKER, ''), open: text.match(CONFIRM_MARKER) ?? [] };
+}
 
 describe.each(PAGES)('$name', ({ page, tree }) => {
   test('has one h1 and never skips a heading level', () => {
@@ -118,6 +136,18 @@ describe('[CONFIRM: ...] markers', () => {
     expect(inCopy).toBeGreaterThan(0);
     expect(shown).toBe(inCopy);
   });
+
+  test('four questions are still open, and the release gate fails for each: the draft notice, the university proxy, GlitchTip and the Impressum review', () => {
+    expect(markersOn(<About />)).toEqual([]);
+    expect(markersOn(<Privacy />)).toEqual([
+      expect.stringMatching(/draft until the data-protection officer has reviewed this text \(TODO\)/),
+      expect.stringMatching(/what the university proxy in front of this site logs and for how long; ask the network team/),
+      expect.stringMatching(/true once GlitchTip runs with 90-day retention and scrubbing, and the server counts jobs per day without IP addresses \(TODO\)/),
+    ]);
+    expect(markersOn(<Impressum />)).toEqual([expect.stringMatching(/legal review of the Impressum/)]);
+    // The release gate (release.test.ts) looks for the same text in the copy: four statements are in it.
+    expect(allStrings(strings).filter((text) => text.includes('[CONFIRM'))).toHaveLength(4);
+  });
 });
 
 describe('About', () => {
@@ -158,6 +188,12 @@ describe('About', () => {
     expect(document.querySelector('a[href="https://github.com/Steinbeck-Lab/Orthonym"]')).toBeTruthy();
     expect(document.querySelector('a[href*="s13321-021-00512-4"]')).toBeNull(); // the STOUT paper
     expect(document.querySelectorAll('.dc-page__citations li')).toHaveLength(6); // OPSIN has no entry of its own
+  });
+
+  test('says a name is worked out again after an edit, with nothing left to confirm', () => {
+    render(<About />);
+    expect(document.body.textContent).toContain('A name is worked out again after you edit a structure.');
+    expect(document.querySelector('mark.dc-confirm')).toBeNull();
   });
 
   test('carries over the legacy sections and links, and points to the privacy and Impressum pages', () => {
@@ -224,6 +260,76 @@ describe('Privacy', () => {
     expect(text).not.toMatch(/cookieless|in a way that sets no cookies|This site sets no cookies/i);
     expect(text).toContain('This site itself sets no cookies');
     expect(text).toContain('decimer.visited');
+  });
+
+  test('uploads and edits: the server does not keep an edit, and the legal basis is given', () => {
+    const { text, open } = privacySection('Your uploads and results');
+    expect(open).toEqual([]);
+    // The two statements about edits are the server's behaviour (api/src/decimer_api/result_routes.py: validate
+    // answers and stores nothing, export streams a file and stores nothing).
+    expect(text).toContain(
+      'When you edit a structure, the edited structure is sent to the server, which works out its SMILES, InChIKey, picture and name and sends them back; the server does not keep the edit.',
+    );
+    expect(text).toContain('A download sends your edits once more to build the file, which the server does not keep either.');
+    expect(text).toContain('The basis for processing your uploads, your edits and your results is Art. 6 Para. 1 lit. f) GDPR.');
+    expect(text).toContain('Our legitimate interest lies in providing the free service.');
+    expect(text).not.toMatch(/not built yet|so that it can work out/);
+    // The job folder holds more than the upload and the crops: the rendered pages too (page-<n>.png, worker/pipeline.py).
+    expect(text).toContain('in a job folder on disk, the uploaded file, the page images made from it and the structure images cut out of them');
+  });
+
+  test('problem reports: what one keeps, who can open it, when it goes, and that no backup holds it', () => {
+    const { text, open } = privacySection('Problem reports');
+    expect(open).toEqual([]);
+    // What api/src/decimer_api/reports.py `_record` writes, and no more.
+    expect(text).toContain('the picture of that structure and the result as it was recognised (for example SMILES, molfile, name and confidence)');
+    expect(text).toContain('the number of pages and the warnings of the job');
+    expect(text).toContain('the random identifier of the job');
+    expect(text).toContain('the versions of the models and the time');
+    expect(text).toContain('It keeps no IP address and none of your edits.');
+    expect(text).toContain('in a folder that only its administrators can open');
+    expect(text).toContain('A report is deleted once we have analysed it, and at the latest after 12 months');
+    expect(text).toContain('Reports are not included in any backup.');
+    expect(text).not.toMatch(/not built yet|private storage area/);
+  });
+
+  test('server logs: the access log has no address, the error log has one and is gone after seven days, the proxy is open', () => {
+    const { text, open } = privacySection('Server logs');
+    // deploy/nginx/edge.conf: log_format edge is the time, the method, the path with job ids replaced, the status,
+    // the time taken and the size.
+    expect(text).toContain('It records no IP address, no user agent (browser type or operating system), no referring page and no query string.');
+    // deploy/nginx/edge-logs.sh deletes a day of the error log a week after it began (api/tests/test_edge_logs.py).
+    // ... and what an nginx error line holds: the client address, the request line, the host and the referrer, for any
+    // server error (a failed proxy attempt, an upload over the limit, a media file that cannot be opened).
+    expect(text).toContain('If the server hits an error, for example when it cannot pass a request on, when an upload is too large or when a file cannot be opened');
+    expect(text).toContain('its error log can name the IP address of the request, the request itself (the page address, which for a job includes the job identifier), the name of the site that was asked for and the page that referred to it');
+    expect(text).toContain('The error log is the only place where this site writes an IP address down.');
+    expect(text).toContain('It is split into one file per day, and no line in it is kept longer than seven days.');
+    expect(text).not.toContain('as long as the server\'s log rotation keeps them');
+    expect(text).not.toContain('names the IP address of that request and the page address'); // too narrow: any error, and the host and referrer
+    expect(open).toHaveLength(1);
+    expect(open[0]).toMatch(/what the university proxy in front of this site logs and for how long/);
+  });
+
+  test('Matomo: the legal basis and how to opt out are given, and nothing is claimed about what NFDI4Chem keeps', () => {
+    const { text, open } = privacySection('Visit statistics (Matomo)');
+    expect(open).toEqual([]);
+    const host = new URL(MATOMO_URL).host;
+    expect(text).toContain('The basis for counting visits is Art. 6 Para. 1 lit. f) GDPR. Our legitimate interest lies in seeing how the site is used.');
+    expect(text).toContain(`block cookies or block scripts from ${host}, or use a tracker blocker`);
+    expect(text).toContain('The site works without Matomo.');
+    // The legacy text said nothing about retention or IP shortening, and nobody has confirmed either for NFDI4Chem's server.
+    expect(text).not.toMatch(/shorten|anonymi[sz]|truncat|retention|(deleted|kept|stored) (for|after)/i);
+  });
+
+  test('error reports and usage counts: GlitchTip, 90 days, no files or addresses, and one open question until it runs', () => {
+    const { text, open } = privacySection('Error reports and usage counts');
+    expect(text).toContain('an error report goes to an error tracker (GlitchTip) that runs on our own server in Jena');
+    expect(text).toContain('never your files, structures or IP addresses, and is kept for 90 days');
+    expect(text).toContain('The server counts how many jobs run per day, without IP addresses.');
+    expect(open).toHaveLength(1);
+    expect(open[0]).toContain('true once GlitchTip runs with 90-day retention and scrubbing');
+    expect(open[0]).toContain('counts jobs per day');
   });
 
   test('keeps no draft notice of its own besides the one for the data-protection review', () => {

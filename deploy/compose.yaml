@@ -501,6 +501,11 @@ services:
   # The only published port, on the loopback interface only (8080 is the legacy site's).
   # /var/cache/nginx is a disk-backed volume because the edge buffers uploads (up to 100 MB each) there
   # (proxy_request_buffering stays on); /tmp is RAM and holds only the pid file and a generated include.
+  # /var/log/nginx is the edge-logs volume: nginx's ERROR LOG, the one place the edge writes a client address, is
+  # a file there (not docker's json-file log, which is bounded by size and not by age) that edge-logs.sh rotates
+  # daily and deletes after seven days (nginx/edge-logs.sh; deploy/README.md, "Error log"): the image's
+  # HEALTHCHECK runs it every 15 s, so keep the healthcheck. A stopped edge prunes nothing (the next start does,
+  # or the one-liner in the README). The access log has no address and goes to stdout as before.
   # The edge reaches the api over `app`; clients and the legacy nginx reach the edge over `public`.
   edge:
     <<: *service
@@ -525,6 +530,7 @@ services:
     volumes:
       - jobs:/data/jobs:ro
       - edge-cache:/var/cache/nginx
+      - edge-logs:/var/log/nginx
     read_only: true
     tmpfs:
       - /tmp:size=16m,mode=1777
@@ -565,7 +571,10 @@ volumes:
   # Job files: written by api, worker (and swept by sweep), read by edge (X-Accel-Redirect). Lives
   # until the sweep deletes a job's folder (1 h after the job ends).
   jobs: {}
-  # Problem reports: private, mounted into the api only, never into the edge. Kept until
-  # analysed, then deleted by hand. Back this volume up (TODO, see deploy/README.md).
+  # Problem reports: private, mounted into the api only, never into the edge. Deleted by hand once
+  # analysed, and by the api itself when older than REPORTS_MAX_AGE_DAYS (364, hourly). IN NO BACKUP, on purpose: the
+  # privacy page says so (TODO must leave this volume out; deploy/README.md, "Backups and retention").
   reports: {}
   edge-cache: {}
+  # The edge's error log and its rotated days (at most seven): see the edge service. Not a backup candidate either.
+  edge-logs: {}

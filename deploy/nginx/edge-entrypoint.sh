@@ -16,6 +16,12 @@
 # The output goes to /tmp/edge-generated.conf (a tmpfs under read_only), included by edge.conf.
 # First, whatever an earlier run left in nginx's temp directory is deleted: buffered upload bodies of
 # requests that were cut off (a crash, a restart) are user data and must not outlive the process.
+#
+# It also keeps the promise that the error log, the one place the edge writes a client address, is deleted
+# after seven days: edge-logs.sh rotates and prunes /var/log/nginx before nginx opens the file (so what a
+# stopped edge left behind past its week goes before anything is served), and goes on doing it beside nginx
+# (every ten minutes) for as long as the container runs. The image's HEALTHCHECK runs `edge-logs.sh
+# enforce`, which rotates and prunes by itself and then checks, so the retention does not rest on the loop.
 set -eu
 
 find "${EDGE_CACHE_DIR:-/var/cache/nginx}" -mindepth 1 -delete 2> /dev/null || true
@@ -66,5 +72,12 @@ esac
     echo "client_max_body_size $((upload_mb + 1))m;"
     echo "set \$max_upload_mb $upload_mb;"
 } >> "$out"
+
+# A failure here stops the container: better no edge than an error log nobody deletes. (`check` refuses,
+# among other things, an error.log that is a symlink to stderr, as a volume seeded by the stock nginx image
+# would have it.)
+/usr/local/bin/edge-logs.sh rotate
+/usr/local/bin/edge-logs.sh check
+/usr/local/bin/edge-logs.sh loop &
 
 exec "$@"

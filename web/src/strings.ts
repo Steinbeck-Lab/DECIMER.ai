@@ -331,7 +331,7 @@ export const strings = {
             [
               'IUPAC names come from ',
               { text: 'Orthonym', href: 'https://github.com/Steinbeck-Lab/Orthonym' },
-              ' and are shown only when Orthonym has checked them by reading the name back with OPSIN. When it cannot give a verified name, the page says so; it never guesses. Hover over a name, or move focus to it, to see how it was built and checked. A name is worked out again after you edit a structure. [CONFIRM: true once the edit call is merged]',
+              ' and are shown only when Orthonym has checked them by reading the name back with OPSIN. When it cannot give a verified name, the page says so; it never guesses. Hover over a name, or move focus to it, to see how it was built and checked. A name is worked out again after you edit a structure.',
             ],
           ],
         },
@@ -478,16 +478,17 @@ export const strings = {
               title: 'Your uploads and results',
               content: [
                 'There is no account and no login.',
-                'When you upload a PDF or images, or paste an image, the server keeps your results (SMILES, InChIKeys, names and molfiles) in a job record in its job store (Redis), and the uploaded file and the structure images cut out of it in a job folder on disk. They are used only to compute and show your results. When you edit a structure, the edited structure is sent to the server so that it can work out the SMILES, the name and the picture again.',
+                'When you upload a PDF or images, or paste an image, the server keeps your results (SMILES, InChIKeys, names and molfiles) in a job record in its job store (Redis), and, in a job folder on disk, the uploaded file, the page images made from it and the structure images cut out of them. They are used only to compute and show your results.',
                 'They are deleted about one hour after your job ends, whether it finished or failed. The record expires by itself; a clean-up job removes the folders and runs every five minutes, so allow a few minutes more. A running job keeps its record alive with every step it completes. A job that is still waiting, or whose worker has stopped, is removed after its own time limit, about six hours at most with the current settings.',
-                '[CONFIRM: check this section against the finished API. The edit call is not built yet, so what it stores is not confirmed here. Also state the legal basis for processing the uploads]',
+                'When you edit a structure, the edited structure is sent to the server, which works out its SMILES, InChIKey, picture and name and sends them back; the server does not keep the edit. A download sends your edits once more to build the file, which the server does not keep either.',
+                'The basis for processing your uploads, your edits and your results is Art. 6 Para. 1 lit. f) GDPR. Our legitimate interest lies in providing the free service.',
               ],
             },
             {
               title: 'Problem reports',
               content: [
-                'If you choose "Report a problem" on a result, the server saves that result and its structure image in a private storage area so that we can analyse the error. A report is kept until we have analysed it, and is deleted afterwards.',
-                '[CONFIRM: the report call is not built yet. State exactly what a report stores (the image, the SMILES, the name, the job identifier?), who can see it, how long it can stay unanalysed, and whether the storage is backed up and how deleted reports leave the backups]',
+                'If you choose "Report a problem" on a result, the server saves a report so that we can analyse the error. A report keeps the picture of that structure and the result as it was recognised (for example SMILES, molfile, name and confidence), the number of pages and the warnings of the job, the random identifier of the job (the job itself is deleted after about an hour), the versions of the models and the time. It keeps no IP address and none of your edits.',
+                'Reports are stored on the server, in a folder that only its administrators can open. A report is deleted once we have analysed it, and at the latest after 12 months: the server deletes older reports by itself. Reports are not included in any backup.',
               ],
             },
             {
@@ -500,9 +501,9 @@ export const strings = {
             {
               title: 'Server logs',
               content: [
-                'The web server of this site writes an access log that records the date and time, the request method, the page requested (job identifiers are left out), the answer code, the time taken and the size of the answer. It records no IP address, no browser or operating system, no referring page and no query string.',
-                "If the server fails to pass a request on, its error log names the IP address of that request. Those lines are kept as long as the server's log rotation keeps them.",
-                '[CONFIRM: how long the error log is kept. The legacy text said that the server logs the browser type and version, the operating system, the referring page, the pages visited, the time and the IP address, and deletes them within seven days unless an incident needs them as evidence. Say what the university proxy and the server in front of this site log, and for how long, and whether the seven days still apply]',
+                'The web server of this site writes an access log that records the date and time, the request method, the page requested (job identifiers are left out), the answer code, the time taken and the size of the answer. It records no IP address, no user agent (browser type or operating system), no referring page and no query string.',
+                'If the server hits an error, for example when it cannot pass a request on, when an upload is too large or when a file cannot be opened, its error log can name the IP address of the request, the request itself (the page address, which for a job includes the job identifier), the name of the site that was asked for and the page that referred to it. The error log is the only place where this site writes an IP address down. It is split into one file per day, and no line in it is kept longer than seven days.',
+                '[CONFIRM: what the university proxy in front of this site logs and for how long; ask the network team]',
               ],
             },
             {
@@ -516,13 +517,14 @@ export const strings = {
               content: [
                 'We count visits with Matomo, a web-analytics tool run by NFDI4Chem (matomo.nfdi4chem.de). This site loads the Matomo script from that server, so your browser contacts it each time you open a page of this site and sends it the data Matomo\'s tracker sends by default: the address and title of the page, the referring page, the time, and your screen size, language and browser. Your IP address reaches it with every request. The code is the one the previous version of this site used, and it does not switch Matomo\'s cookies off, so Matomo sets first-party cookies whose names start with "_pk_", such as a visitor identifier (by Matomo\'s defaults valid for up to 13 months), a session marker (30 minutes), a record of the website you came from when you arrive through a link (6 months), and a short-lived test cookie. You can delete them in your browser settings.',
                 'Matomo counts each page you open on this site (the main page, About, Privacy and Impressum). The page address never contains your files or results. It may also record the address of a link to another website that you click, such as a PubChem or COCONUT search, which contains the InChIKey of the structure. No other analytics service is used, and apart from this counter this site loads no scripts, fonts or images from other websites. Links to other sites open them only when you click.',
-                '[CONFIRM: what the NFDI4Chem Matomo server keeps, for how long, and whether it shortens IP addresses; the legal basis (Art. 6 Para. 1 lit. f) GDPR was the basis in the legacy text) and how visitors can opt out. ROADMAP and PRODUCT.md call this Matomo "cookieless", but the legacy code, now used here, does not call disableCookies: decide whether to add it, or whether these cookies need consent (§ 25 TDDDG)]',
+                'The basis for counting visits is Art. 6 Para. 1 lit. f) GDPR. Our legitimate interest lies in seeing how the site is used. You can opt out at any time: in your browser, block cookies or block scripts from matomo.nfdi4chem.de, or use a tracker blocker. The site works without Matomo.',
               ],
             },
             {
               title: 'Error reports and usage counts',
               content: [
-                '[CONFIRM: error reporting (Sentry or GlitchTip, set by SENTRY_DSN; not live yet) and the server-side usage counter that replaces the legacy usage logs are not described yet. Say what they record, whether an IP address or an upload can reach an error report, where it is stored and for how long]',
+                'If the site fails, an error report goes to an error tracker (GlitchTip) that runs on our own server in Jena. It holds the technical details of the error, never your files, structures or IP addresses, and is kept for 90 days. The server counts how many jobs run per day, without IP addresses.',
+                '[CONFIRM: true once GlitchTip runs with 90-day retention and scrubbing, and the server counts jobs per day without IP addresses]',
               ],
             },
           ],
