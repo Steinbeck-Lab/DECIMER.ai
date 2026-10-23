@@ -29,6 +29,8 @@ interface MockJob {
   createdAt: number;
 }
 
+const isPdfName = (file: Pick<File, 'name'>) => file.name.toLowerCase().endsWith('.pdf');
+
 /**
  * What the mock does for a given upload. The file name picks a scenario, so
  * every state of the UI can be reached in the browser and in e2e tests:
@@ -50,7 +52,7 @@ export function scenarioFor(files: readonly Pick<File, 'name'>[]): {
   spec: Omit<MockJobSpec, 'id'>;
 } {
   const names = files.map((f) => f.name.toLowerCase()).join(' ');
-  const isPdf = files.some((f) => f.name.toLowerCase().endsWith('.pdf'));
+  const isPdf = files.some(isPdfName);
   const pages = isPdf ? LIMITS.maxPages : files.length;
 
   if (names.includes('corrupt')) {
@@ -97,11 +99,14 @@ export function scenarioFor(files: readonly Pick<File, 'name'>[]): {
     return {
       spec: {
         pages: 14,
+        pdf: true,
         results: fixtureResults(LIMITS.maxStructures, 'sequential'),
         structuresFound: 23,
         truncated: true,
         warnings: [
           { code: 'pages_truncated', message: 'The document has 14 pages. Only the first 10 were processed.' },
+          // The API sends this one as well; the UI words the cap once, from the count (state/notices.ts).
+          { code: 'structures_truncated', message: '23 structures were found. Only the first 20 were processed.' },
         ],
       },
     };
@@ -191,6 +196,7 @@ export class MockApiClient implements ApiClient {
     const createdAt = this.now();
     this.jobs.set(id, {
       spec: {
+        pdf: files.some(isPdfName),
         ...spec,
         id,
         createdAt: new Date(createdAt).toISOString(),

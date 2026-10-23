@@ -5,7 +5,7 @@ import { fixtureResults, FIXTURE_COMPOUNDS } from './fixtures';
 import { atomCount } from './MockApiClient';
 import { jobAt, QUEUE_STEPS, RUN, RUN_STEPS } from './timeline';
 
-const spec = { id: 'j', pages: 10, results: fixtureResults(8), structuresFound: 8, truncated: false };
+const spec = { id: 'j', pages: 10, pdf: true, results: fixtureResults(8), structuresFound: 8, truncated: false };
 const STEP = 100;
 
 test('the fixtures are the paper numbers, with names where Orthonym verified one', () => {
@@ -65,6 +65,21 @@ test('pages processed grow while the pages are being rendered and never pass the
   expect(jobAt(spec, (first + 2) * STEP + 10, STEP).pagesProcessed).toBe(spec.pages); // every page rendered
   const big = { ...spec, pages: 14 };
   expect(jobAt(big, 100 * STEP, STEP).pagesProcessed).toBe(LIMITS.maxPages);
+  // The cap is a PDF's: every image of an upload of images is processed, as the API does (it takes up to 50).
+  const images = { ...spec, pdf: false, pages: 12 };
+  expect(jobAt(images, 100 * STEP, STEP).pagesProcessed).toBe(12);
+  expect(jobAt(images, 100 * STEP, STEP).pageUrls).toHaveLength(12);
+});
+
+test('the job lists one page URL per processed page, like the API (none while queued, ten for a 14-page PDF)', () => {
+  expect(jobAt(spec, 0, STEP).pageUrls).toEqual([]);
+  for (const step of [QUEUE_STEPS * STEP + 10, (QUEUE_STEPS + 1) * STEP + 90, 100 * STEP]) {
+    const job = jobAt(spec, step, STEP);
+    expect(job.pageUrls).toHaveLength(job.pagesProcessed);
+  }
+  const done = jobAt({ ...spec, pages: 14 }, 100 * STEP, STEP);
+  expect(done.pageUrls).toHaveLength(LIMITS.maxPages);
+  expect(done.pageUrls.every((url) => typeof url === 'string' && url.length > 0)).toBe(true);
 });
 
 test('the nocls scenario: every result has isStructure null and a job warning says why', () => {
@@ -94,7 +109,7 @@ test('file names pick the scenario', () => {
   expect(scenarioFor([{ name: 'empty.png' }]).spec.results).toHaveLength(0);
   expect(scenarioFor([{ name: 'twenty.png' }]).spec.results).toHaveLength(20);
   const truncated = scenarioFor([{ name: 'truncated.pdf' }]).spec;
-  expect(truncated).toMatchObject({ pages: 14, truncated: true, structuresFound: 23 });
+  expect(truncated).toMatchObject({ pages: 14, pdf: true, truncated: true, structuresFound: 23 });
   expect(truncated.results).toHaveLength(LIMITS.maxStructures);
   expect(scenarioFor([{ name: 'busy.png' }]).refuse?.status).toBe(429);
   expect(scenarioFor([{ name: 'full.png' }]).refuse?.status).toBe(503);
@@ -161,7 +176,7 @@ test('the job has the fields of the API model: warnings, createdAt and expiresAt
   const job = await api.getJob(id);
   expect(job.createdAt).toBe(new Date(1_000_000).toISOString());
   expect(Date.parse(job.expiresAt) - Date.parse(job.createdAt)).toBe(60 * 60 * 1000);
-  expect(job.warnings.map((w) => w.code)).toEqual(['pages_truncated']);
+  expect(job.warnings.map((w) => w.code)).toEqual(['pages_truncated', 'structures_truncated']);
   expect(job.queuePosition).toBe(2);
   expect(job.error).toBeNull();
 });

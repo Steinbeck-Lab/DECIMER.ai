@@ -1,6 +1,6 @@
 import { MantineProvider } from '@mantine/core';
 import { act, cleanup, render, screen } from '@testing-library/react';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { App } from './App';
 import { MockApiClient } from './mocks/MockApiClient';
 import { AppProvider } from './state/react';
@@ -40,6 +40,17 @@ test('the footer carries the lab credit, the GitHub link and the coffee credit',
   expect(footer.textContent).toContain(`${strings.shell.builtWith}`);
   expect(footer.textContent).toContain(strings.shell.builtBy);
   expect(footer.querySelector('svg')).toBeTruthy();
+});
+
+test("the footer carries legacy's copyright line, with the current year", () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  try {
+    vi.setSystemTime(new Date('2031-03-04T12:00:00Z'));
+    renderApp();
+    expect(screen.getByRole('contentinfo').textContent).toContain('© 2031 DECIMER Project. All rights reserved.');
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test('the About route renders the page, and says nothing about STOUT or Google Analytics', async () => {

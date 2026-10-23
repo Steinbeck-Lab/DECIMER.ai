@@ -111,6 +111,21 @@ def test_result_view_carries_number_and_media_url() -> None:
     assert result["name"] is None and result["nameTier"] is None
 
 
+def test_job_view_lists_a_page_url_for_every_processed_page() -> None:
+    job = Job.create(
+        job_id="c" * 32, client_ip_hash="h" * 32, pages=14, pages_processed=10, now=NOW
+    )
+    view = json.loads(JobView.from_job(job).model_dump_json(by_alias=True))
+    assert view["pageUrls"] == [f"/api/jobs/{'c' * 32}/media/page-{i}.png" for i in range(10)]
+    # Only pages that are processed: the four beyond the cap have no URL. An image is one page.
+    image = Job.create(
+        job_id="d" * 32, client_ip_hash="h" * 32, pages=1, pages_processed=1, now=NOW
+    )
+    assert JobView.from_job(image).page_urls == [f"/api/jobs/{'d' * 32}/media/page-0.png"]
+    # Derived, never stored.
+    assert "pageUrls" not in json.loads(job.model_dump_json(by_alias=True))
+
+
 def test_the_stored_record_holds_nothing_derived() -> None:
     job = Job.create(job_id="b" * 32, client_ip_hash="h" * 32, pages=1, pages_processed=1, now=NOW)
     job.results.append(

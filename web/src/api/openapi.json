@@ -197,6 +197,14 @@
             "title": "Id",
             "type": "string"
           },
+          "pageUrls": {
+            "description": "URLs of the page images of the upload, in page order: `page-0.png` to `page-<pagesProcessed - 1>.png`, one for each page the job processes, and same-origin like `cropUrl`. An upload of images lists every image; a PDF lists its first `MAX_PDF_PAGES` pages (the pages past the cap are not processed, so they are not listed). The list is the plan, not a check that the files exist: a page the worker could not render (warning `page_render_failed`), or has not rendered yet, answers 404.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Pageurls",
+            "type": "array"
+          },
           "pages": {
             "description": "Pages in the upload (an image counts as one page).",
             "title": "Pages",

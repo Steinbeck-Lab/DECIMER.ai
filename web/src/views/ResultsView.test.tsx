@@ -1,5 +1,5 @@
 import { MantineProvider } from '@mantine/core';
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { memo } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { MockApiClient } from '../mocks/MockApiClient';
@@ -30,7 +30,7 @@ const Capture = memo(function Capture() {
   return null;
 });
 
-async function mountResults() {
+async function mountResults(file = new File(['x'], 'a.png', { type: 'image/png' })) {
   render(
     <MantineProvider>
       <AppProvider api={new MockApiClient({ stepMs: 5, latencyMs: 0 })}>
@@ -42,7 +42,7 @@ async function mountResults() {
   const c = controller as AppController | null;
   if (!c) throw new Error('no controller');
   await act(async () => {
-    await c.submit([new File(['x'], 'a.png', { type: 'image/png' })]);
+    await c.submit([file]);
   });
   await vi.waitFor(() => expect(c.store.getState().phase).toBe('results'), { timeout: 3000 });
   await act(async () => {});
@@ -81,4 +81,24 @@ test('an edit re-renders the tile that was edited and no other', async () => {
   const changed = [...renders].filter(([i, n]) => n > (before.get(i) ?? 0)).map(([i]) => i);
   expect(changed).toEqual([3]);
   c.dispose();
+});
+
+const pdf = () => new File(['x'], 'paper.pdf', { type: 'application/pdf' });
+
+test('a PDF job offers the uploaded document, shut at first, with a page for every processed page', async () => {
+  await mountResults(pdf());
+  const toggle = screen.getByRole('button', { name: 'Display uploaded document' });
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(document.querySelectorAll('.dc-doc img')).toHaveLength(0);
+  fireEvent.click(toggle);
+  // The mock's PDF has 10 pages.
+  expect(screen.getAllByRole('img').map((img) => img.getAttribute('alt'))).toEqual(
+    Array.from({ length: 10 }, (_, i) => `Page ${i + 1} of 10`),
+  );
+});
+
+test('an image job has no uploaded-document toggle (legacy shows it for PDFs only), although the job lists its page', async () => {
+  const c = await mountResults();
+  expect(c.store.getState().job?.pageUrls).toHaveLength(1);
+  expect(screen.queryByRole('button', { name: 'Display uploaded document' })).toBeNull();
 });

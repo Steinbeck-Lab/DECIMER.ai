@@ -3,11 +3,14 @@ import { STAGE_ORDER, type Job, type Result } from '../api/contract';
 import { fixtureResults } from '../mocks/fixtures';
 import { initialState, type State } from './model';
 import { reducer, type Action } from './reducer';
+import { strings } from '../strings';
 import {
   buildExportRequest,
   countsOf,
   filterCounts,
   filterViews,
+  isPdfUpload,
+  pagesToProcess,
   reasonsFor,
   stepList,
   viewOf,
@@ -23,6 +26,7 @@ const job: Job = {
   stages: STAGE_ORDER.map((name) => ({ name, state: 'done' })),
   pages: 10,
   pagesProcessed: 10,
+  pageUrls: [],
   truncated: false,
   structuresFound: 8,
   structuresDropped: 0,
@@ -445,4 +449,20 @@ test('polls before the end have structuresFound but no results: the job stays in
   const done = reducer(after, { type: 'jobUpdated', job });
   expect(done.phase).toBe('results');
   expect(viewsOf(done)).toHaveLength(8);
+});
+
+test('a PDF is limited to its first 10 pages, images are all processed (the API takes up to 50)', () => {
+  expect(isPdfUpload([{ kind: 'pdf' }])).toBe(true);
+  expect(isPdfUpload([{ kind: 'image' }, { kind: 'image' }])).toBe(false);
+  expect(isPdfUpload([])).toBe(false);
+  expect(pagesToProcess({ pages: 14 }, true)).toBe(10);
+  expect(pagesToProcess({ pages: 3 }, true)).toBe(3);
+  expect(pagesToProcess({ pages: 12 }, false)).toBe(12);
+  expect(pagesToProcess({ pages: 50 }, false)).toBe(50);
+});
+
+test('the capacity line counts a PDF against its page limit and an image upload against none', () => {
+  expect(strings.results.capacity(8, 10, true)).toBe('8 of 20 structures · 10 of 10 pages');
+  expect(strings.results.capacity(8, 1, false)).toBe('8 of 20 structures · 1 image');
+  expect(strings.results.capacity(8, 12, false)).toBe('8 of 20 structures · 12 images');
 });

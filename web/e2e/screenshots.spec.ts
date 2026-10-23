@@ -1,13 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
-import { clearCanvas, editorPanel, fixtureImage, headerDownload, waitForEditor } from './helpers';
+import { clearCanvas, editorPanel, fixtureImage, fixturePdf, headerDownload, waitForEditor } from './helpers';
 
 // Review screenshots (impeccable finish review). They land in test-results/screens/ and the
 // orchestrator copies them to .impeccable/review/. They double as a check that every state renders.
 const OUT = 'test-results/screens';
-const PDF = { name: 'zou2024_penicillium_shentong.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n') };
+const PDF = fixturePdf('zou2024_penicillium_shentong.pdf');
 
-async function results(page: Page, file: Parameters<typeof fixtureImage>[0] | 'pdf' = 'pdf') {
-  await page.locator('input[type=file]').setInputFiles(file === 'pdf' ? PDF : fixtureImage(file));
+async function results(page: Page, file: Parameters<typeof fixtureImage>[0] | 'pdf' | 'truncated.pdf' = 'pdf') {
+  const upload = file === 'pdf' ? PDF : file === 'truncated.pdf' ? fixturePdf(file) : fixtureImage(file);
+  await page.locator('input[type=file]').setInputFiles(upload);
   await page.getByRole('list', { name: 'Recognised structures' }).waitFor({ timeout: 60_000 });
   await page.waitForTimeout(1800); // arrival animation
 }
@@ -93,7 +94,7 @@ test.describe('screenshots', () => {
   test('twenty structures, desktop', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('./?mockStepMs=150');
-    await results(page, 'truncated.png');
+    await results(page, 'truncated.pdf');
     await page.screenshot({ path: `${OUT}/twenty-desktop.png`, fullPage: true });
   });
 

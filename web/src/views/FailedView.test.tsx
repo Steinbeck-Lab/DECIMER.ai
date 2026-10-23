@@ -28,7 +28,7 @@ function mountFailed(end: Parameters<AppController['store']['dispatch']>[0]) {
   const c = controller as AppController | null;
   if (!c) throw new Error('no controller');
   act(() => {
-    c.store.dispatch({ type: 'submit', sources: [{ name: 'paper.pdf', size: 1 }], at: Date.now() });
+    c.store.dispatch({ type: 'submit', sources: [{ name: 'paper.pdf', size: 1, kind: 'pdf' }], at: Date.now() });
     c.store.dispatch({ type: 'jobCreated', id: 'job-1' });
     c.store.dispatch(end);
   });
@@ -56,7 +56,7 @@ test('a job the server reports as failed offers only "Start over": trying the sa
   mountFailed({
     type: 'jobUpdated',
     job: {
-      id: 'job-1', status: 'failed', queuePosition: null, stages: [], pages: 0, pagesProcessed: 0, truncated: false,
+      id: 'job-1', status: 'failed', queuePosition: null, stages: [], pages: 0, pagesProcessed: 0, pageUrls: [], truncated: false,
       structuresFound: 0, structuresDropped: 0, results: [], warnings: [], error: 'boom',
       createdAt: '2026-10-22T12:00:00.000Z', expiresAt: '2026-10-22T13:00:00.000Z',
     },

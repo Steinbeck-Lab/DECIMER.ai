@@ -46,6 +46,7 @@ export type Result = Required<Schemas['ResultView']>;
 
 export type ValidBy = NonNullable<Result['validBy']>;
 
+/** `pageUrls` are the rendered pages of the upload (`page-<i>.png` for every processed page), resolved like `cropUrl`. */
 export type Job = Omit<Required<Schemas['JobView']>, 'results'> & { results: Result[] };
 
 /** `POST /api/jobs` answers 202 with the whole job; the app needs its id to poll. */

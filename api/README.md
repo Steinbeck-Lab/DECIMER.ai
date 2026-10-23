@@ -225,7 +225,7 @@ JSON is camelCase. A job:
 ```json
 {"id": "<32 hex>", "status": "queued", "queuePosition": 1,
  "stages": [{"name": "upload", "state": "done"}, {"name": "render", "state": "pending"}],
- "pages": 12, "pagesProcessed": 10, "truncated": true,
+ "pages": 12, "pagesProcessed": 10, "pageUrls": ["/api/jobs/<id>/media/page-0.png", "..."], "truncated": true,
  "structuresFound": 0, "structuresDropped": 0, "results": [],
  "warnings": [{"code": "pages_truncated", "message": "..."}], "error": null,
  "createdAt": "...Z", "expiresAt": "...Z"}
@@ -236,8 +236,13 @@ JSON is camelCase. A job:
 `validBy` is `"rdkit"` for a valid result, `"cdk"` for one that RDKit refused and only CDK accepted (`valid` is
 `false`; `molfile` is CDK's, `svg` RDKit's drawing of it, `smiles` DECIMER's own text, `inchikey` and `name`
 empty), `null` for one neither accepted.
+`pageUrls` lists `page-0.png` to `page-<pagesProcessed - 1>.png`, one URL for each page the job processes, in
+page order and same-origin like `cropUrl` (the UI's "Display uploaded document", shown for PDFs). An upload of
+images lists every image; a PDF lists its first `MAX_PDF_PAGES` pages, and the pages past the cap are not
+processed and not listed. The list is the plan, not a check that the files exist: a page the worker could not
+render (warning `page_render_failed`), or has not rendered yet, answers `404`.
 The stored record (`Job`, `Result`) holds none of the derived fields (`queuePosition`, `number`,
-`cropUrl`); the API composes them when it returns the job (`JobView`, `ResultView`).
+`cropUrl`, `pageUrls`); the API composes them when it returns the job (`JobView`, `ResultView`).
 
 ## What the upload does
 

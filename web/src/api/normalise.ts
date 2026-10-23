@@ -8,7 +8,7 @@ type WireResult = components['schemas']['ResultView'];
  * A job as the API sends it, as the UI's `Job`. The OpenAPI schema marks fields that have a default as optional;
  * the API sends them all, but a client should not fall over the day a server version leaves one out.
  *
- * `resolveUrl` turns the API's media URLs (`/api/jobs/{id}/media/crop-0.png`) into ones the page can load.
+ * `resolveUrl` turns the API's media URLs (`/api/jobs/{id}/media/crop-0.png`, `page-0.png`) into ones the page can load.
  */
 export function parseJob(wire: WireJob, resolveUrl: (url: string) => string = (url) => url): Job {
   return {
@@ -16,6 +16,7 @@ export function parseJob(wire: WireJob, resolveUrl: (url: string) => string = (u
     queuePosition: wire.queuePosition ?? null,
     error: wire.error ?? null,
     warnings: wire.warnings ?? [],
+    pageUrls: (wire.pageUrls ?? []).map(resolveUrl),
     results: (wire.results ?? []).map((result) => parseResult(result, resolveUrl)),
   };
 }

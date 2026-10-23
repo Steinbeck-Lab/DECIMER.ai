@@ -1,9 +1,12 @@
 import { STAGE_ORDER, LIMITS, type Job, type JobWarning, type Result, type Stage, type StageState } from '../api/contract';
+import { FIXTURE_PAGE_URL } from './fixtures';
 
 export interface MockJobSpec {
   id: string;
-  /** Pages in the document. */
+  /** Pages in the upload. */
   pages: number;
+  /** The upload is a PDF, of which only the first `LIMITS.maxPages` pages are processed; images are all processed. */
+  pdf?: boolean;
   results: Result[];
   structuresFound: number;
   truncated: boolean;
@@ -40,6 +43,9 @@ const RENDER_STEPS = RUN.filter((states) => states[0] !== 'done').length;
 /** A failed job stops while recognising, with the stages as they were then. */
 const FAILED_AT = RUN.findIndex((states) => states[2] === 'active');
 
+/** One URL per processed page, as the API lists them (`pageUrls`); every page of a mock job is the same image. */
+const pageUrlsOf = (processed: number): string[] => Array.from({ length: processed }, () => FIXTURE_PAGE_URL);
+
 /** The record's stage list for the four pipeline stages of one step (upload is always done once the job runs). */
 function stagesOf(states: readonly StageState[]): Stage[] {
   return STAGE_ORDER.map((name, i) => ({ name, state: i === 0 ? 'done' : (states[i - 1] ?? 'pending') }));
@@ -53,7 +59,7 @@ function stagesOf(states: readonly StageState[]): Stage[] {
 export function jobAt(spec: MockJobSpec, elapsedMs: number, stepMs: number): Job {
   const step = Math.max(0, Math.floor(elapsedMs / stepMs));
   const stepFraction = Math.min(1, Math.max(0, (elapsedMs - step * stepMs) / stepMs));
-  const processed = Math.min(spec.pages, LIMITS.maxPages);
+  const processed = spec.pdf ? Math.min(spec.pages, LIMITS.maxPages) : spec.pages;
   const base = {
     id: spec.id,
     pages: spec.pages,
@@ -73,6 +79,7 @@ export function jobAt(spec: MockJobSpec, elapsedMs: number, stepMs: number): Job
       error: null,
       stages: idleStages,
       pagesProcessed: 0,
+      pageUrls: [],
       structuresFound: 0,
       results: [],
     };
@@ -91,6 +98,7 @@ export function jobAt(spec: MockJobSpec, elapsedMs: number, stepMs: number): Job
       error: null,
       stages: stagesOf(states),
       pagesProcessed,
+      pageUrls: pageUrlsOf(pagesProcessed),
       structuresFound: run >= COUNT_KNOWN_FROM ? spec.structuresFound : 0,
       results: [],
     };
@@ -104,6 +112,7 @@ export function jobAt(spec: MockJobSpec, elapsedMs: number, stepMs: number): Job
       error: spec.failure,
       stages: stagesOf(RUN[FAILED_AT] ?? []),
       pagesProcessed: processed,
+      pageUrls: pageUrlsOf(processed),
       structuresFound: 0,
       results: [],
     };
@@ -116,6 +125,7 @@ export function jobAt(spec: MockJobSpec, elapsedMs: number, stepMs: number): Job
     error: null,
     stages: STAGE_ORDER.map((name) => ({ name, state: 'done' })),
     pagesProcessed: processed,
+    pageUrls: pageUrlsOf(processed),
     structuresFound: spec.structuresFound,
     results: spec.results,
   };

@@ -1,4 +1,5 @@
 import {
+  LIMITS,
   STAGE_ORDER,
   type ExportFormat,
   type ExportRequest,
@@ -8,7 +9,7 @@ import {
   type StageState,
   type ValidBy,
 } from '../api/contract';
-import type { EditEntry, Filter, State, Status } from './model';
+import type { EditEntry, Filter, SourceFile, State, Status } from './model';
 
 /** Below this the model is not confident and the result goes to "review". */
 export const REVIEW_CONFIDENCE_BELOW = 0.8;
@@ -206,6 +207,19 @@ export function workSummary(edits: Record<number, EditEntry>): { edited: number;
 export function hasWork(edits: Record<number, EditEntry>): boolean {
   const { edited, checked } = workSummary(edits);
   return edited + checked > 0;
+}
+
+/** The upload was a PDF (else images, one page each). Only a PDF has page limits and a document to show. */
+export function isPdfUpload(sources: readonly Pick<SourceFile, 'kind'>[]): boolean {
+  return sources.some((source) => source.kind === 'pdf');
+}
+
+/**
+ * Pages the job processes: a PDF's first `LIMITS.maxPages`, but every image of an upload of images (the API takes up
+ * to 50, and processes them all). The same number as the job's `pagesProcessed`, without waiting for the worker.
+ */
+export function pagesToProcess(job: Pick<Job, 'pages'>, pdf: boolean): number {
+  return pdf ? Math.min(job.pages, LIMITS.maxPages) : job.pages;
 }
 
 /** Page indexes are 0-based in the API; people count from 1. */
