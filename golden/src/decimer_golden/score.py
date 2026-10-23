@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -27,11 +28,19 @@ class Label:
 
 @dataclass(frozen=True)
 class Prediction:
+    """One row of a run's predictions.csv. The first five fields are what the legacy runner
+    writes; the rest are filled by stacks that report them (`next`) and stay empty for legacy."""
+
     index: int
     smiles: str
     inchikey: str | None
     segment: str = ""
     classifier: str = ""
+    page: int | None = None  # 1-based, like labels.csv
+    valid: bool | None = None  # the stack's own verdict on the SMILES; None: not reported
+    confidence: float | None = None
+    name: str = ""
+    name_tier: str = ""
 
 
 @dataclass
@@ -60,7 +69,10 @@ def score(labels: list[Label], predictions: list[Prediction]) -> Score:
     correct = extra = invalid = dropped = 0
     for p in predictions:
         if not p.smiles.strip():
-            dropped += 1  # legacy fills structures beyond the 20-structure cap with ""
+            if p.valid is not None:
+                invalid += 1  # a result the stack returned (valid either way) with no SMILES
+            else:
+                dropped += 1  # padding beyond the 20-structure cap (valid=None; legacy: "")
         elif p.inchikey is None:
             invalid += 1
         elif remaining[p.inchikey] > 0:
@@ -92,7 +104,18 @@ def read_labels(path: Path) -> list[Label]:
         ]
 
 
-PREDICTION_FIELDS = ["index", "segment", "smiles", "inchikey", "classifier"]
+PREDICTION_FIELDS = [
+    "index",
+    "segment",
+    "smiles",
+    "inchikey",
+    "classifier",
+    "page",
+    "valid",
+    "confidence",
+    "name",
+    "name_tier",
+]
 
 
 def write_predictions(path: Path, predictions: list[Prediction]) -> None:
@@ -107,6 +130,11 @@ def write_predictions(path: Path, predictions: list[Prediction]) -> None:
                     "smiles": p.smiles,
                     "inchikey": p.inchikey or "",
                     "classifier": p.classifier,
+                    "page": "" if p.page is None else p.page,
+                    "valid": "" if p.valid is None else p.valid,
+                    "confidence": "" if p.confidence is None else repr(p.confidence),
+                    "name": p.name,
+                    "name_tier": p.name_tier,
                 }
             )
 
@@ -120,6 +148,24 @@ def read_predictions(path: Path) -> list[Prediction]:
                 inchikey=row["inchikey"] or None,
                 segment=row["segment"],
                 classifier=row["classifier"],
+                page=_optional(row, "page", int),
+                valid=_optional(row, "valid", _parse_valid),
+                confidence=_optional(row, "confidence", float),
+                name=row.get("name") or "",
+                name_tier=row.get("name_tier") or "",
             )
             for row in csv.DictReader(f)
         ]
+
+
+def _optional[T](row: dict[str, str], column: str, convert: Callable[[str], T]) -> T | None:
+    """A column that older runs (the legacy runner's) do not have, or that is left empty."""
+    text = row.get(column)
+    return convert(text) if text else None
+
+
+def _parse_valid(text: str) -> bool:
+    """The `valid` column as `write_predictions` writes it: exactly "True" or "False"."""
+    if text not in ("True", "False"):
+        raise ValueError(f"valid must be 'True', 'False' or empty, not {text!r}")
+    return text == "True"

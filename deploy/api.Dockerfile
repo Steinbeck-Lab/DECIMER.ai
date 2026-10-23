@@ -17,7 +17,9 @@
 # non-dumpable. compose.yaml therefore does not set `init: true`.
 #
 # Base image: python 3.12 on Debian 13 (trixie); wheels only (pillow-heif and pypdfium2 bundle
-# libheif and pdfium, rdkit bundles its libraries), so the final stage installs no packages.
+# libheif and pdfium, rdkit bundles most of its libraries). The one exception: rdkit's drawing
+# module (rdMolDraw2D, used for the result SVGs) links against libXrender, libXext, libX11 and
+# libexpat from the system (ldd over the venv finds nothing else), so the final stage installs those.
 
 ARG PYTHON_IMAGE=python:3.12.15-slim-trixie@sha256:cb33f7f771ecec2ef1225cf39b159591a040391bd73e4c01f00fdfc4c47611d2
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.13.5@sha256:32a7bb39b496babbd997b0a39a4d66c126bdaf5661b302bf6f06abda8deca6ff
@@ -48,6 +50,12 @@ LABEL org.opencontainers.image.title="decimer-api" \
 # uid/gid 10001. /data/jobs is DATA_DIR (the job volume, shared with the worker, the sweep and, read
 # only, the edge) and /data/reports is the private problem-report volume. A new named
 # volume takes the ownership of these directories on its first mount.
+# Unpinned like the other images: the versions come from Debian trixie at build time.
+# hadolint ignore=DL3008
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libxrender1 libxext6 libx11-6 libexpat1 \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --no-create-home --home-dir /nonexistent \
                --shell /usr/sbin/nologin app \

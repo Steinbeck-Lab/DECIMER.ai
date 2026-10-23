@@ -9,7 +9,7 @@ import {
   type ValidateResponse,
 } from '../api/contract';
 import { fixtureResults } from './fixtures';
-import { jobAt, QUEUE_STEPS, type MockJobSpec } from './timeline';
+import { jobAt, QUEUE_STEPS, RUN_STEPS, type MockJobSpec } from './timeline';
 
 export interface MockOptions {
   /** Length of one step (a queue position or a pipeline stage), ms. */
@@ -168,7 +168,7 @@ export class MockApiClient implements ApiClient {
 
   /** Total time from upload to done for a normal job, ms. */
   get durationMs(): number {
-    return (QUEUE_STEPS + 5) * this.stepMs;
+    return (QUEUE_STEPS + RUN_STEPS) * this.stepMs;
   }
 
   async createJob(files: File[], signal?: AbortSignal): Promise<CreateJobResponse> {

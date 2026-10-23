@@ -61,6 +61,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-editable
 
 # ---- runtime ----------------------------------------------------------------------------------
+# Drawing is not supported in this image: `import rdkit.Chem.Draw.rdMolDraw2D` fails here (libXrender.so.1
+# is missing), because the python slim base has no X libraries and rdkit's drawing module links against
+# libXrender, libXext, libX11 and libexpat from the system. Nothing in chem draws (engine.py uses rdBase
+# and Chem only), so none are installed. api.Dockerfile draws the result SVGs and installs libxrender1
+# libxext6 libx11-6 libexpat1 for that; a chem feature that draws needs the same packages in this stage.
 FROM ${PYTHON_IMAGE} AS runtime
 LABEL org.opencontainers.image.title="decimer-chem" \
       org.opencontainers.image.description="DECIMER chem service: Orthonym IUPAC names (decimer.ai)"

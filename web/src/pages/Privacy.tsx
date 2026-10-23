@@ -1,18 +1,31 @@
 import { strings } from '../strings';
+import { RichText } from './Rich';
+import type { Rich } from './Rich';
+import { SectionView } from './Sections';
+import type { Section } from './Sections';
 import { StaticPage } from './StaticPage';
 
 const t = strings.pages.privacy;
 
+const intro: readonly Rich[] = t.intro;
+const sections: readonly Section[] = t.sections;
+const closing: readonly Rich[] = t.closing;
+
 export function Privacy() {
   return (
-    <StaticPage title={t.title} note={strings.pages.draftNotePrivacy}>
-      {t.sections.map((section) => (
-        <section key={section.title}>
-          <h2>{section.title}</h2>
-          {section.body.map((paragraph) => (
-            <p key={paragraph}>{paragraph}</p>
-          ))}
-        </section>
+    <StaticPage title={t.title} note={t.note}>
+      {intro.map((paragraph, i) => (
+        <p key={i}>
+          <RichText value={paragraph} />
+        </p>
+      ))}
+      {sections.map((section) => (
+        <SectionView key={section.title} section={section} />
+      ))}
+      {closing.map((paragraph, i) => (
+        <p key={i} className="dc-page__credit">
+          <RichText value={paragraph} />
+        </p>
       ))}
     </StaticPage>
   );

@@ -1,5 +1,6 @@
 import { useMediaQuery } from '@mantine/hooks';
 import { useEffect, useRef } from 'react';
+import { trackRoute } from './analytics/matomo';
 import { EditorPanel } from './editor/EditorPanel';
 import { About } from './pages/About';
 import { Impressum } from './pages/Impressum';
@@ -53,6 +54,9 @@ export function App() {
     heading?.setAttribute('tabindex', '-1');
     (heading ?? document.getElementById('main'))?.focus({ preventScroll: true });
   }, [route]);
+
+  // The visit counter learns of a move to another page (it counted the first page itself).
+  useEffect(() => trackRoute(route), [route]);
 
   const hasResults = state.phase === 'results' && (state.job?.results.length ?? 0) > 0;
   const split = route === '/' && hasResults;

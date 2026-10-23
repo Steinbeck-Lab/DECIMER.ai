@@ -15,12 +15,12 @@ from PIL import Image
 from decimer_api.chemistry import analyse_smiles
 from decimer_api.models import Job, JobStatus, JobWarning, StageState
 from decimer_api.worker import errors, render
-from decimer_api.worker.errors import RenderError
 from decimer_api.worker.pipeline import run_pipeline
 from decimer_api.worker.render import ThreadRenderer
 from tests.factories import make_corrupt_pdf
-from tests.worker.conftest import Rig, all_done, wait_until
+from tests.worker.conftest import Rig, all_done, assert_legal_progress, wait_until
 from tests.worker.fakes import (
+    FailingPages,
     FakeBackend,
     bbox_for,
     crop_id,
@@ -47,18 +47,21 @@ async def test_a_three_page_pdf_goes_through_every_stage_in_order(make_rig: RigF
     assert job.status is JobStatus.DONE
     assert job.error is None
     assert all_done(job)
-    # The record was saved after every stage, in order, and the frontend can poll any of them.
-    assert rig.store.progress() == [
-        ("pending", "pending", "pending", "pending"),  # mark_running
-        ("active", "pending", "pending", "pending"),
-        ("done", "pending", "pending", "pending"),
-        ("done", "active", "pending", "pending"),
-        ("done", "done", "pending", "pending"),
-        ("done", "done", "active", "pending"),
-        ("done", "done", "done", "pending"),
-        ("done", "done", "done", "active"),
-        ("done", "done", "done", "done"),
-    ]
+    # The stages overlap, so the record shows them active together; what is fixed is that it is
+    # saved at every change, that every state it shows is a legal one, and where it starts and ends.
+    progress = assert_legal_progress(rig.store.saves)
+    assert progress[0] == ("pending", "pending", "pending", "pending")  # mark_running
+    assert progress[1] == (
+        "active",
+        "pending",
+        "pending",
+        "pending",
+    )  # the first thing that happens
+    assert progress[-1] == ("done", "done", "done", "done")
+    for stage in range(4):  # the progress view can poll every one of them
+        assert any(states[stage] == "active" for states in progress), stage
+    # saved when a stage changes, not once per page or crop
+    assert len([s for s in rig.store.saves if s.status is JobStatus.RUNNING]) <= 11
     assert len(rig.store.finishes) == 1
 
 
@@ -510,19 +513,6 @@ async def test_a_failure_in_the_check_stage_also_finishes_once(
     assert "rdkit" not in (job.error or "")
 
 
-class FailingPages:
-    """A renderer that cannot render some pages (it renders the others for real)."""
-
-    def __init__(self, inner: ThreadRenderer, bad: set[int]) -> None:
-        self.inner = inner
-        self.bad = bad
-
-    async def __call__(self, pdf: Path, index: int, out: Path) -> tuple[int, int]:
-        if index in self.bad:
-            raise RenderError(f"page {index} is damaged")
-        return await self.inner(pdf, index, out)
-
-
 async def test_a_page_that_cannot_be_rendered_is_skipped_with_a_warning(
     make_rig: RigFactory,
 ) -> None:
@@ -692,7 +682,8 @@ async def test_a_long_stage_keeps_the_record_alive(make_rig: RigFactory) -> None
     rig = make_rig(backend=FakeBackend(layout={0: 1}, delay=0.2), heartbeat_seconds=0.02)
     job = await rig.run(await rig.pdf_job(1))
     running_saves = [s for s in rig.store.saves if s.status is JobStatus.RUNNING]
-    assert len(running_saves) >= 15  # the stage saves (9) plus the beats
+    assert len(running_saves) >= 15  # the saves at a change of stage plus the beats
+    assert_legal_progress(rig.store.saves)  # a beat in the middle of the overlap shows legal states
     saves_at_the_end = len(rig.store.saves)
     await asyncio.sleep(0.1)
     assert len(rig.store.saves) == saves_at_the_end  # the beat stopped before finish()
