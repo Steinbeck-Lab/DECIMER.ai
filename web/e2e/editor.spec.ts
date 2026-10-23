@@ -1,28 +1,26 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { atomCount, editorPanel, fixtureImage, headerDownload, layoutOnCanvas, waitForEditor, watchProblems } from './helpers';
+import {
+  atomCount,
+  editorPanel,
+  fixtureImage,
+  headerDownload,
+  layoutOnCanvas,
+  tile,
+  waitForCanvas,
+  waitForEditor,
+  watchProblems,
+} from './helpers';
 
 // The real editor: one Ketcher instance, reused across results, under the production CSP.
 
-const tile = (page: Page, n: number) => page.getByRole('button', { name: new RegExp(`^Structure ${n}\\b`) });
-const panelOf = editorPanel;
 const counts = (page: Page) => page.getByRole('list', { name: 'Status of the structures' });
 
 async function openResults(page: Page, file = 'figure2.png') {
   await page.goto('./?mockStepMs=150');
   await page.locator('input[type=file]').setInputFiles(fixtureImage(file));
   await page.getByRole('list', { name: 'Recognised structures' }).waitFor({ timeout: 30_000 });
-}
-
-/**
- * Waits until the canvas shows the structure the panel's heading names. The heading follows a press of Next or Previous
- * at once, but Ketcher swaps one structure per press, in order, so the canvas trails it; until it has caught up the
- * canvas is busy and cannot be edited. This is the condition to wait for, not a pause: how long it takes depends on
- * the machine.
- */
-async function waitForCanvas(page: Page) {
-  await expect(page.locator('.dc-editor__canvas[data-active=true][aria-busy=false]')).toBeVisible({ timeout: 60_000 });
 }
 
 /** Waits for Ketcher, then edits the structure on the canvas the way a user does: select all, Layout (Ctrl+L). */
@@ -33,7 +31,7 @@ async function editOnCanvas(page: Page) {
 }
 
 async function molfileText(page: Page) {
-  const details = panelOf(page).locator('details.dc-molfile');
+  const details = editorPanel(page).locator('details.dc-molfile');
   if (!(await details.evaluate((el) => (el as HTMLDetailsElement).open))) await details.locator('summary').click();
   return (await details.locator('pre').textContent()) ?? '';
 }
@@ -42,7 +40,7 @@ test('an edit marks the result edited, survives switching and never leaks into a
   test.setTimeout(240_000);
   const problems = watchProblems(page);
   await openResults(page);
-  const panel = panelOf(page);
+  const panel = editorPanel(page);
 
   await tile(page, 2).click();
   await editOnCanvas(page);
@@ -103,13 +101,13 @@ test('undoing an edit in the editor brings the result back to "same as recognise
   await page.keyboard.press('Control+z');
   await expect(tile(page, 7)).toContainText('Unchecked');
   await expect(counts(page)).not.toContainText('edited');
-  await expect(panelOf(page).getByText('Same as recognised')).toBeVisible();
+  await expect(editorPanel(page).getByText('Same as recognised')).toBeVisible();
 });
 
 test('Reset puts the recognised structure back on the canvas and in the store', async ({ page }) => {
   test.setTimeout(240_000);
   await openResults(page);
-  const panel = panelOf(page);
+  const panel = editorPanel(page);
   await tile(page, 5).click();
   await expect(panel.getByRole('button', { name: 'Reset' })).toBeDisabled();
   await editOnCanvas(page);
@@ -149,7 +147,7 @@ test('the download of twenty structures carries the edited ones, in result order
   await editOnCanvas(page);
   await expect(tile(page, 14)).toContainText('Edited', { timeout: 15_000 });
   await tile(page, 3).click();
-  await expect(panelOf(page).getByRole('heading', { name: 'Editing 3' })).toBeVisible();
+  await expect(editorPanel(page).getByRole('heading', { name: 'Editing 3' })).toBeVisible();
   await page.waitForTimeout(800);
   await layoutOnCanvas(page);
   await expect(tile(page, 3)).toContainText('Edited', { timeout: 15_000 });
@@ -228,7 +226,7 @@ test('ten quick Next and Previous presses end on the right structure, with the c
   await openResults(page);
   await tile(page, 1).click();
   await waitForEditor(page);
-  const panel = panelOf(page);
+  const panel = editorPanel(page);
 
   // Ten presses with Enter, one straight after the other, without waiting for Ketcher between them:
   // 7 times Next, 3 times Previous, so four steps on from the first.
@@ -264,7 +262,7 @@ test('a Layout that Indigo is still working on when the user presses Next stays 
   await tile(page, 6).click();
   await waitForEditor(page);
   await waitForCanvas(page);
-  const panel = panelOf(page);
+  const panel = editorPanel(page);
 
   // Layout is a round trip to Indigo (some 100 ms and more) whose answer replaces the whole canvas when it comes.
   // Next goes in straight after it, in the same instant for the user: before the fix the swap ran first and the answer,
@@ -327,7 +325,7 @@ test('while the canvas trails the heading, the keyboard does not reach Ketcher: 
     await page.keyboard.press('Control+a');
     await page.keyboard.press('Delete');
   }
-  await expect(panelOf(page).getByRole('heading', { name: 'Editing 5' })).toBeVisible();
+  await expect(editorPanel(page).getByRole('heading', { name: 'Editing 5' })).toBeVisible();
   await waitForCanvas(page);
   const { keys, readyAt } = await page.evaluate(() => {
     const w = window as unknown as { __keys: number[]; __readyAt: number | null };
@@ -357,7 +355,7 @@ test('the Edited chip keeps counting a result that was checked after it was edit
   const filters = page.getByRole('group', { name: 'Show structures' });
   await expect(filters.getByRole('button', { name: /^Edited/ })).toContainText('1');
 
-  await panelOf(page).getByRole('button', { name: 'Mark as checked' }).click();
+  await editorPanel(page).getByRole('button', { name: 'Mark as checked' }).click();
   await expect(tile(page, 5)).toContainText('Checked');
   // Still one in "Edited", and the chip and the tiles it opens agree.
   await expect(filters.getByRole('button', { name: /^Edited/ })).toContainText('1');
@@ -369,7 +367,7 @@ test('the Edited chip keeps counting a result that was checked after it was edit
 test('stepping through structures with the keyboard keeps focus on the button that was pressed', async ({ page }) => {
   test.setTimeout(240_000);
   await openResults(page);
-  const panel = panelOf(page);
+  const panel = editorPanel(page);
   await tile(page, 1).click();
   await page.waitForSelector('[data-testid=top-toolbar]', { state: 'attached', timeout: 90_000 });
   await page.waitForTimeout(1500);
@@ -389,7 +387,7 @@ test('opening a structure by keyboard keeps focus in the panel while Ketcher sta
   await openResults(page);
   await tile(page, 4).focus();
   await page.keyboard.press('Enter');
-  const panel = panelOf(page);
+  const panel = editorPanel(page);
   await expect(panel.getByRole('heading', { name: 'Editing 4' })).toBeFocused();
   // Ketcher starts and, left alone, moves focus to its hidden clipboard field. The panel takes it back,
   // so Tab and Escape still work from where the user is.
@@ -423,7 +421,7 @@ test('New upload asks before it drops edits; keeping on works, confirming clears
   await page.getByRole('list', { name: 'Recognised structures' }).waitFor({ timeout: 30_000 });
   await expect(page.getByRole('list', { name: 'Status of the structures' })).not.toContainText('edited');
   await tile(page, 1).click();
-  await expect(panelOf(page).getByText('Same as recognised')).toBeVisible();
+  await expect(editorPanel(page).getByText('Same as recognised')).toBeVisible();
   await expect(page.locator('.Ketcher-root')).toHaveCount(1);
 });
 
@@ -449,7 +447,7 @@ test('Ketcher\'s controls without a name are named once it has loaded, and stay 
   expect(await names()).toEqual(expected);
 
   await tile(page, 4).click();
-  await expect(panelOf(page).getByRole('heading', { name: 'Editing 4' })).toBeVisible();
+  await expect(editorPanel(page).getByRole('heading', { name: 'Editing 4' })).toBeVisible();
   await page.waitForTimeout(1000);
   expect(await names()).toEqual(expected);
 });

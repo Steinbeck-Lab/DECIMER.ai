@@ -30,7 +30,7 @@ export interface ErrorReportingOptions {
 let started = false;
 
 /** What is wrong with the DSN for a page on `pageOrigin`, or `undefined` if it is usable. */
-export function dsnProblem(dsn: string, pageOrigin: string | undefined): string | undefined {
+function dsnProblem(dsn: string, pageOrigin: string | undefined): string | undefined {
   let url: URL;
   try {
     url = new URL(dsn);

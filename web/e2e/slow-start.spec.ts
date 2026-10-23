@@ -1,11 +1,9 @@
-import { expect, test, type Page } from '@playwright/test';
-import { editorPanel, fixtureImage, layoutOnCanvas, waitForEditor, watchProblems } from './helpers';
+import { expect, test } from '@playwright/test';
+import { editorPanel, fixtureImage, layoutOnCanvas, tile, waitForCanvas, waitForEditor, watchProblems } from './helpers';
 
 // Indigo (11.8 MB of WASM, and its worker) can take long to arrive on a slow link. Ketcher keeps the promise of its
 // first call to Indigo, `info()`, as the `server` that every later action starts from; if the editor's own bookkeeping
 // of Indigo's calls treated that promise as stale, Layout, Clean Up and the like would fail for the rest of the page.
-
-const tile = (page: Page, n: number) => page.getByRole('button', { name: new RegExp(`^Structure ${n}\\b`) });
 
 test('Layout still works after Indigo took longer to start than the editor waits for a swap', async ({ page, context }) => {
   test.setTimeout(240_000);
@@ -26,7 +24,7 @@ test('Layout still works after Indigo took longer to start than the editor waits
 
   // The first structure is on the canvas once Indigo is up (the load itself needs it). Ketcher offers its server
   // actions (Layout, Aromatize ...) from then on: Aromatize is the one that has a button of its own.
-  await expect(page.locator('.dc-editor__canvas[data-active=true][aria-busy=false]')).toBeVisible({ timeout: 90_000 });
+  await waitForCanvas(page, 90_000);
   await expect(page.locator('[title^="Aromatize"]:visible').first()).toBeEnabled({ timeout: 60_000 });
   expect(delayed.length).toBeGreaterThan(0); // the test did slow the start
 

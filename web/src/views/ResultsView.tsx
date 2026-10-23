@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { Job } from '../api/contract';
 import { strings } from '../strings';
 import type { Filter, Status } from '../state/model';
 import { useAppState, useController, useResultViews } from '../state/react';
@@ -31,6 +32,19 @@ const FILTERS: { filter: Filter; label: string }[] = [
   { filter: 'edited', label: strings.results.filterEdited },
 ];
 
+/** The job's limits and warnings (state/notices.ts), in one callout; nothing when there are none. */
+function JobNotices({ job }: { job: Job }) {
+  const notices = jobNotices(job);
+  if (notices.length === 0) return null;
+  return (
+    <div className="dc-callout" data-kind="warning" role="note">
+      {notices.map((notice) => (
+        <p key={notice}>{notice}</p>
+      ))}
+    </div>
+  );
+}
+
 export function ResultsView() {
   const state = useAppState();
   const controller = useController();
@@ -52,7 +66,6 @@ export function ResultsView() {
   const shown = useMemo(() => filterViews(views, filter), [views, filter]);
 
   if (!job) return null;
-  const notices = jobNotices(job);
 
   return (
     <main id="main" tabIndex={-1} className="dc-figure">
@@ -68,13 +81,7 @@ export function ResultsView() {
         </ul>
       </header>
 
-      {notices.length > 0 && (
-        <div className="dc-callout" data-kind="warning" role="note">
-          {notices.map((notice) => (
-            <p key={notice}>{notice}</p>
-          ))}
-        </div>
-      )}
+      <JobNotices job={job} />
 
       {/* Legacy shows the document for a PDF only; an image is its own picture, and the tile shows its crop. */}
       {isPdfUpload(state.sources) && <UploadedDocument pageUrls={job.pageUrls} />}
@@ -130,18 +137,11 @@ export function ResultsView() {
 export function NoStructuresView() {
   const controller = useController();
   const state = useAppState();
-  const notices = state.job ? jobNotices(state.job) : [];
   return (
     <main id="main" tabIndex={-1} className="dc-working">
       <h1 className="dc-working__title">{strings.results.noneTitle}</h1>
       <p className="dc-working__detail">{strings.results.noneBody}</p>
-      {notices.length > 0 && (
-        <div className="dc-callout" data-kind="warning" role="note">
-          {notices.map((notice) => (
-            <p key={notice}>{notice}</p>
-          ))}
-        </div>
-      )}
+      {state.job && <JobNotices job={state.job} />}
       {state.job && isPdfUpload(state.sources) && <UploadedDocument pageUrls={state.job.pageUrls} />}
       <button type="button" className="dc-pill dc-pill--ink dc-working__again" onClick={() => controller.startOver()}>
         {strings.results.uploadAnother}

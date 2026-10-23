@@ -7,7 +7,7 @@ import { useAppState, useController, useResultViews } from '../state/react';
 import { pageNumber, stepList, type ResultView } from '../state/selectors';
 import { CropImage } from '../ui/CropImage';
 import { IconCheck, IconChevronLeft, IconChevronRight, IconFlag, IconReset, IconX } from '../ui/icons';
-import { nameHover, statusLabel } from '../ui/format';
+import { nameHover, staleLabel, statusLabel } from '../ui/format';
 import { KetcherPanel } from './KetcherPanel';
 import { blockKeysWhileBusy } from './busyKeys';
 import { keepShiftTabForFocus } from './focusKeys';
@@ -131,6 +131,7 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
   const selectedIndex = state.selected;
   const view = selectedIndex === null ? undefined : views.find((v) => v.index === selectedIndex);
   const open = visible && view !== undefined;
+  const failedToLoad = view !== undefined && loadFailed === view.index;
   const trapRef = useFocusTrap(open);
 
   useKetcherFixes(canvasHost, state.editorMounted);
@@ -172,7 +173,7 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
   // the next swap, so it says it is busy (a veil over it, see editor.css, takes the pointer) and the keyboard does not
   // reach Ketcher. Not `inert`: that would drop on the page the focus Ketcher takes when it starts. A failed load has
   // its own overlay (and an empty canvas).
-  const swapping = session !== null && view !== undefined && shownIndex !== view.index && loadFailed !== view.index;
+  const swapping = session !== null && view !== undefined && shownIndex !== view.index && !failedToLoad;
 
   const list = stepList(views, state.filter, selectedIndex);
   const position = view ? list.findIndex((v) => v.index === view.index) : -1;
@@ -248,11 +249,11 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
 
       {view && (
         <header className="dc-editor__head">
-          <h2 className="dc-editor__number" tabIndex={-1} data-autofocus aria-label={loadFailed === view.index ? strings.editor.loadFailedHeading(view.number) : `${strings.editor.editing} ${view.number}`}>
+          <h2 className="dc-editor__number" tabIndex={-1} data-autofocus aria-label={failedToLoad ? strings.editor.loadFailedHeading(view.number) : `${strings.editor.editing} ${view.number}`}>
             {view.number}
           </h2>
-          <span className="dc-editor__editing" aria-hidden="true" data-failed={loadFailed === view.index}>
-            {loadFailed === view.index ? strings.editor.loadFailedShort : strings.editor.editing}
+          <span className="dc-editor__editing" aria-hidden="true" data-failed={failedToLoad}>
+            {failedToLoad ? strings.editor.loadFailedShort : strings.editor.editing}
           </span>
           <span className="dc-editor__position">{strings.editor.position(position + 1, list.length)}</span>
           <div className="dc-editor__nav">
@@ -294,7 +295,7 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
         onKeyDownCapture={onCanvasKeyDownCapture}
       >
         {state.editorMounted && <KetcherPanel onReady={onReady} />}
-        {view && loadFailed === view.index && (
+        {view && failedToLoad && (
           <div className="dc-editor__load-error" role="alert">
             <p>{strings.editor.loadFailed}</p>
             <button type="button" className="dc-pill dc-pill--small dc-pill--ink" onClick={() => loadResult(view.index)}>
@@ -318,7 +319,7 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
               <dd>
                 {view.stale ? (
                   <span className="dc-fact__value" data-empty="true">
-                    {view.validating ? strings.editor.updatingShort : strings.editor.notUpdated}
+                    {staleLabel(view.validating)}
                   </span>
                 ) : (
                   <>

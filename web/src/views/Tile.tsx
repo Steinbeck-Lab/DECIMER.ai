@@ -4,7 +4,7 @@ import { strings } from '../strings';
 import type { ResultView } from '../state/selectors';
 import { CropImage } from '../ui/CropImage';
 import { IconAlert } from '../ui/icons';
-import { imageSrc, nameHover, statusLabel, validityHover } from '../ui/format';
+import { imageSrc, nameHover, staleLabel, statusLabel, validityHover } from '../ui/format';
 
 interface Props {
   view: ResultView;
@@ -28,11 +28,7 @@ export const Tile = memo(function Tile({ view, selected, order, onSelect }: Prop
     : [...validityHover(view.validBy), ...nameHover(view.name, view.nameTier, view.nameVerified)];
   // From the edit until the server answers, the name and depiction are from before it: say so rather than
   // show them (dimming text would take it below the contrast floor on a selected tile).
-  const name = view.stale
-    ? view.validating
-      ? strings.editor.updatingShort
-      : strings.editor.notUpdated
-    : (view.name ?? strings.tile.noName);
+  const name = view.stale ? staleLabel(view.validating) : (view.name ?? strings.tile.noName);
   return (
     <li className="dc-tile" style={{ '--i': order } as React.CSSProperties}>
       <Tooltip
