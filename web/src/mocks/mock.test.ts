@@ -170,3 +170,14 @@ test('validate: an empty canvas is not a valid structure (no SMILES, no InChIKey
   expect(drawn).toMatchObject({ valid: true });
   expect(drawn.inchikey).not.toBe('');
 });
+
+test('deleting a job forgets it: it is gone for getJob, validate, export and report, and a second delete is a 404', async () => {
+  const api = new MockApiClient({ stepMs: STEP, latencyMs: 0 });
+  const { id } = await api.createJob([new File(['x'], 'paper.png', { type: 'image/png' })]);
+  await expect(api.deleteJob(id)).resolves.toBeUndefined();
+  await expect(api.getJob(id)).rejects.toMatchObject({ status: 404, code: 'not_found' });
+  await expect(api.exportJob(id, { format: 'csv', molfiles: {} })).rejects.toMatchObject({ code: 'not_found' });
+  await expect(api.report(id, 0)).rejects.toMatchObject({ code: 'not_found' });
+  await expect(api.deleteJob(id)).rejects.toMatchObject({ status: 404, code: 'not_found' });
+  await expect(api.deleteJob('mock-999')).rejects.toMatchObject({ status: 404 });
+});

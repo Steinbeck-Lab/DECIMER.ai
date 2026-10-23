@@ -13,6 +13,7 @@ from decimer_api.ingest_runner import IngestRunner, InProcessIngest
 from decimer_api.settings import Settings
 from decimer_api.store import JobStore
 from decimer_api.uploads import Limits
+from tests.results import FakeNamer
 
 
 class FakeClock:
@@ -53,6 +54,7 @@ def settings(tmp_path: Path) -> Settings:
     return Settings(
         redis_url="redis://unused:6379/0",
         data_dir=tmp_path / "jobs",
+        reports_dir=tmp_path / "reports",
         job_ttl_seconds=3600,
         max_pdf_pages=10,
         max_upload_mb=1,
@@ -84,6 +86,12 @@ def enqueue() -> FakeEnqueue:
 
 
 @pytest.fixture
+def namer() -> FakeNamer:
+    """The chem service stand-in; every name is `name of <SMILES>` unless a test says otherwise."""
+    return FakeNamer()
+
+
+@pytest.fixture
 def ingest_runner(settings: Settings) -> IngestRunner:
     """Most tests run the ingest code in a thread: same code, no process start-up. The tests
     that are about isolation use the subprocess runner explicitly."""
@@ -92,11 +100,21 @@ def ingest_runner(settings: Settings) -> IngestRunner:
 
 @pytest.fixture
 def app(
-    settings: Settings, store: JobStore, enqueue: FakeEnqueue, ingest_runner: IngestRunner
+    settings: Settings,
+    store: JobStore,
+    enqueue: FakeEnqueue,
+    ingest_runner: IngestRunner,
+    namer: FakeNamer,
 ) -> FastAPI:
+    from decimer_api.analysis_pool import InProcessAnalysis
     from decimer_api.app import create_app
 
-    return create_app(settings, store, enqueue, ingest_runner=ingest_runner)
+    # Molfiles are read in a thread here: the same code without a process start per test. The
+    # tests of the real pool (tests/test_analysis_pool.py) start real children.
+    analysis = InProcessAnalysis(settings.max_concurrent_analyses)
+    return create_app(
+        settings, store, enqueue, ingest_runner=ingest_runner, namer=namer, analysis=analysis
+    )
 
 
 @pytest.fixture
@@ -113,3 +131,8 @@ def make_client(app: FastAPI) -> Callable[..., httpx.AsyncClient]:
 @pytest.fixture
 def client(make_client: Callable[..., httpx.AsyncClient]) -> httpx.AsyncClient:
     return make_client()
+
+
+@pytest.fixture
+def reports_dir(settings: Settings) -> Path:
+    return settings.reports_dir

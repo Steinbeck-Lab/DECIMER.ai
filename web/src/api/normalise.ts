@@ -32,8 +32,8 @@ function parseResult(wire: WireResult, resolveUrl: (url: string) => string): Res
   };
 }
 
-/** PROVISIONAL: the answer of the validate call, with what the server leaves out filled in. */
-export function parseValidate(wire: Partial<ValidateResponse>): ValidateResponse {
+/** The answer of the validate call, with what the server leaves out filled in (as `parseJob` does for a result). */
+export function parseValidate(wire: components['schemas']['ValidateView']): ValidateResponse {
   return {
     smiles: wire.smiles ?? '',
     inchikey: wire.inchikey ?? '',

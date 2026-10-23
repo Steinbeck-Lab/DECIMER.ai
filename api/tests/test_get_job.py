@@ -180,7 +180,7 @@ async def test_unknown_routes_and_wrong_methods_use_the_standard_shape(
 ) -> None:
     assert_standard_shape(await client.get("/nope"), 404, "not_found")
     assert_standard_shape(await client.get("/api/jobs"), 405, "method_not_allowed")
-    wrong = await client.delete(f"/api/jobs/{new_job_id()}")
+    wrong = await client.put(f"/api/jobs/{new_job_id()}")  # GET and DELETE exist, PUT does not
     assert_standard_shape(wrong, 405, "method_not_allowed")
     assert "GET" in wrong.headers["allow"]  # the standard header survives
 

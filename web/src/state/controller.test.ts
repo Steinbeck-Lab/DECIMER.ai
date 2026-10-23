@@ -35,15 +35,16 @@ const runningJob = (id: string): Job => ({ ...doneJob(id), status: 'running', re
 const png = (name = 'a.png') => new File(['x'], name, { type: 'image/png' });
 const derived = (smiles: string): ValidateResponse => ({ smiles, inchikey: '', svg: '', valid: true, name: null, nameTier: null, nameVerified: null });
 
-type Calls = Record<'createJob' | 'getJob' | 'validate' | 'exportJob' | 'report', unknown[][]>;
+type Calls = Record<'createJob' | 'getJob' | 'deleteJob' | 'validate' | 'exportJob' | 'report', unknown[][]>;
 
 function fakeApi(overrides: Partial<ApiClient> = {}): ApiClient & { calls: Calls } {
-  const calls: Calls = { createJob: [], getJob: [], validate: [], exportJob: [], report: [] };
+  const calls: Calls = { createJob: [], getJob: [], deleteJob: [], validate: [], exportJob: [], report: [] };
   const record = (name: keyof Calls, args: unknown[]) => calls[name].push(args);
   const api: ApiClient = {
     pollIntervalMs: 1,
     createJob: async (...a) => (record('createJob', a), { id: 'job-1' }),
     getJob: async (...a) => (record('getJob', a), doneJob('job-1')),
+    deleteJob: async (...a) => void record('deleteJob', a),
     validate: async (...a) => (record('validate', a), derived('CC')),
     exportJob: async (...a) => (record('exportJob', a), { blob: new Blob(['x']), filename: 'x.zip' }),
     report: async (...a) => void record('report', a),
@@ -133,6 +134,74 @@ test('starting over while the upload is in flight ignores the late answer', asyn
   expect(controller.store.getState().jobId).toBeNull();
 });
 
+// ---- starting over deletes the job on the server ----------------------
+
+test('starting over mid-job deletes the job, so its slot is free at once', async () => {
+  const api = fakeApi({ getJob: async () => runningJob('job-1') });
+  const { controller } = make(api);
+  await controller.submit([png()]);
+  await vi.waitFor(() => expect(controller.store.getState().jobId).toBe('job-1'));
+  controller.startOver();
+  expect(api.calls.deleteJob.map((call) => call[0])).toEqual(['job-1']);
+  expect(controller.store.getState().phase).toBe('empty');
+});
+
+test('starting over from the results deletes the job too (its files go now, not in an hour)', async () => {
+  const api = fakeApi();
+  const { controller } = make(api);
+  await controller.submit([png()]);
+  await vi.waitFor(() => expect(controller.store.getState().phase).toBe('results'));
+  controller.startOver();
+  expect(api.calls.deleteJob.map((call) => call[0])).toEqual(['job-1']);
+});
+
+test('starting over a second time, or before there is a job, deletes nothing', async () => {
+  const api = fakeApi();
+  const { controller } = make(api);
+  controller.startOver(); // the empty screen
+  await controller.submit([png()]);
+  await vi.waitFor(() => expect(controller.store.getState().phase).toBe('results'));
+  controller.startOver();
+  controller.startOver(); // a double click
+  expect(api.calls.deleteJob).toHaveLength(1);
+});
+
+test('starting over while the upload is in flight has no job id to delete (the late answer is ignored)', async () => {
+  let release: (v: { id: string }) => void = () => {};
+  const api = fakeApi({ createJob: () => new Promise((resolve) => (release = resolve)) });
+  const { controller } = make(api);
+  const pending = controller.submit([png()]);
+  controller.startOver();
+  release({ id: 'job-1' });
+  await pending;
+  expect(api.calls.deleteJob).toHaveLength(0);
+});
+
+test.each([
+  ['the job is already gone', new ApiError(404, 'not_found')],
+  ['the network is down', new ApiError(0, 'network')],
+  ['the server is busy', new ApiError(503, 'unavailable')],
+  ['anything else', new Error('boom')],
+])('starting over does not wait for the delete and does not fail when %s', async (_label, failure) => {
+  const api = fakeApi({ deleteJob: () => Promise.reject(failure) });
+  const { controller } = make(api);
+  await controller.submit([png()]);
+  await vi.waitFor(() => expect(controller.store.getState().phase).toBe('results'));
+  expect(() => controller.startOver()).not.toThrow();
+  expect(controller.store.getState().phase).toBe('empty');
+  await new Promise((r) => setTimeout(r, 5)); // an unhandled rejection would fail the run here
+  expect(controller.store.getState().notice).toBeNull(); // and nothing is shown to the user
+});
+
+test('a job that expired or was lost is deleted on start over too (the server answers 404 and that is fine)', async () => {
+  const api = fakeApi({ getJob: async () => { throw new ApiError(404, 'not_found'); } });
+  const { controller } = make(api);
+  await controller.submit([png()]);
+  await vi.waitFor(() => expect(controller.store.getState().phase).toBe('failed'));
+  controller.startOver();
+  expect(api.calls.deleteJob.map((call) => call[0])).toEqual(['job-1']);
+});
+
 test('a second submit while working is ignored (a double paste starts one job)', async () => {
   const api = fakeApi({ getJob: async () => runningJob('job-1') });
   const { controller } = make(api);
@@ -200,6 +269,164 @@ test('reset cancels a pending validation', async () => {
   await vi.advanceTimersByTimeAsync(2000);
   expect(api.calls.validate).toHaveLength(0);
   expect(controller.store.getState().edits[2]).toBeUndefined();
+});
+
+// ---- the service says "busy": try once more after Retry-After (review 3) -----------------------
+
+const busy = (retryAfterMs: number | null) => new ApiError(503, 'busy', 'The service is busy.', retryAfterMs);
+
+/** An API whose `validate` answers with each of `answers` in turn (an error is thrown), then the last again. */
+function validateAnswers(answers: Array<ApiError | ValidateResponse>) {
+  let n = 0;
+  const api: ReturnType<typeof fakeApi> = fakeApi({
+    validate: async (...a) => {
+      api.calls.validate.push(a);
+      const next = answers[Math.min(n++, answers.length - 1)];
+      if (next instanceof ApiError) throw next;
+      return next as ValidateResponse;
+    },
+  });
+  return api;
+}
+
+test('validate: a busy answer is tried once more after Retry-After, and the retry is what is shown', async () => {
+  const api = validateAnswers([busy(2000), derived('CCO')]);
+  const { controller } = await inResults(api);
+  vi.useFakeTimers();
+  controller.edit(1, 'm');
+  await vi.advanceTimersByTimeAsync(500); // the debounce: the first request goes out, and is told to wait
+  expect(api.calls.validate).toHaveLength(1);
+  await vi.advanceTimersByTimeAsync(1999);
+  expect(api.calls.validate).toHaveLength(1); // not before Retry-After
+  await vi.advanceTimersByTimeAsync(1);
+  expect(api.calls.validate).toHaveLength(2);
+  expect(controller.store.getState().edits[1]).toMatchObject({ validationFailed: false, validating: false });
+  expect(controller.store.getState().edits[1]?.derived?.smiles).toBe('CCO');
+});
+
+test('validate: busy twice is a failure, after exactly two requests', async () => {
+  const api = validateAnswers([busy(1000)]);
+  const { controller } = await inResults(api);
+  vi.useFakeTimers();
+  controller.edit(1, 'm');
+  await vi.advanceTimersByTimeAsync(500 + 1000 + 60_000);
+  expect(api.calls.validate).toHaveLength(2);
+  expect(controller.store.getState().edits[1]).toMatchObject({ validationFailed: true, validating: false });
+});
+
+test('validate: a Retry-After of 9 s waits 5 s, no longer', async () => {
+  const api = validateAnswers([busy(9000), derived('CC')]);
+  const { controller } = await inResults(api);
+  vi.useFakeTimers();
+  controller.edit(1, 'm');
+  await vi.advanceTimersByTimeAsync(500 + 4999);
+  expect(api.calls.validate).toHaveLength(1);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(api.calls.validate).toHaveLength(2);
+});
+
+test.each([
+  ['a 503 with another code', new ApiError(503, 'unavailable', 'x', 2000)],
+  ['a 429', new ApiError(429, 'rate_limited', 'x', 2000)],
+  ['a busy answer with no Retry-After', busy(null)],
+  ['a 422', new ApiError(422, 'invalid_request', 'x', null)],
+  ['no answer at all', new ApiError(0, 'network')],
+])('validate: %s is not tried again', async (_label, error) => {
+  const api = validateAnswers([error, derived('CC')]);
+  const { controller } = await inResults(api);
+  vi.useFakeTimers();
+  controller.edit(1, 'm');
+  await vi.advanceTimersByTimeAsync(500 + 60_000);
+  expect(api.calls.validate).toHaveLength(1);
+  expect(controller.store.getState().edits[1]).toMatchObject({ validationFailed: true });
+});
+
+test('validate: a newer edit while the old one waits to be tried again takes its place (no stale retry)', async () => {
+  const api = validateAnswers([busy(3000), derived('NEW')]);
+  const { controller } = await inResults(api);
+  vi.useFakeTimers();
+  controller.edit(1, 'old');
+  await vi.advanceTimersByTimeAsync(500); // 'old' is out, told to wait 3 s
+  controller.edit(1, 'new');
+  await vi.advanceTimersByTimeAsync(500); // 'new' goes out and is answered
+  await vi.advanceTimersByTimeAsync(10_000); // the old retry would have been due
+  expect(api.calls.validate.map((call) => call[2])).toEqual(['old', 'new']);
+  expect(controller.store.getState().edits[1]?.derived?.smiles).toBe('NEW');
+});
+
+function exportAnswers(answers: Array<ApiError | 'ok'>) {
+  let n = 0;
+  const api: ReturnType<typeof fakeApi> = fakeApi({
+    exportJob: async (...a) => {
+      api.calls.exportJob.push(a);
+      const next = answers[Math.min(n++, answers.length - 1)];
+      if (next instanceof ApiError) throw next;
+      return { blob: new Blob(['x']), filename: 'x.zip' };
+    },
+  });
+  return api;
+}
+
+test('export: a busy answer is tried once more after Retry-After, and the file is saved', async () => {
+  const api = exportAnswers([busy(2000), 'ok']);
+  const { controller, save } = await inResults(api);
+  vi.useFakeTimers();
+  const done = controller.download('zip');
+  await vi.advanceTimersByTimeAsync(1999);
+  expect(api.calls.exportJob).toHaveLength(1);
+  expect(controller.store.getState().exporting).toBe(true); // still working: the second menu is ignored
+  await controller.download('csv');
+  expect(api.calls.exportJob).toHaveLength(1);
+  await vi.advanceTimersByTimeAsync(1);
+  await done;
+  expect(api.calls.exportJob).toHaveLength(2);
+  expect(save).toHaveBeenCalledTimes(1);
+  expect(controller.store.getState().notice).toMatchObject({ kind: 'info' });
+  expect(controller.store.getState().exporting).toBe(false);
+});
+
+test('export: busy twice shows the failure, after exactly two requests', async () => {
+  const api = exportAnswers([busy(1000)]);
+  const { controller, save } = await inResults(api);
+  vi.useFakeTimers();
+  const done = controller.download('sdf');
+  await vi.advanceTimersByTimeAsync(1000);
+  await done;
+  expect(api.calls.exportJob).toHaveLength(2);
+  expect(save).not.toHaveBeenCalled();
+  expect(controller.store.getState().notice).toMatchObject({ kind: 'error' });
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(api.calls.exportJob).toHaveLength(2); // and no third
+});
+
+test('export: a Retry-After over 5 s waits 5 s', async () => {
+  const api = exportAnswers([busy(20_000), 'ok']);
+  const { controller } = await inResults(api);
+  vi.useFakeTimers();
+  const done = controller.download('zip');
+  await vi.advanceTimersByTimeAsync(4999);
+  expect(api.calls.exportJob).toHaveLength(1);
+  await vi.advanceTimersByTimeAsync(1);
+  await done;
+  expect(api.calls.exportJob).toHaveLength(2);
+});
+
+test.each([
+  ['a 503 with another code', new ApiError(503, 'unavailable', 'x', 2000)],
+  ['a 429 (too many downloads)', new ApiError(429, 'rate_limited', 'x', 5000)],
+  ['a busy answer with no Retry-After', busy(null)],
+  ['a 409', new ApiError(409, 'no_results', 'x', null)],
+])('export: %s is not tried again', async (_label, error) => {
+  const api = exportAnswers([error, 'ok']);
+  const { controller } = await inResults(api);
+  vi.useFakeTimers();
+  const done = controller.download('zip');
+  await vi.advanceTimersByTimeAsync(10);
+  await done;
+  expect(api.calls.exportJob).toHaveLength(1);
+  expect(controller.store.getState().notice).toMatchObject({ kind: 'error' });
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(api.calls.exportJob).toHaveLength(1);
 });
 
 // ---- export ---------------------------------------------------------------

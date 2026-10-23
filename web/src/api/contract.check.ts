@@ -4,7 +4,18 @@
  * assumption, instead of somewhere in the UI. Fix the UI (or this file, on purpose) and keep the check.
  */
 import type { components } from './generated';
-import type { Job, JobStatus, Result, Stage, StageName, StageState, ValidateResponse } from './contract';
+import type {
+  ExportFormat,
+  ExportRequest,
+  Job,
+  JobStatus,
+  Result,
+  Stage,
+  StageName,
+  StageState,
+  ValidateRequest,
+  ValidateResponse,
+} from './contract';
 import { STAGE_ORDER } from './contract';
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
@@ -27,9 +38,16 @@ export type Checks = [
   Assert<Equal<Result['name'], string | null>>,
   Assert<Equal<Result['nameTier'], string | null>>,
   Assert<Equal<Result['nameVerified'], string | null>>,
-  // The hand-written validate answer carries the name fields exactly as a result does, so the two cannot drift
-  // (validate has no generated type yet: P3-06).
+  // The validate answer carries the name fields exactly as a result does, so the two cannot drift.
   Assert<Equal<Pick<ValidateResponse, 'name' | 'nameTier' | 'nameVerified'>, Pick<Result, 'name' | 'nameTier' | 'nameVerified'>>>,
+  // Every field of the validate answer, so that a new one is noticed here and not in a reducer.
+  Assert<Equal<keyof ValidateResponse, 'smiles' | 'inchikey' | 'svg' | 'valid' | 'name' | 'nameTier' | 'nameVerified'>>,
+  Assert<Equal<ValidateRequest, { molfile: string }>>,
+  // The formats the Download menu has an item for; a new one in the API needs one.
+  Assert<Equal<ExportFormat, 'zip' | 'sdf' | 'csv'>>,
+  // What the UI sends (`buildExportRequest`) is what the API takes.
+  Assert<ExportRequest extends Schemas['ExportRequest'] ? true : false>,
+  Assert<Equal<keyof Schemas['ExportRequest'], keyof ExportRequest>>,
   // The result list is the UI's Result.
   Assert<Equal<Job['results'], Result[]>>,
   // Everything the generated result has is in the UI's, under the same name.

@@ -79,6 +79,9 @@ class WorkerSettings(BaseSettings):
     pipeline_timeout_seconds: float = Field(default=1000.0, gt=0)
     # A running job's record is saved at least this often, whatever the stage is doing.
     heartbeat_seconds: float = Field(default=60.0, gt=0)
+    # A running job is checked this often for having been deleted by its owner (DELETE
+    # /api/jobs/<id>); the run is stopped within this long. One Redis EXISTS per running job.
+    cancel_poll_seconds: float = Field(default=2.0, gt=0)
     # arq waits this long for running jobs when it is told to stop (0: it cancels them, and a
     # cancelled job runs again after the restart). A container's stop grace period must exceed it.
     shutdown_wait_seconds: int = Field(default=0, ge=0)
@@ -156,6 +159,19 @@ class WorkerSettings(BaseSettings):
                 f"PIPELINE_TIMEOUT_SECONDS ({self.pipeline_timeout_seconds:g}) plus arq's "
                 f"{ARQ_TIMEOUT_MARGIN_SECONDS} s margin must be below "
                 f"RUNNING_JOB_TTL_SECONDS ({ttl})"
+            )
+        slowest = max(
+            self.seg_timeout_seconds,
+            self.ocsr_timeout_seconds,
+            self.cls_timeout_seconds,
+            self.chem_timeout_seconds,
+        )
+        if self.cancel_poll_seconds + slowest > settings.cancelling_slot_seconds:
+            problems.append(
+                f"CANCEL_POLL_SECONDS ({self.cancel_poll_seconds:g}) plus the longest service "
+                f"timeout ({slowest:g}) must not exceed CANCELLING_SLOT_SECONDS "
+                f"({settings.cancelling_slot_seconds}): a deleted running job would give its "
+                "client's slot back before the models are free of it"
             )
         if self.heartbeat_seconds * HEARTBEAT_FRACTION > ttl:
             problems.append(
