@@ -6,9 +6,10 @@ import {
   type ExportRequest,
   type ExportResponse,
   type Job,
+  type Result,
   type ValidateResponse,
 } from '../api/contract';
-import { fixtureResults } from './fixtures';
+import { asCdkOnly, fixtureResults } from './fixtures';
 import { jobAt, QUEUE_STEPS, RUN_STEPS, type MockJobSpec } from './timeline';
 
 export interface MockOptions {
@@ -40,6 +41,7 @@ interface MockJob {
  * - `full`       the upload is refused with 503
  * - `corrupt`    refused with 400 corrupt_file; likewise `encrypted` (encrypted_pdf), `pixels` (too_many_pixels)
  * - `badmolfile` the first structure has a molfile the editor cannot load
+ * - `cdkonly`    the third structure was refused by RDKit and accepted by CDK alone (`valid` false, `validBy` cdk)
  * - `nocls`      the classifier was unavailable: `isStructure` is null everywhere and a warning says so
  * - anything else: the 8 structures of Figure 2 of the golden paper
  */
@@ -76,6 +78,10 @@ export function scenarioFor(files: readonly Pick<File, 'name'>[]): {
         ],
       },
     };
+  }
+  if (names.includes('cdkonly')) {
+    const results = fixtureResults(8).map((r, i) => (i === 2 ? asCdkOnly(r) : r));
+    return { spec: { pages, results, structuresFound: results.length, truncated: false } };
   }
   if (names.includes('badmolfile')) {
     const results = fixtureResults(8).map((r, i) => (i === 0 ? { ...r, molfile: 'this is not a molfile' } : r));
@@ -140,6 +146,12 @@ export function atomCount(molfile: string): number | null {
   const counts = molfile.split('\n')[3];
   const v2000 = counts?.match(/^\s*(\d+)\s+\d+.*V2000/);
   return v2000?.[1] ? Number(v2000[1]) : null;
+}
+
+/** The CSV's `valid` column, as the API words it: `true` (RDKit accepts it), `cdk` (RDKit refused it, CDK read it) or `false`. */
+function validity(r: Pick<Result, 'valid' | 'validBy'>): string {
+  if (r.valid) return 'true';
+  return r.validBy === 'cdk' ? 'cdk' : 'false';
 }
 
 function csvCell(value: string): string {
@@ -236,15 +248,17 @@ export class MockApiClient implements ApiClient {
       const sdf = rows
         .map(
           ({ r, molfile, edited }) =>
-            `${molfile.trimEnd()}\n> <NUMBER>\n${r.number}\n\n> <SMILES>\n${r.smiles}\n\n> <NAME>\n${r.name ?? ''}\n\n> <EDITED>\n${edited}\n\n$$$$\n`,
+            `${molfile.trimEnd()}\n> <NUMBER>\n${r.number}\n\n> <SMILES>\n${r.smiles}\n\n> <NAME>\n${r.name ?? ''}\n\n> <EDITED>\n${edited}\n\n${validity(r) === 'cdk' ? '> <VALID>\ncdk\n\n' : ''}$$$$\n`,
         )
         .join('');
       return { blob: new Blob([sdf], { type: 'chemical/x-mdl-sdfile' }), filename: `decimer-${jobId}.sdf` };
     }
     if (request.format === 'csv') {
-      const lines = ['number,smiles,inchikey,name,edited'];
-      for (const { r, edited } of rows) {
-        lines.push([r.number, csvCell(r.smiles), r.inchikey, csvCell(r.name ?? ''), edited].join(','));
+      const lines = ['number,smiles,inchikey,valid,name,edited'];
+      for (const { r, molfile, edited } of rows) {
+        // An edit is judged by RDKit alone (the mock's validate says valid), so an edited row is never `cdk`.
+        const valid = edited ? (atomCount(molfile) === 0 ? 'false' : 'true') : validity(r);
+        lines.push([r.number, csvCell(r.smiles), r.inchikey, valid, csvCell(r.name ?? ''), edited].join(','));
       }
       return { blob: new Blob([`${lines.join('\n')}\n`], { type: 'text/csv' }), filename: `decimer-${jobId}.csv` };
     }

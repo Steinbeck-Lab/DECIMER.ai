@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
+import json as json_module
 import struct
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
@@ -106,6 +107,10 @@ class FakeBackend:
     names: dict[str, tuple[str | None, str | None]] = field(default_factory=dict)
     reasons: dict[str, str] = field(default_factory=dict)  # chem decline reasons by SMILES
     verifieds: dict[str, str] = field(default_factory=dict)  # how a name was checked, by SMILES
+    # chem's POST /cdk: the molblock CDK writes, by SMILES. A SMILES not listed is declined with
+    # `cdk_reasons[smiles]` (default `invalid_smiles`).
+    cdk: dict[str, str] = field(default_factory=dict)
+    cdk_reasons: dict[str, str] = field(default_factory=dict)
     delay: float = 0.0
     service_delays: dict[str, float] = field(default_factory=dict)  # on top of `delay`
     page_delays: dict[int, float] = field(default_factory=dict)  # seg only, by page index
@@ -114,6 +119,7 @@ class FakeBackend:
     # a test holds calls here (and sees them in `active`) until it lets them go.
     pauses: dict[str, Pause] = field(default_factory=dict)
     calls: list[tuple[str, dict[str, bytes]]] = field(default_factory=list)
+    paths: list[str] = field(default_factory=list)  # the URL path of every request, as `calls`
     active: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     peak: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     # Replicas: the host a request went to. `hosts` maps an address to its service when
@@ -140,6 +146,14 @@ class FakeBackend:
     def calls_to(self, host: str) -> int:
         return self.host_calls.count(host)
 
+    def chem_batches(self, path: str) -> list[list[str]]:
+        """The SMILES of every request to chem's `path` (`/names` or `/cdk`), in the order sent."""
+        return [
+            json_module.loads(parts["json"])["smiles"]
+            for (service, parts), where in zip(self.calls, self.paths, strict=True)
+            if service == "chem" and where == path
+        ]
+
     async def handle(self, request: httpx.Request) -> httpx.Response:
         host = request.url.host
         if host in self.down:
@@ -150,6 +164,7 @@ class FakeBackend:
         else:
             parts = {"json": request.content}
         self.calls.append((service, parts))
+        self.paths.append(request.url.path)
         self.host_calls.append(host)
         self.active[service] += 1
         self.peak[service] = max(self.peak[service], self.active[service])
@@ -190,11 +205,11 @@ class FakeBackend:
         if service == "cls":
             return json_response({"is_structure": True, "score": 1e-9})
         if service == "chem":
-            import json
-
+            if request.url.path == "/cdk":
+                return self._cdk(parts)
             assert request.url.path == "/names"
             results = []
-            for smiles in json.loads(parts["json"])["smiles"]:
+            for smiles in json_module.loads(parts["json"])["smiles"]:
                 name, tier = self.names.get(smiles, (None, None))
                 reason = None if name else self.reasons.get(smiles, "no_verified_name")
                 results.append(
@@ -207,6 +222,14 @@ class FakeBackend:
                 )
             return json_response({"results": results})
         raise AssertionError(f"unexpected service {service}")
+
+    def _cdk(self, parts: dict[str, bytes]) -> httpx.Response:
+        results = []
+        for smiles in json_module.loads(parts["json"])["smiles"]:
+            molfile = self.cdk.get(smiles)
+            reason = None if molfile else self.cdk_reasons.get(smiles, "invalid_smiles")
+            results.append({"molfile": molfile, "reason": reason})
+        return json_response({"results": results})
 
     def _seg(self, parts: dict[str, bytes]) -> httpx.Response:
         page = int(parts["page_index"])

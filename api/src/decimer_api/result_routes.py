@@ -162,8 +162,10 @@ async def validate(
         raise ApiError(
             422, ErrorCode.INVALID_REQUEST, f"The molfile cannot be used: {error}."
         ) from error
-    # P3-06c (the CDK fallback, D4) plugs in here: for `not chem.valid`, ask CDK (through chem, like
-    # the worker's `Deps.cdk_fallback`) and use its answer when it accepts what RDKit refused.
+    # No CDK fallback here: CDK reads SMILES, and DECIMER's SMILES are what the worker
+    # tries with it (`Result.valid_by`). This molfile came from the editor, which wrote its own
+    # (also when the user opened a structure that only CDK had accepted); if RDKit refuses it, it
+    # is invalid, and the user sees that and fixes the drawing.
     name = NO_NAME
     if chem.valid and nameable(chem.smiles):
         name = (await deps.namer([chem.smiles]))[0]

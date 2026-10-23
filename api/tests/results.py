@@ -13,6 +13,7 @@ from decimer_api.models import Job, JobStatus, Result, new_job_id
 from decimer_api.names import NO_NAME, NameInfo
 from decimer_api.settings import Settings
 from decimer_api.store import Admission, JobStore
+from tests.cdk_molblocks import PENTAVALENT_MOLBLOCK, PENTAVALENT_SMILES
 from tests.factories import make_png
 
 if TYPE_CHECKING:
@@ -53,6 +54,26 @@ def make_results(smiles: Sequence[str] = SMILES, *, named: bool = True) -> list[
             )
         )
     return results
+
+
+def make_cdk_only_result(index: int = 0) -> Result:
+    """A result as the worker leaves it for a SMILES that RDKit refused and CDK accepted:
+    `valid: false` (RDKit's word), `validBy: cdk`, DECIMER's SMILES, no InChIKey and no name, and
+    CDK's molblock."""
+    assert not analyse_smiles(PENTAVALENT_SMILES).valid  # the premise
+    return Result(
+        index=index,
+        page_index=0,
+        bbox=(0, 0, 40 + index, 30),
+        smiles=PENTAVALENT_SMILES,
+        inchikey="",
+        valid=False,
+        valid_by="cdk",
+        is_structure=True,
+        confidence=0.9,
+        svg="<svg/>",
+        molfile=PENTAVALENT_MOLBLOCK,
+    )
 
 
 async def make_done_job(

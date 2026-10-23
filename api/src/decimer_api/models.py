@@ -14,9 +14,9 @@ import re
 import secrets
 from datetime import datetime
 from enum import StrEnum
-from typing import Self
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 from pydantic.alias_generators import to_camel
 
 JOB_ID_PATTERN = re.compile(r"[0-9a-f]{32}")
@@ -74,6 +74,10 @@ class JobWarning(ApiModel):
     message: str
 
 
+# Who read the SMILES as a structure: RDKit, or (when RDKit refused it) CDK alone.
+ValidBy = Literal["rdkit", "cdk"]
+
+
 class Result(ApiModel):
     """One recognised structure, as stored. Filled in by the worker."""
 
@@ -85,6 +89,12 @@ class Result(ApiModel):
     smiles: str
     inchikey: str = Field(description="Empty when the SMILES is invalid.")
     valid: bool = Field(description="RDKit accepts the SMILES.")
+    valid_by: ValidBy | None = Field(
+        default=None,
+        description="Who accepted the SMILES: `rdkit` (then `valid` is true), `cdk` (RDKit refused "
+        "it, CDK read it: `valid` is false, `molfile` and `svg` are CDK's reading) or null "
+        "(neither). Equals `rdkit` for every valid result.",
+    )
     is_structure: bool | None = Field(
         description="The classifier believes this is a chemical structure. "
         "Null when the classifier gave no answer (the worker could not reach it)."
@@ -97,7 +107,17 @@ class Result(ApiModel):
         description="How `name` was checked, as chem reports it (e.g. opsin); null without a name.",
     )
     svg: str = Field(default="", description="RDKit depiction as an inline SVG string.")
-    molfile: str = Field(default="", description="V2000 molfile with 2D coordinates.")
+    molfile: str = Field(
+        default="",
+        description="V2000 molfile with 2D coordinates: RDKit's, or CDK's when `validBy` is cdk.",
+    )
+
+    @model_validator(mode="after")
+    def _valid_means_rdkit(self) -> Self:
+        # A record stored before `valid_by` existed has none: a valid result was RDKit's.
+        if self.valid and "valid_by" not in self.model_fields_set:
+            self.valid_by = "rdkit"
+        return self
 
 
 class ResultView(Result):

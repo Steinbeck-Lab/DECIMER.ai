@@ -97,6 +97,14 @@ are never pulled (`pull_policy: never`): there is no registry namespace somebody
   `ORTHONYM_DISABLE_JPYPE`, `CHEM_ALLOW_JAR_DOWNLOAD` is ever set (the service refuses to start with the
   first four). `JAVA_HOME` points at the copied Temurin JRE. D14 (the Orthonym `valid` tier) is a setting
   of the service's code and changes nothing in the image.
+  **CDK: `CDK_FALLBACK` (worker, default `true`).** The worker (both lanes) sends the SMILES that RDKit
+  refuses to chem's `POST /cdk`, one batch per job, after the check stage and before the names; the structures CDK
+  accepts are shown as "accepted by CDK only". It needs `CHEM_URL` (no chem: no call) and costs at most one more
+  request to chem per job, which takes turns with `/names` on chem's one slot. `CDK_FALLBACK=false` in `deploy/.env`
+  switches it off; compose passes the variable to `worker` and `worker-fast` (`x-worker-env`) and not to the api
+  (the validate route has no CDK step). Contract change for anything that reads the exports: the CSV's `valid`
+  column, `true|false` before, is now `true|cdk|false` (`cdk`: RDKit refused the structure and only CDK accepted
+  it; its `.mol` and SDF record carry CDK's molblock, the SDF record `VALID` = `cdk`).
 * **Permissions are checked as the service user.** Weights and jars are made `a+rX` and the build runs a
   read of every file as uid 10001; the web build is `chmod -R a+rX dist`, copied without `--chmod` (which
   applies to directories too and once made them unenterable for nginx) and read as uid 101.

@@ -37,8 +37,14 @@ export const STAGE_ORDER = ['upload', 'render', 'segment', 'recognise', 'check']
  * `nameTier` and `nameVerified` are Orthonym's own ids for what kind of name `name` is and how it was checked
  * (decision D14). `nameVerified` is `opsin`, `opsin_split`, `opsin_constitution`, `opsin_twin`, `opsin_acids` or
  * `identity`; null when there is no name. The UI words the ids it knows and shows an unknown tier as it is.
+ *
+ * `valid` is RDKit's word. `validBy` says who accepted the SMILES: `rdkit` (then `valid` is true), `cdk` (RDKit refused
+ * it, CDK 2.8 read it, decision D4: `valid` is false, `molfile` is CDK's and `svg` RDKit's drawing of it, `inchikey`
+ * and `name` are empty) or null (neither).
  */
 export type Result = Required<Schemas['ResultView']>;
+
+export type ValidBy = NonNullable<Result['validBy']>;
 
 export type Job = Omit<Required<Schemas['JobView']>, 'results'> & { results: Result[] };
 

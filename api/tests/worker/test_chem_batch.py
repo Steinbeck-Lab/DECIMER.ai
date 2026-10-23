@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 
 import httpx
@@ -21,8 +20,9 @@ def codes(job: Job) -> list[str]:
 
 
 def sent(backend: FakeBackend) -> list[list[str]]:
-    """The SMILES of every batch sent to chem, in the order of the calls."""
-    return [json.loads(parts["json"])["smiles"] for parts in backend.parts_of("chem")]
+    """The SMILES of every `/names` batch sent to chem, in the order of the calls (`/cdk` is
+    `test_cdk.py`'s)."""
+    return backend.chem_batches("/names")
 
 
 def ocsr_says(*answers: str) -> Callable[..., httpx.Response]:
@@ -97,7 +97,7 @@ async def test_nothing_to_name_means_no_request(make_rig: RigFactory) -> None:
     backend = FakeBackend(layout={0: 2}, hooks={"ocsr": ocsr_says("c1ccccc", "")})
     rig = make_rig(backend=backend, ocsr_concurrency=1, **CHEM)
     job = await rig.run(await rig.pdf_job(1))
-    assert backend.count("chem") == 0
+    assert sent(backend) == []
     assert job.status is JobStatus.DONE
 
 

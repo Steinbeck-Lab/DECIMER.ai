@@ -10,7 +10,7 @@ import httpx
 
 from ..settings import MIB, Settings
 from ..store import JobStore
-from .pipeline import CdkFallback, Deps
+from .pipeline import Deps
 from .render import Renderer, SubprocessRenderer
 from .replicas import Clock, Resolver, system_resolver
 from .services import Sleep, make_gates, make_http_client, make_services
@@ -26,7 +26,6 @@ def build_deps(
     *,
     http: httpx.AsyncClient | None = None,
     renderer: Renderer | None = None,
-    cdk_fallback: CdkFallback | None = None,
     sleep: Sleep | None = None,
     resolver: Resolver = system_resolver,
     clock: Clock = time.monotonic,
@@ -48,10 +47,8 @@ def build_deps(
             # Same bound as the ingest child: a worst-case PNG of the biggest allowed page.
             max_file_bytes=3 * settings.max_image_pixels + 64 * MIB,
         )
-    if worker.cdk_fallback and cdk_fallback is None:
-        log.warning(
-            "CDK_FALLBACK is on, but no CDK backend is plugged in (D4 is open): RDKit decides alone"
-        )
+    if worker.cdk_fallback and worker.chem_url is None:
+        log.info("CDK_FALLBACK is on, but CHEM_URL is not set: RDKit decides alone")
     return Deps(
         settings=settings,
         worker=worker,
@@ -59,6 +56,5 @@ def build_deps(
         services=services,
         renderer=renderer,
         gates=gates,
-        cdk_fallback=cdk_fallback,
         http=client,
     )

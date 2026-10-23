@@ -25,7 +25,11 @@ class ValidateView(ApiModel):
 
     smiles: str = Field(description="Canonical SMILES. Empty when the structure is not valid.")
     inchikey: str = Field(description="Empty when the structure is not valid or has no InChI.")
-    svg: str = Field(description="RDKit depiction as an inline SVG string. Empty when not valid.")
+    svg: str = Field(
+        description="RDKit depiction as an inline SVG string. For a structure RDKit reads but "
+        "will not sanitize (`valid` false) it is the drawing of the molfile as it is; empty when "
+        "the molfile has no atoms or the drawing fails."
+    )
     valid: bool = Field(description="RDKit accepts the structure and it has at least one atom.")
     name: str | None = Field(
         default=None, description="IUPAC name that passed the round trip; null when none."

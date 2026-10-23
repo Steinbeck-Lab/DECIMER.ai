@@ -195,6 +195,12 @@ export const strings = {
     noName: 'No verified name',
     noDepiction: 'No depiction',
     /**
+     * A structure RDKit refused and CDK read (decision D4: CDK is kept as a fallback, as legacy used it). The flag is
+     * the short form on the tile; the hover has the whole sentence, and says who could not read it.
+     */
+    cdkOnlyFlag: 'Accepted by CDK only',
+    cdkOnlyHover: 'Accepted by CDK only (RDKit could not read it)',
+    /**
      * States the fact, not a cause, and does not name Orthonym: names may be switched off altogether (no chemistry
      * service configured), and where they are on it also returns none on a timeout, with the engine unavailable, for
      * an invalid SMILES, or where the tier is not shipped.
@@ -227,7 +233,7 @@ export const strings = {
     legend: 'What the colours mean',
     legendItems: {
       unchecked: 'Recognised. Nobody has looked at it yet.',
-      review: 'Low confidence, or the SMILES is not valid.',
+      review: 'Low confidence, or the SMILES is not valid or only CDK could read it.',
       notsure: 'The classifier doubts this image is a chemical structure.',
       edited: 'You changed it and have not checked it again.',
       checked: 'You marked it as checked.',
@@ -284,6 +290,7 @@ export const strings = {
     reasons: {
       notStructure: 'We are not sure this is a chemical structure.',
       invalid: 'This SMILES is not valid. Check the structure in the editor.',
+      cdkOnly: 'RDKit could not read this SMILES, but CDK could. Check the structure in the editor.',
       rgroup: 'The structure contains an R group or another undefined atom.',
       lowConfidence: (percent: number) =>
         `The model was not confident about this structure (${percent}%).`,

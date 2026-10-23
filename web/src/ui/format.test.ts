@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
-import { imageSrc, nameHover } from './format';
+import { strings } from '../strings';
+import { imageSrc, nameHover, validityHover } from './format';
 
 test('a URL is used as it is', () => {
   expect(imageSrc('/assets/mol1.svg')).toBe('/assets/mol1.svg');
@@ -83,4 +84,21 @@ test('inline SVG is recognised after leading whitespace, a doctype or a comment'
 test('anything that does not start with < is a URL, including ones that merely contain svg', () => {
   expect(imageSrc('/api/jobs/abc/media/depiction-3.svg')).toBe('/api/jobs/abc/media/depiction-3.svg');
   expect(imageSrc('https://example.org/a.svg')).toBe('https://example.org/a.svg');
+});
+
+// ---- who accepted the structure (decision D4) ---------------------------------------------------------------------
+
+test('only a structure that CDK alone accepted has a validity line, and it is this sentence', () => {
+  expect(validityHover('cdk')).toEqual(['Accepted by CDK only (RDKit could not read it)']);
+  expect(validityHover('rdkit')).toEqual([]);
+  expect(validityHover(null)).toEqual([]);
+});
+
+test('the CDK copy: a short flag for the tile, the whole sentence for the hover, and the reason in the editor', () => {
+  expect(strings.tile.cdkOnlyFlag).toBe('Accepted by CDK only');
+  expect(strings.tile.cdkOnlyHover).toBe('Accepted by CDK only (RDKit could not read it)');
+  expect(strings.editor.reasons.cdkOnly).toBe('RDKit could not read this SMILES, but CDK could. Check the structure in the editor.');
+  // It does not call the structure invalid: the structure is read, by one reader.
+  expect(strings.tile.cdkOnlyFlag).not.toMatch(/invalid/i);
+  expect(strings.tile.cdkOnlyHover).not.toMatch(/invalid/i);
 });

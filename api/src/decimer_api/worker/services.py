@@ -170,6 +170,24 @@ class NamesAnswer(_Answer):
     results: list[NameAnswer]
 
 
+# What chem may send as a V2000 molblock (its own cap, MAX_MOLFILE_BYTES: a 300-atom one is 28 KB).
+CDK_MOLFILE_MAX_CHARS = 256 * 1024
+
+
+class CdkAnswer(_Answer):
+    """One structure's answer from chem's `POST /cdk`: the V2000 molblock CDK wrote for the SMILES,
+    or None with a `reason` (`invalid_smiles`, `layout_failed`, `too_large`, `timeout`,
+    `engine_error`, `engine_unavailable`). The worker uses `reason` for its warning and does not
+    store it."""
+
+    molfile: str | None = Field(default=None, max_length=CDK_MOLFILE_MAX_CHARS)
+    reason: str | None = Field(default=None, max_length=200)
+
+
+class CdkAnswers(_Answer):
+    results: list[CdkAnswer]
+
+
 # --- the caller --------------------------------------------------------------------------------
 
 
@@ -465,6 +483,15 @@ class Services:
             "chem", "/names", json={"smiles": smiles}, ticket=self._ticket
         )
         answers = _parse("chem", NamesAnswer, raw).results
+        if len(answers) != len(smiles):
+            raise ServiceFailed("chem", f"{len(answers)} answers for {len(smiles)} structures")
+        return answers
+
+    async def cdk(self, smiles: list[str]) -> list[CdkAnswer]:
+        """One answer per SMILES, in order, from a single `POST /cdk` (at most 20 per call): CDK's
+        molblock for a structure RDKit refused, or a decline."""
+        raw = await self._caller.post("chem", "/cdk", json={"smiles": smiles}, ticket=self._ticket)
+        answers = _parse("chem", CdkAnswers, raw).results
         if len(answers) != len(smiles):
             raise ServiceFailed("chem", f"{len(answers)} answers for {len(smiles)} structures")
         return answers

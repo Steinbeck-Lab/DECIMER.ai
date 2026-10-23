@@ -74,17 +74,32 @@ def test_the_client_has_no_connection_cap_below_what_the_replica_pools_allow() -
     assert transport._pool._max_connections >= 100_000
 
 
-async def test_the_cdk_flag_without_a_backend_is_reported_and_harmless(
+async def test_the_cdk_flag_without_chem_is_noted_and_harmless(
     settings: Settings, spy_store: SpyStore, caplog: pytest.LogCaptureFixture
 ) -> None:
-    with caplog.at_level(logging.WARNING, logger="decimer_api.worker"):
-        deps = build_deps(settings, WorkerSettings(cdk_fallback=True), spy_store)
+    """CDK runs in chem: with no CHEM_URL there is nothing to call, and the worker says so once."""
+    with caplog.at_level(logging.INFO, logger="decimer_api.worker"):
+        deps = build_deps(settings, WorkerSettings(cdk_fallback=True, chem_url=None), spy_store)
     await deps.aclose()
-    assert "CDK_FALLBACK is on" in caplog.text
-    assert deps.cdk_fallback is None
+    assert "CDK_FALLBACK is on, but CHEM_URL is not set" in caplog.text
 
 
-def test_the_cdk_fallback_is_off_by_default() -> None:
+async def test_the_cdk_flag_with_chem_says_nothing(
+    settings: Settings, spy_store: SpyStore, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.INFO, logger="decimer_api.worker"):
+        deps = build_deps(
+            settings, WorkerSettings(cdk_fallback=True, chem_url="http://chem:8004"), spy_store
+        )
+    await deps.aclose()
+    assert "CDK_FALLBACK" not in caplog.text
+
+
+def test_the_cdk_fallback_is_on_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """D4 (kept, 2026-10-23): on unless CDK_FALLBACK says otherwise."""
+    monkeypatch.delenv("CDK_FALLBACK", raising=False)
+    assert WorkerSettings().cdk_fallback is True
+    monkeypatch.setenv("CDK_FALLBACK", "false")
     assert WorkerSettings().cdk_fallback is False
 
 

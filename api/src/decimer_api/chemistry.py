@@ -25,9 +25,19 @@ R groups), and the molfile carries `R#` atoms with an `M  RGP` line, which Ketch
 R2. `[Rb]`, `[Rh]`, `[Ra]`, `[Re]`, `[Ru]` are elements and are left alone; `[R1a]`, `[R+]` and
 the like stay invalid.
 
+A SMILES RDKit refuses may still be read by CDK; the worker asks chem for CDK's
+V2000 molblock and `from_cdk` turns it into the result's values: the molfile is CDK's own, the SVG
+is RDKit's drawing of it (read WITHOUT sanitizing, which is what lets it draw what it refused),
+the SMILES is the one DECIMER wrote, and `valid` stays False (it is RDKit's word) with an empty
+InChIKey. Whether CDK alone accepted a structure is not a field of `Chemistry`: the caller knows,
+and says so in `Result.valid_by`.
+
 `analyse_molfile` does the same for a molfile that came from the editor (`/validate`, `/export`).
 A text that is not a molfile at all raises `MolfileError`; one that is a molfile but not a valid
-structure (an impossible valence, no atoms) is `valid=False`, like an invalid SMILES.
+structure (an impossible valence, no atoms) is `valid=False`, like an invalid SMILES. A molfile
+RDKit reads but will not sanitize is still DRAWN, unsanitized, like what only CDK accepted (empty
+SMILES, InChIKey and molfile, as for any invalid structure; the drawing is all the user needs to
+see what they drew): otherwise an edit of a structure that stays hypervalent blanks its tile.
 `clean_molfile` is what a client's molfile must pass before it is stored, written to a file or
 parsed. It also refuses, from the text alone and before RDKit sees a byte, a molfile that is cheap
 to write and ruinous to read, or too ambiguous to count the way RDKit will (see `molfile.py`).
@@ -151,7 +161,11 @@ def _molfile(mol: Chem.Mol) -> str:
     return block
 
 
-def _svg(mol: Chem.Mol) -> str:
+def _svg(mol: Chem.Mol, *, expected_to_fail: bool = False) -> str:
+    """The drawing of `mol`, or "" when RDKit cannot draw it. A failure is logged as a warning (a
+    structure RDKit accepted should always draw), or at debug level when `expected_to_fail`: one
+    RDKit refused, which a client's molfile can make undrawable (every atom at one point) as often
+    as it likes."""
     try:
         drawer = rdMolDraw2D.MolDraw2DSVG(*DRAWING_SIZE)
         drawer.drawOptions().clearBackground = False  # type: ignore[assignment]
@@ -159,28 +173,72 @@ def _svg(mol: Chem.Mol) -> str:
         drawer.FinishDrawing()
         text: str = drawer.GetDrawingText()
     except Exception:
-        log.warning("drawing failed", exc_info=True)
+        log.log(
+            logging.DEBUG if expected_to_fail else logging.WARNING, "drawing failed", exc_info=True
+        )
         return ""
     # RDKit starts with an XML declaration, which is not wanted when the SVG is inlined in HTML.
     start = text.find("<svg")
     return text[start:].strip() if start >= 0 else ""
 
 
+def _svg_unsanitized(mol: Chem.Mol) -> str:
+    """The drawing of a molecule RDKit has read but not sanitized (it refused it, or never tried):
+    drawn as it is, from its own coordinates. Valences are worked out without the checks. A drawing
+    that fails is an empty SVG."""
+    try:
+        mol.UpdatePropertyCache(strict=False)
+    except Exception:
+        log.debug("valences of an unsanitized molecule failed", exc_info=True)
+        return ""
+    return _svg(mol, expected_to_fail=True)
+
+
+def _read_unsanitized(molfile: str) -> Chem.Mol | None:
+    """RDKit's reading of a cleaned molfile without sanitizing; None when it cannot read it."""
+    try:
+        return Chem.MolFromMolBlock(molfile, sanitize=False, removeHs=False, strictParsing=False)
+    except Exception:  # RDKit raises ValueError and RuntimeError for some inputs
+        return None
+
+
+def from_cdk(smiles: str, molblock: str) -> Chemistry:
+    """What a structure that RDKit refused and CDK laid out is, as a result: `smiles` (DECIMER's
+    own text, as the invalid result has it), no InChIKey, `valid=False`, the cleaned molblock as the
+    molfile and RDKit's drawing of it. Raises `MolfileTooBig` for a molblock that is well formed
+    but more than the molfile gate lets through (the same gate every stored molfile passes, so
+    that the editor's validate can read it again: the structure stays invalid, as if CDK had
+    declined), and `MolfileError` for text that is no usable molfile (see `clean_molfile`), that
+    RDKit cannot read at all, or that has no atoms: chem broke its contract. A drawing that fails
+    is an empty SVG, not a failure: the molfile is what the user edits and exports."""
+    molfile = clean_molfile(molblock)
+    mol = _read_unsanitized(molfile)
+    if mol is None:
+        raise MolfileError("RDKit cannot read it as a molfile")
+    if mol.GetNumAtoms() == 0:
+        raise MolfileError("it has no atoms")
+    return Chemistry(
+        smiles=smiles, inchikey="", valid=False, molfile=molfile, svg=_svg_unsanitized(mol)
+    )
+
+
 def analyse_molfile(molfile: str) -> Chemistry:
     """Parse a molfile and describe it. It goes through `clean_molfile` again (cheap, and a no-op
     on a molfile that was cleaned), so that no caller can hand RDKit what the cost gate would have
     refused. Raises `MolfileError` when RDKit cannot read it as a molfile; a structure it reads but
-    cannot sanitize, and one with no atoms, come back with `valid=False` and empty values."""
+    cannot sanitize comes back with `valid=False`, empty values and its drawing as it is; one with
+    no atoms, `valid=False` and empty values."""
     molfile = clean_molfile(molfile)
-    try:
-        mol = Chem.MolFromMolBlock(molfile, sanitize=False, removeHs=False, strictParsing=False)
-    except Exception as error:  # RDKit raises ValueError and RuntimeError for some inputs
-        raise MolfileError("it cannot be read as a molfile") from error
+    mol = _read_unsanitized(molfile)
     if mol is None:
         raise MolfileError("it cannot be read as a molfile")
+    drawn = Chem.Mol(mol)  # sanitizing changes `mol`, also when it fails half way
     try:
         Chem.SanitizeMol(mol)
         mol = Chem.RemoveHs(mol)
     except Exception:
-        return _invalid("")
+        # RDKit's word is `valid=False`, but the drawing is the molfile as it is.
+        return Chemistry(
+            smiles="", inchikey="", valid=False, molfile="", svg=_svg_unsanitized(drawn)
+        )
     return describe(mol)

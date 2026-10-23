@@ -1,10 +1,19 @@
-import { STAGE_ORDER, type ExportFormat, type ExportRequest, type Job, type Result, type StageName, type StageState } from '../api/contract';
+import {
+  STAGE_ORDER,
+  type ExportFormat,
+  type ExportRequest,
+  type Job,
+  type Result,
+  type StageName,
+  type StageState,
+  type ValidBy,
+} from '../api/contract';
 import type { EditEntry, Filter, State, Status } from './model';
 
 /** Below this the model is not confident and the result goes to "review". */
 export const REVIEW_CONFIDENCE_BELOW = 0.8;
 
-export type Reason = 'notStructure' | 'invalid' | 'rgroup' | 'lowConfidence';
+export type Reason = 'notStructure' | 'invalid' | 'cdkOnly' | 'rgroup' | 'lowConfidence';
 
 export interface ResultView {
   index: number;
@@ -13,7 +22,10 @@ export interface ResultView {
   smiles: string;
   inchikey: string;
   svg: string;
+  /** RDKit's word. A structure only CDK accepted is `valid: false` with `validBy: 'cdk'`. */
   valid: boolean;
+  /** Who accepted the structure as it is now: after an edit, the server's answer says (RDKit, or nobody). */
+  validBy: ValidBy | null;
   name: string | null;
   nameTier: string | null;
   nameVerified: string | null;
@@ -36,13 +48,16 @@ const R_GROUP = /\*|\[R\d*[^a-z]/;
 export function reasonsFor(r: {
   isStructure: boolean | null;
   valid: boolean;
+  validBy?: ValidBy | null;
   confidence: number;
   smiles: string;
 }): Reason[] {
   const reasons: Reason[] = [];
   // Only an answer of "no" is a doubt. `null` is a classifier that was not there: nothing to say.
   if (r.isStructure === false) reasons.push('notStructure');
-  if (!r.valid) reasons.push('invalid');
+  // A structure only CDK accepted stays a reason to look (RDKit, the stricter reader, refused it, so it is
+  // "review", not "unchecked"), but it is not a plain "invalid SMILES": the wording says who accepted it.
+  if (!r.valid) reasons.push(r.validBy === 'cdk' ? 'cdkOnly' : 'invalid');
   else if (R_GROUP.test(r.smiles)) reasons.push('rgroup');
   if (r.confidence < REVIEW_CONFIDENCE_BELOW) reasons.push('lowConfidence');
   return reasons;
@@ -52,9 +67,11 @@ function buildView(result: Result, edit?: EditEntry): ResultView {
   const derived = edit?.derived ?? null;
   const smiles = derived?.smiles ?? result.smiles;
   const valid = derived?.valid ?? result.valid;
+  // The server's answer to an edit is RDKit's alone (validate has no CDK): valid, or neither accepts it.
+  const validBy = derived ? (derived.valid ? 'rdkit' : null) : result.validBy;
   const modified = edit?.modified ?? false;
   const checked = edit?.checked ?? false;
-  const reasons = reasonsFor({ isStructure: result.isStructure, valid, confidence: result.confidence, smiles });
+  const reasons = reasonsFor({ isStructure: result.isStructure, valid, validBy, confidence: result.confidence, smiles });
 
   let status: Status;
   if (checked) status = 'checked';
@@ -71,6 +88,7 @@ function buildView(result: Result, edit?: EditEntry): ResultView {
     inchikey: derived?.inchikey ?? result.inchikey,
     svg: derived?.svg ?? result.svg,
     valid,
+    validBy,
     name: derived ? derived.name : result.name,
     nameTier: derived ? derived.nameTier : result.nameTier,
     nameVerified: derived ? derived.nameVerified : result.nameVerified,

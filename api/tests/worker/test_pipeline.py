@@ -436,37 +436,6 @@ async def test_an_empty_prediction_is_an_invalid_result(make_rig: RigFactory) ->
     assert job.results[0].molfile == ""
 
 
-async def test_the_cdk_seam_is_off_by_default(make_rig: RigFactory) -> None:
-    calls: list[str] = []
-
-    async def cdk(smiles: str) -> None:
-        calls.append(smiles)
-
-    def ocsr(_request: httpx.Request, _parts: dict[str, bytes]) -> httpx.Response:
-        return json_response({"smiles": "c1ccccc", "token_confidence": [], "mean_confidence": 0.5})
-
-    rig = make_rig(backend=FakeBackend(layout={0: 1}, hooks={"ocsr": ocsr}))
-    rig.deps.cdk_fallback = cdk
-    job = await rig.run(await rig.pdf_job(1))
-    assert calls == []
-    assert job.results[0].valid is False
-
-
-async def test_the_cdk_seam_is_used_when_the_flag_is_on(make_rig: RigFactory) -> None:
-    from decimer_api.chemistry import Chemistry
-
-    async def cdk(smiles: str) -> Chemistry | None:
-        return Chemistry(smiles="c1ccccc1", inchikey="", valid=True, molfile="M", svg="<svg/>")
-
-    def ocsr(_request: httpx.Request, _parts: dict[str, bytes]) -> httpx.Response:
-        return json_response({"smiles": "c1ccccc", "token_confidence": [], "mean_confidence": 0.5})
-
-    rig = make_rig(backend=FakeBackend(layout={0: 1}, hooks={"ocsr": ocsr}), cdk_fallback=True)
-    rig.deps.cdk_fallback = cdk
-    job = await rig.run(await rig.pdf_job(1))
-    assert (job.results[0].valid, job.results[0].smiles) == (True, "c1ccccc1")
-
-
 # --- finishing ------------------------------------------------------------------------------------
 
 
