@@ -3,7 +3,7 @@ import { LIMITS, STAGE_ORDER } from '../api/contract';
 import { MockApiClient, scenarioFor } from './MockApiClient';
 import { fixtureResults, FIXTURE_COMPOUNDS } from './fixtures';
 import { atomCount } from './MockApiClient';
-import { jobAt, QUEUE_STEPS } from './timeline';
+import { jobAt, QUEUE_STEPS, RUN, RUN_STEPS } from './timeline';
 
 const spec = { id: 'j', pages: 10, results: fixtureResults(8), structuresFound: 8, truncated: false };
 const STEP = 100;
@@ -14,35 +14,55 @@ test('the fixtures are the paper numbers, with names where Orthonym verified one
   expect(FIXTURE_COMPOUNDS.every((c) => c.molfile.includes('V2000'))).toBe(true);
 });
 
-test('the job waits in the queue (2, then 1), runs the five stages in order, then is done', () => {
+test('the job waits in the queue (2, then 1), runs the stages overlapped, then is done', () => {
   const at = (steps: number) => jobAt(spec, steps * STEP + 1, STEP);
   expect(at(0)).toMatchObject({ status: 'queued', queuePosition: 2 });
   expect(at(1)).toMatchObject({ status: 'queued', queuePosition: 1 });
   expect(at(0).results).toEqual([]);
 
-  STAGE_ORDER.forEach((name, i) => {
+  RUN.forEach((states, i) => {
     const job = at(QUEUE_STEPS + i);
     expect(job.status).toBe('running');
     expect(job.queuePosition).toBeNull();
     expect(job.error).toBeNull();
-    expect(job.stages.map((s) => s.state)).toEqual(
-      STAGE_ORDER.map((_, j) => (j < i ? 'done' : j === i ? 'active' : 'pending')),
-    );
-    expect(job.stages.find((s) => s.state === 'active')?.name).toBe(name);
+    expect(job.stages.map((s) => s.name)).toEqual([...STAGE_ORDER]);
+    expect(job.stages.map((s) => s.state)).toEqual(['done', ...states]);
     expect(job.results).toEqual([]);
   });
 
-  const done = at(QUEUE_STEPS + STAGE_ORDER.length);
+  const done = at(QUEUE_STEPS + RUN_STEPS);
   expect(done.status).toBe('done');
   expect(done.stages.every((s) => s.state === 'done')).toBe(true);
   expect(done.results).toHaveLength(8);
 });
 
-test('pages processed grow during rendering and never pass the page limit', () => {
-  const render = QUEUE_STEPS + STAGE_ORDER.indexOf('render');
-  const early = jobAt(spec, render * STEP + 10, STEP).pagesProcessed;
-  const late = jobAt(spec, render * STEP + 90, STEP).pagesProcessed;
+test('the stages overlap as the worker lets them, and follow its rules at every step', () => {
+  const rank = { pending: 0, active: 1, done: 2 } as const;
+  let before: number[] = [];
+  let overlapped = 0;
+  for (let run = 0; run < RUN_STEPS; run++) {
+    const states = jobAt(spec, (QUEUE_STEPS + run) * STEP + 1, STEP).stages.map((s) => s.state);
+    states.forEach((state, i) => {
+      // done only when every earlier stage is done; started only when the one before it has
+      if (state === 'done') expect(states.slice(0, i).every((s) => s === 'done')).toBe(true);
+      if (state !== 'pending') expect(states.slice(0, i).every((s) => s !== 'pending')).toBe(true);
+    });
+    // and a stage never goes back
+    const ranks = states.map((s) => rank[s]);
+    expect(ranks.every((r, i) => r >= (before[i] ?? 0))).toBe(true);
+    before = ranks;
+    if (states.filter((s) => s === 'active').length > 1) overlapped++;
+  }
+  expect(overlapped).toBeGreaterThanOrEqual(2);
+});
+
+test('pages processed grow while the pages are being rendered and never pass the page limit', () => {
+  const first = QUEUE_STEPS;
+  const early = jobAt(spec, first * STEP + 10, STEP).pagesProcessed;
+  const late = jobAt(spec, (first + 1) * STEP + 90, STEP).pagesProcessed;
+  expect(early).toBeGreaterThan(0);
   expect(early).toBeLessThan(late);
+  expect(jobAt(spec, (first + 2) * STEP + 10, STEP).pagesProcessed).toBe(spec.pages); // every page rendered
   const big = { ...spec, pages: 14 };
   expect(jobAt(big, 100 * STEP, STEP).pagesProcessed).toBe(LIMITS.maxPages);
 });
@@ -58,14 +78,14 @@ test('the nocls scenario: every result has isStructure null and a job warning sa
   expect(normal.filter((r) => r.isStructure === true)).toHaveLength(7);
 });
 
-test('before the end a poll has structuresFound but no results', () => {
-  const recognising = QUEUE_STEPS + STAGE_ORDER.indexOf('recognise');
-  for (const step of [recognising, recognising + 1]) {
-    const job = jobAt(spec, step * STEP + 1, STEP);
+test('the structure count is in the record once every page is searched, and the results only with the finished job', () => {
+  const searched = RUN.findIndex((states) => states[1] === 'done');
+  RUN.forEach((_, run) => {
+    const job = jobAt(spec, (QUEUE_STEPS + run) * STEP + 1, STEP);
     expect(job.status).toBe('running');
-    expect(job.structuresFound).toBe(8);
+    expect(job.structuresFound).toBe(run >= searched ? 8 : 0);
     expect(job.results).toEqual([]);
-  }
+  });
 });
 
 test('file names pick the scenario', () => {

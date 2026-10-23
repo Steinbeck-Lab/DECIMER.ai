@@ -17,9 +17,13 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from email import policy
 from email.parser import BytesParser
+from pathlib import Path
 
 import httpx
 from PIL import Image
+
+from decimer_api.worker.errors import RenderError
+from decimer_api.worker.render import Renderer
 
 Hook = Callable[[httpx.Request, dict[str, bytes]], httpx.Response | None]
 Pause = Callable[[dict[str, bytes]], Awaitable[None]]
@@ -220,6 +224,19 @@ class FakeBackend:
         return json_response(
             {"page_index": page, "width": width, "height": height, "segments": segments}
         )
+
+
+class FailingPages:
+    """A renderer that cannot render some pages (it renders the others for real)."""
+
+    def __init__(self, inner: Renderer, bad: set[int]) -> None:
+        self.inner = inner
+        self.bad = bad
+
+    async def __call__(self, pdf: Path, index: int, out: Path) -> tuple[int, int]:
+        if index in self.bad:
+            raise RenderError(f"page {index} is damaged")
+        return await self.inner(pdf, index, out)
 
 
 class FakeResolver:

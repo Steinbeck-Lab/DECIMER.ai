@@ -46,6 +46,8 @@ test('the working view announces stage and queue in one polite live region, and 
     'Reading the pages',
     'Step 2 of 5. Next: Finding structures on each page.',
     'Finding structures on each page',
+    'Also running: reading the pages.', // the stages overlap: seg has the first page while the others render
+    'Also running: finding structures on each page.',
     'Recognising each structure',
     'Checking the results',
     'This is the last step.',

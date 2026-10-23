@@ -296,30 +296,39 @@ decodes token by token, so extra threads buy little); cls insensitive. CPU work 
 structures): seg 92 core-seconds, ocsr 85, cls 2, render + RDKit + chem + api about 12: **191 core-seconds, 48% seg,
 44% ocsr**. On 8 cores that is at best 24 s per job, about 150 maximum jobs an hour, whatever the layout.
 
-| Layout | caps (replicas x threads) | sum of caps | bottleneck | cores busy at saturation | lone 10-page job (stages in sequence) |
+| Layout | caps (replicas x threads) | sum of caps | bottleneck | cores busy at saturation | lone 10-page job, upper bound (stages added up) |
 |---|---|---|---|---|---|
 | Beside legacy 2/2/2 | seg 2x2, ocsr 2x2, cls 2x1 | 10 | ocsr, 109 jobs/h | seg 2.8 + ocsr 2.6 + other 0.5 = **5.8** | about 70 s |
 | After cutover 6/3/3 | seg 6x1, ocsr 3x2, cls 3x1 | 15 | ocsr, 164 jobs/h | seg 4.2 + ocsr 3.8 + other 0.6 = **8.7** | about 46 s |
 
-The lone-job column adds the stages up, because the pipeline runs render, segment, recognise and check one after
-the other (the stages of one job do not overlap), and spreads a stage's items over the replicas in rounds. Render
-about 0.5 s a page (an estimate; one at a time beside legacy, two after cutover), seg 10 pages, ocsr 20 crops (cls
-runs beside ocsr and takes 0.1 s a crop), check (RDKit and chem) about 2 s:
-beside legacy 5 + 5 rounds x T(2) 6.0 s = 30 + 10 rounds x T(2) 3.3 s = 33 + 2 = **70 s**; after cutover 2.5 + 2
-rounds x T(1) 9.2 s = 18.4 + 7 rounds x T(2) 3.3 s = 23.1 + 2 = **46 s**; beside legacy with 3 threads each for seg
-and ocsr: 5 + 5 x 4.9 + 10 x 3.0 + 2 = **62 s**. The worker asks for as many calls at once as a stage has slots
-(replicas x `<SERVICE>_CONCURRENCY`), so a lone job fills every replica of a stage; the stages still run one
-after the other, so these figures stand (before P3-04b the concurrency had to be set to the replica counts
-to get them, and with 1 a lone job would have taken about 130 s beside legacy).
+The lone-job column is an **upper bound for typical crops** (one slow non-structure crop can exceed it, as the measured 98.3 s did): it adds the stages up, as if render, segment, recognise and check ran one
+after the other, and spreads a stage's items over the replicas in rounds. Since P3-04c the stages of a job
+overlap (a page goes to seg as soon as it is rendered, a crop goes to ocsr and cls as soon as its number is known), so
+a lone job takes less than the sum: roughly the longer of the segment and recognise chains plus the time until the
+first structures reach ocsr, instead of both one after the other. How much less is not modelled here; the real number
+comes from the golden-paper rerun after P3-04c. Render about 0.5 s a page (an estimate; one at a time
+beside legacy, two after cutover), seg 10 pages, ocsr 20 crops (cls runs beside ocsr and takes 0.1 s a crop), check
+(RDKit and chem) about 2 s: beside legacy 5 + 5 rounds x T(2) 6.0 s = 30 + 10 rounds x T(2) 3.3 s = 33 + 2 = **70 s**;
+after cutover 2.5 + 2 rounds x T(1) 9.2 s = 18.4 + 7 rounds x T(2) 3.3 s = 23.1 + 2 = **46 s**; beside legacy with 3
+threads each for seg and ocsr: 5 + 5 x 4.9 + 10 x 3.0 + 2 = **62 s**. (The first full-stack run of the golden paper, 2/2/2
+and the stages in sequence, took 98.3 s, above the 70 s: render 8.1 s, segment 26.2 s, recognise 59.5 s, check 3.0 s;
+one crop that is not a structure kept ocsr busy for about 46 s, which the model, built on typical crops, does not
+contain.) The worker asks for as many calls at once as a stage has slots (replicas x
+`<SERVICE>_CONCURRENCY`), looked up each time a page or crop is about to start, so a lone job fills every replica of a
+stage (before P3-04b the concurrency had to be set to the replica counts to get these figures, and with 1 a lone job
+would have taken about 130 s beside legacy).
 
 How to read it:
 
 * **After cutover the stack fills the 8 cores** (8.7 asked for, so it is CPU-bound and the ocsr stage runs a little
   below its 164 jobs/h). The sum of caps cannot be 8 there: 12 replicas at one thread each already make 12. What
-  matches the cores is the *busy* sum, because the stages of a job run one after the other and the replicas of
-  different stages are busy in proportion to their share of the work. seg with 2 threads instead of 1 would not
-  raise throughput (ocsr is the bottleneck; 12 s vs 18 s for the seg stage of a lone job, 6 more core-slots held);
-  ocsr with 1 thread would drop to 128 jobs/h and about 52 s per lone job (7 rounds x T(1) 4.2 s).
+  matches the cores at saturation is the *busy* sum: with many jobs running, the replicas of different stages are
+  busy in proportion to their share of the work, whatever the order of the stages inside one job. A lone job is
+  different now that its stages overlap: its seg and ocsr replicas are busy at the same time, so it can use up to the
+  sum of caps for a while (10 threads beside legacy), more than the busy sum; `cpus` and `cpu_shares` bound that.
+  seg with 2 threads instead of 1 would not raise throughput (ocsr is the bottleneck; 12 s vs 18 s for the seg stage
+  of a lone job, 6 more core-slots held); ocsr with 1 thread would drop to 128 jobs/h and about 52 s per lone job
+  (7 rounds x T(1) 4.2 s, stages added up).
 * **Beside legacy the stack takes about 6 of the 8 cores on purpose**: the legacy site is still serving users and
   keeps the other 2 (its own socket servers are idle most of the time, and then the new stack may use more). For a
   test while legacy is idle, `SEG_TF_INTRAOP_THREADS=3`, `OCSR_TF_INTRAOP_THREADS=3` (and `SEG_CPUS=3.5`,
@@ -329,16 +338,19 @@ How to read it:
   per container, so it shifts the split and does not reserve anything: with k new containers busy at once, legacy
   gets 1024 / (1024 + 512 k) of what they fight over (50% at k = 2, against 33% with equal weights). The thread
   counts and `cpus` caps are what bound the new stack.
-* **Against legacy:** a lone 10-page document is estimated at about 70 s beside legacy and about 46 s after
-  cutover, against the 95.3 s legacy needed for the golden paper (which also includes legacy's per-call JVM and
-  PHP time). Several jobs at once keep every replica fed and interleave their crops: a lone job
-  fills the replicas, and when more jobs run, small ones go first.
+* **Against legacy:** a lone 10-page document is estimated at no more than about 70 s beside legacy and about 46 s
+  after cutover (upper bounds, see above), against the 95.3 s legacy needed for the golden paper (which also
+  includes legacy's per-call JVM and PHP time). Several jobs at once keep every replica fed and interleave their
+  crops: a lone job fills the replicas, and when more jobs run, small ones go first. Because a large job now
+  has ocsr calls running while it is still segmenting its later pages, a pasted image that arrives then may wait for
+  one running ocsr call of that job (at most one per replica, 3 s for a structure and up to 55 s for an image that is
+  not one; no call is interrupted): the bound D18 already names, reached a little more often.
 * `cpus` is a ceiling per replica (CFS quota), not a reservation: the model services' limits sum to 14 beside
   legacy (chem included; 21.5 after cutover), and the api (2) and worker (2) come on top, so they exceed the 8
   cores by design. If the legacy site slows down during the beta, lower `SEG_TF_INTRAOP_THREADS`/`SEG_CPUS` and
   the ocsr pair first.
-* **To verify**: run the golden paper and a stress case with these settings and record per-stage time
-  and `docker stats`; the two ocsr points are the weakest part of the model.
+* **To verify**: run the golden paper (now with the stages overlapping) and a stress case with these
+  settings and record per-stage time and `docker stats`; the two ocsr points are the weakest part of the model.
 
 ### Memory
 
