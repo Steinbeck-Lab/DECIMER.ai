@@ -12,6 +12,8 @@
 # tsc -b type-checks these through tsconfig.node.json
 !web/playwright.config.ts
 !web/e2e
+# the parity check's screenshots are records, not build input
+web/e2e/parity/evidence
 !web/src
 !web/public
 !deploy/nginx/nginx.conf
