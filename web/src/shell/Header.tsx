@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Wordmark } from '../brand/Wordmark';
 import { strings } from '../strings';
-import { hasWork, workSummary } from '../state/selectors';
+import { hasWork, isPdfUpload, workSummary } from '../state/selectors';
 import { useAppState, useController } from '../state/react';
 import { ConfirmNewUpload } from './ConfirmNewUpload';
 import { DownloadMenu } from './DownloadMenu';
@@ -52,7 +52,7 @@ export function Header({ route }: { route: Route }) {
       {hasResults && state.job && (
         <div className="dc-header__tools">
           <span className="dc-capacity">
-            {strings.results.capacity(state.job.results.length, state.job.pagesProcessed)}
+            {strings.results.capacity(state.job.results.length, state.job.pagesProcessed, isPdfUpload(state.sources))}
           </span>
           <DownloadMenu placement="header" />
         </div>

@@ -24,6 +24,11 @@ export function fixtureImage(name = 'figure2.png', file = 'crop5.png') {
   return { name, mimeType: 'image/png', buffer: readFileSync(resolve(FIXTURES, file)) };
 }
 
+/** A PDF as an upload payload (the mock reads only its name; `name` picks the mock scenario like `fixtureImage`'s). */
+export function fixturePdf(name = 'paper.pdf') {
+  return { name, mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n') };
+}
+
 /** Number of horizontal pixels the page overflows by (0 means no sideways scroll). */
 export function horizontalOverflow(page: Page): Promise<number> {
   return page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

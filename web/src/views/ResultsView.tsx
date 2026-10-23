@@ -3,10 +3,11 @@ import { strings } from '../strings';
 import type { Filter, Status } from '../state/model';
 import { useAppState, useController, useResultViews } from '../state/react';
 import { jobNotices } from '../state/notices';
-import { countsOf, filterCounts, filterViews } from '../state/selectors';
+import { countsOf, filterCounts, filterViews, isPdfUpload } from '../state/selectors';
 import { preloadEditor } from '../editor/KetcherPanel';
 import { DownloadMenu } from '../shell/DownloadMenu';
 import { Tile } from './Tile';
+import { UploadedDocument } from './UploadedDocument';
 
 function sourceLabel(names: string[]): string {
   const first = names[0];
@@ -75,6 +76,9 @@ export function ResultsView() {
         </div>
       )}
 
+      {/* Legacy shows the document for a PDF only; an image is its own picture, and the tile shows its crop. */}
+      {isPdfUpload(state.sources) && <UploadedDocument pageUrls={job.pageUrls} />}
+
       <div className="dc-filters" role="group" aria-label={strings.results.filterLabel}>
         {FILTERS.map(({ filter: f, label }) => (
           <button
@@ -138,6 +142,7 @@ export function NoStructuresView() {
           ))}
         </div>
       )}
+      {state.job && isPdfUpload(state.sources) && <UploadedDocument pageUrls={state.job.pageUrls} />}
       <button type="button" className="dc-pill dc-pill--ink dc-working__again" onClick={() => controller.startOver()}>
         {strings.results.uploadAnother}
       </button>
