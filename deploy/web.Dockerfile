@@ -1,5 +1,7 @@
 # The edge: the React app (static files) and the nginx that serves it, proxies /api/ to the job API and
-# delivers job media. Two stages: Node builds the app, nginx serves it.
+# delivers job media, passes the browsers' error reports to GlitchTip (/glitchtip/api/<project>/
+# envelope/) and has a loopback-only listener for GlitchTip's UI (8081). Two stages: Node builds the app, nginx
+# serves it.
 #
 # The build context is the REPOSITORY ROOT:
 #   docker build -f deploy/web.Dockerfile -t localhost/decimer-next/edge:local .
@@ -25,6 +27,14 @@ RUN --mount=type=cache,target=/root/.npm \
 COPY web/ ./
 ARG VITE_API=http
 ENV VITE_API=${VITE_API}
+# Error reporting of the browser: the DSN of GlitchTip's web project through THIS site's own
+# origin (https://<key>@<host>/glitchtip/<project id>; the CSP allows no other), and the release it names. Empty
+# DSN: the build carries no error-reporting code (the import is behind this constant, so Vite drops it). A
+# DSN is not a secret (the key is sent with every report), but it belongs to one host: rebuild to change it.
+ARG VITE_SENTRY_DSN=
+ARG VITE_RELEASE=
+ENV VITE_SENTRY_DSN=${VITE_SENTRY_DSN} \
+    VITE_RELEASE=${VITE_RELEASE}
 # After the build, precompress the text assets once, at maximum strength, for gzip_static (nginx's
 # official image has no brotli module). -n: no timestamp in the header, so the output is reproducible.
 # The .wasm goes from 11.8 MB to 3.85 MB. Then make the tree readable and enterable for everybody
@@ -62,6 +72,8 @@ RUN rm -rf /etc/nginx/conf.d/* /usr/share/nginx/html/* \
 
 COPY --chmod=0644 deploy/nginx/nginx.conf /etc/nginx/nginx.conf
 COPY --chmod=0644 deploy/nginx/edge.conf /etc/nginx/conf.d/edge.conf
+# The operator's GlitchTip UI: a server of its own on 8081, published on the host's loopback only by compose.
+COPY --chmod=0644 deploy/nginx/glitchtip-ui.conf /etc/nginx/conf.d/glitchtip-ui.conf
 COPY --chmod=0644 deploy/nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY --chmod=0755 deploy/nginx/edge-entrypoint.sh /usr/local/bin/edge-entrypoint.sh
 COPY --chmod=0755 deploy/nginx/edge-logs.sh /usr/local/bin/edge-logs.sh
@@ -73,7 +85,7 @@ COPY --from=build /app/dist/ /usr/share/nginx/html/
 # temp directories and error.log, which would then belong to root: they are removed again, nginx makes its
 # own at start. ($max_upload_mb below is nginx syntax and must stay literal.)
 # hadolint ignore=SC2016
-RUN printf 'set_real_ip_from 127.0.0.1;\nproxy_read_timeout 60000ms;\nclient_max_body_size 101m;\nset $max_upload_mb 100;\n' > /tmp/edge-generated.conf \
+RUN printf 'set_real_ip_from 127.0.0.1;\nproxy_read_timeout 60000ms;\nclient_max_body_size 101m;\nset $max_upload_mb 100;\nset $glitchtip_web_project "";\n' > /tmp/edge-generated.conf \
     && nginx -t \
     && rm -rf /tmp/edge-generated.conf /var/cache/nginx/* /var/log/nginx/*
 
@@ -83,7 +95,8 @@ USER 101:101
 # here instead of answering 403 or 404 for the whole app.
 RUN test -r /usr/share/nginx/html/index.html \
     && find /usr/share/nginx/html /etc/nginx -type f -exec head -c 1 {} + > /dev/null
-EXPOSE 8080
+# 8080 is the site; 8081 is GlitchTip's UI (conf.d/glitchtip-ui.conf), published on the host's loopback only.
+EXPOSE 8080 8081
 # The edge's own answer; /readyz (through to the API) is for the uptime check, not for this. And the
 # error log's retention: `edge-logs.sh enforce` rotates it and deletes what is a week old by itself, then
 # checks (nginx/edge-logs.sh), so the seven days are kept every 15 seconds even if the loop beside nginx

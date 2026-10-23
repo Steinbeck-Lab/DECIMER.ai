@@ -131,6 +131,7 @@ from ..models import (
 from ..molfile import MolfileError, MolfileTooBig
 from ..settings import Settings
 from ..store import JobStore
+from ..usage import NullUsage, Usage
 from .crops import PART_PATTERN, CropRef, PageParts, Scaling, page_boxes, write_parts
 from .errors import (
     INPUT_MISSING,
@@ -145,6 +146,7 @@ from .errors import (
     ServiceError,
     ServiceTimedOut,
     ServiceUnavailable,
+    ServiceUnreachable,
 )
 from .files import Fitted, fit_png, link_or_copy, png_file_size
 from .fragments import trim_fragments
@@ -202,6 +204,8 @@ class Deps:
     gates: Mapping[str, asyncio.Semaphore]
     # The shared HTTP client, when `build_deps` opened it: `aclose` closes it.
     http: httpx.AsyncClient | None = None
+    # The per-day counts (`usage`): a finished job is counted once. Counts nothing unless given.
+    usage: Usage = field(default_factory=NullUsage)
 
     async def aclose(self) -> None:
         await self.services.aclose()
@@ -289,6 +293,11 @@ async def run_pipeline(job_id: str, deps: Deps) -> None:
     finally:
         if not interrupted:
             await store.finish(job)
+            await deps.usage.job_finished(
+                failed=job.status is JobStatus.FAILED,
+                pages=job.pages_processed,
+                structures=len(job.results),
+            )
 
 
 def _reset(job: Job) -> None:
@@ -380,7 +389,9 @@ class _Run:
         self.ocsr_timeouts = 0
         self.names_warned = False
         self.cdk_warned = False
-        self.chem_hung = False  # a call to chem timed out: it is not asked again in this job
+        # A call to chem timed out, or chem could not be reached (a busy chem is neither: it
+        # answers): it is not asked again in this job.
+        self.chem_hung = False
         self.single_image = False
         self.whole_images = False  # several images: read whole, seg is never called
         self.crops: list[Crop] = []  # numbered crops, as they were released: result order
@@ -920,7 +931,7 @@ class _Run:
             except ServiceError as error:
                 log.warning("job %s: %s", self.job.id, error)
                 self._cdk_unavailable("CDK is unavailable at the moment.")
-                if isinstance(error, ServiceTimedOut):
+                if isinstance(error, ServiceTimedOut | ServiceUnreachable):
                     self.chem_hung = True  # a call for the names would wait as long again
                 break
             for index, answer in zip(batch, answers, strict=True):
@@ -969,7 +980,7 @@ class _Run:
             if chem.valid and "*" not in chem.smiles and len(chem.smiles) <= CHEM_MAX_SMILES
         ]
         if asked and self.chem_hung:
-            # The CDK call timed out: chem is hung, and the names would wait as long again.
+            # The CDK call timed out or could not reach chem: the names would meet the same.
             self._names_unavailable("IUPAC names are unavailable at the moment.")
             return names
         size = self.worker.chem_batch_size

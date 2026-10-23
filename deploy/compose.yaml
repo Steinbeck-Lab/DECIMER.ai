@@ -34,21 +34,30 @@
 # `$DC up -d --scale seg=3` overrides the file for that run; the worker finds the third replica by itself.
 #
 # Networks (who can reach what)
-#   public   the edge alone, with a pinned subnet and the only published port (127.0.0.1:8090 on the
-#            host). Docker cannot publish a port from an internal network, so this is the one network
-#            with a route out, and nothing but nginx is on it. The legacy nginx can be attached to it
-#            for the beta (nginx/beta-front-door.conf.example); the edge trusts this subnet's
-#            X-Forwarded-For (see TRUSTED_PROXY_CIDR below).
+#   public   the edge alone, with a pinned subnet and the only published ports (127.0.0.1:8090 for the site and
+#            127.0.0.1:8091 for GlitchTip's UI, both on the host's loopback). Docker cannot publish a port from
+#            an internal network, so this is the one network with a route out, and nothing but nginx is on it.
+#            The legacy nginx can be attached to it for the beta (nginx/beta-front-door.conf.example); the edge
+#            trusts this subnet's X-Forwarded-For (see TRUSTED_PROXY_CIDR below).
 #   app      internal: edge + api, with a pinned subnet. The api sees the edge's address here, so this
-#            subnet is the API's TRUSTED_PROXY_CIDR (derived from APP_SUBNET: one variable, no copy).
-#   backend  internal: redis, api, worker, sweep.
+#            subnet is the API's TRUSTED_PROXY_CIDR (derived from APP_SUBNET: one variable, no copy). The edge
+#            and the api share NO other network: with two shared networks docker's DNS could answer `api` with
+#            the address on the other one, and the api would no longer recognise its proxy.
+#   backend  internal: redis, usage, api, worker, sweep.
 #   models   internal: the worker and seg, cls, ocsr, chem. Only the worker calls them. The api is NOT
 #            on it: the one model service it calls is chem (validate, export: IUPAC names of edited
 #            structures), over the chem-api network.
 #   chem-api internal: the api and chem, nothing else.
-#   There is no network with egress for the api or worker: nothing needs it until error reporting
-#   (Sentry or GlitchTip, TODO) exists. Then add a plain bridge network, `egress`, to api and
-#   worker only.
+#   ingest   internal: the api and the ingest sidecar, nothing else: the sidecar parses uploads and
+#            reads molfiles, so it has no route to Redis, chem, the edge, GlitchTip or the internet.
+#   glitchtip-sdk   internal: api, worker, worker-fast and the `glitchtip-gate`: where the Python SDKs report to.
+#                   GlitchTip itself is NOT on it, so a compromised api or worker reaches one endpoint of GlitchTip
+#                   (POST of an envelope, through the gate) and not its login, its API or its admin.
+#   glitchtip-edge  internal: the edge, the gate and GlitchTip: the browsers' reports (the edge passes one
+#                   endpoint) and the operator's UI listener.
+#   glitchtip-db    internal: GlitchTip and its Postgres.
+#   There is no network with egress for the api or worker: error reports go to GlitchTip on this VM, so nothing
+#   needs one. (GlitchTip's alert e-mails would: it sends none, `EMAIL_URL=consolemail://`; see deploy/README.md.)
 
 x-logging: &logging
   driver: json-file
@@ -96,6 +105,23 @@ x-api-image: &api-image
   image: localhost/decimer-next/api:${DECIMER_TAG:-local}
   pull_policy: never
 
+# What the api and both workers share about observability. SENTRY_DSN itself is in deploy/.env
+# (env_file; empty = no error reports) and names GlitchTip on the glitchtip-sdk network. The usage counter keeps
+# the per-day counts (jobs, pages, structures, failures: no address, no job id) in a Redis of its own, `usage`,
+# because the jobs' Redis keeps nothing across a restart: `docker compose exec api python -m decimer_api.usage`.
+x-reporting-env: &reporting-env
+  SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-production}
+  SENTRY_RELEASE: ${DECIMER_TAG:-local}
+  USAGE_REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env (openssl rand -hex 24)}@usage:6379/0
+
+# env_file hands the whole of deploy/.env to api, worker, sweep and ingest, GlitchTip's secrets included. They are
+# GlitchTip's alone (its Django key and its Postgres password), so every service with an env_file blanks them
+# (deploy/check-compose.py checks that none is missed).
+x-no-glitchtip-secrets: &no-glitchtip-secrets
+  GLITCHTIP_SECRET_KEY: ""
+  GLITCHTIP_DB_PASSWORD: ""
+  GLITCHTIP_ADMIN_PASSWORD: ""
+
 # What the two workers (worker, worker-fast) have in common. SEG/OCSR/CLS_CONCURRENCY are PER REPLICA:
 # the worker finds the replicas of a service by itself (see the header) and multiplies, so 1 keeps every
 # replica busy with one inference at a time and does not fill its queue, whether the layout is 2/2/2
@@ -103,6 +129,7 @@ x-api-image: &api-image
 # have idle time with one call (the services queue a few more, ocsr 16, seg 8). A lone 10-page job then
 # takes about 70 s beside legacy and 46 s after cutover (deploy/README.md), legacy 95.3 s.
 x-worker-env: &worker-env
+  <<: [*reporting-env, *no-glitchtip-secrets]
   REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env (openssl rand -hex 24)}@redis:6379/0
   DATA_DIR: /data/jobs
   # The discovery contract (see the header): hostname + fixed port, one name per service; the worker
@@ -187,6 +214,48 @@ services:
     cpus: 1
     pids_limit: 64
 
+  # The usage counter's Redis: per-day counts of jobs by kind and size, pages, structures and failures
+  # (decimer_api/usage.py; no address, no job id, no file name), which must survive a restart, unlike everything
+  # in `redis`. Append-only file on a volume, fsync every second. Tiny: a day is about twenty small fields and is
+  # kept 800 days (USAGE_TTL_DAYS). The api and the worker count into it best effort: while it is down they log a
+  # warning and lose that count, never the upload or the job. Same password as `redis` (one secret less); no
+  # route from outside `backend`. Read it: `$DC exec api python -m decimer_api.usage --days 30`.
+  usage:
+    <<: *service
+    image: redis:8.10.2-alpine3.23@sha256:0bf6577d7774e592b29d093e3ac9390eb91e13d72c21e506afce736de5e0eeb0
+    user: redis
+    entrypoint:
+      - sh
+      - -c
+      - |
+        exec redis-server - <<EOF
+        requirepass $$REDIS_PASSWORD
+        dir /data
+        appendonly yes
+        appendfsync everysec
+        save ""
+        maxmemory 32mb
+        maxmemory-policy noeviction
+        tcp-keepalive 60
+        EOF
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env (openssl rand -hex 24)}
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    read_only: true
+    volumes:
+      - usage-data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+    mem_limit: 96m
+    memswap_limit: 96m
+    cpus: 0.5
+    pids_limit: 32
+
   # --- model services (no route to the internet) --------------------------------------------------
   # Weights and jars are inside the images (SHA-256 checked at build time); no network is needed to
   # start. Healthchecks come from the images (/readyz, which runs a real inference).
@@ -213,8 +282,10 @@ services:
       OPENBLAS_NUM_THREADS: ${SEG_TF_INTRAOP_THREADS:-2}
       MKL_NUM_THREADS: ${SEG_TF_INTRAOP_THREADS:-2}
       NUMBA_NUM_THREADS: ${SEG_TF_INTRAOP_THREADS:-2}
-      # Pages above this many pixels get a 422 from seg. Do not raise it: the API admits up to 50 MP, so
-      # the worker is to downscale pages for seg (TODO; deploy/README.md, "Dependencies").
+      # Pages above this many pixels get a 422 from seg. Do not raise it: the API admits up to 50 MP, and the
+      # worker sends seg a smaller copy of every page above SEG_INPUT_MAX_PIXELS (25 MP) or 36 MiB encoded
+      # (worker/files.py `fit_png`, done in P3-04; the crops are cut from the full page), so no page reaches
+      # this cap. It stays as seg's own backstop, and its memory limit is sized for it.
       OPENCV_IO_MAX_IMAGE_PIXELS: ${SEG_MAX_IMAGE_PIXELS:-40000000}
     # PER REPLICA. About 2 GB resident, 3.5 s a page at all cores (services/seg/README.md). Mask memory grows
     # with the page size and the number of detections; 3 GB covers A3 pages at 300 DPI with room to spare.
@@ -301,23 +372,18 @@ services:
     cpus: 2
     pids_limit: 256
 
-  # --- the application ----------------------------------------------------------------------------
+  # --- the application ---------------------------------------------------------------------------
   # ONE api container running ONE process: the ingest gate and the queue throttle are per process
   # (api/README.md). Never `deploy.replicas`, `--scale api=2` or uvicorn --workers.
   # The command is the exec form, so python is PID 1 and holds the only copy of the environment (it
-  # makes itself non-dumpable so its ingest children, same user, cannot read it).
-  # The api spawns its ingest children (python -I -m decimer_api.ingest_worker) inside this container:
-  # up to INGEST_CONCURRENCY (2), each allowed INGEST_MEMORY_MB (1536) of address space beyond its
-  # start-up size. It also keeps MAX_CONCURRENT_ANALYSES (2) long-lived children that read client molfiles
-  # with RDKit (decimer_api.analysis_worker, same user and minimal environment as the ingest children):
-  # about 70 MB resident each, at most about 450 MB at their ANALYSIS_MEMORY_MB limit (384 beyond the
-  # 70 MB RDKit maps). The ceiling, with every child at its limit at the same moment:
-  #     api itself and the request bodies it spools   0.5 GB  (about 100 MB resident)
-  #   + 2 ingest children x 1536 MB                   3.0 GB
-  #   + 2 analysis children x about 450 MB            0.9 GB
-  #   = about 4.4 GB (4484 MiB), so 4608m (4.5 GiB). It was 3584m before the analysis children.
-  # Raise it with INGEST_CONCURRENCY, INGEST_MEMORY_MB, MAX_CONCURRENT_ANALYSES or ANALYSIS_MEMORY_MB.
-  # This is NOT the final design: the ingest sidecar (deploy/README.md) is required before cutover.
+  # makes itself non-dumpable so its children, same user, cannot read it).
+  # UPLOADS AND MOLFILES ARE PARSED IN THE INGEST SIDECAR (service `ingest`, TODO): INGEST_SIDECAR_URL
+  # makes the api send them over the `ingest` network instead of starting child processes of its own, so
+  # the api itself is about 0.5 GB (about 100 MB resident, the request bodies it spools, and the Python
+  # of the routes): API_MEM_LIMIT, 1g. The in-process fallback (development, or a deployment that does not
+  # run the sidecar) is INGEST_SIDECAR_URL= (empty) AND API_MEM_LIMIT=4608m: the api then runs up to
+  # INGEST_CONCURRENCY (2) ingest children of INGEST_MEMORY_MB (1536) each and MAX_CONCURRENT_ANALYSES (2)
+  # molfile children of about 450 MB each, 0.5 + 3.0 + 0.9 = 4.4 GB (4484 MiB), so 4608m, as before.
   # Writable root file system on purpose: starlette spools uploads over 1 MB to a temp file under
   # /tmp, and a RAM-backed /tmp would count those 100 MB against the memory limit.
   api:
@@ -328,6 +394,7 @@ services:
     command: ["python", "-m", "decimer_api"]
     env_file: .env
     environment:
+      <<: [*reporting-env, *no-glitchtip-secrets]
       REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env (openssl rand -hex 24)}@redis:6379/0
       DATA_DIR: /data/jobs
       HOST: 0.0.0.0
@@ -348,6 +415,9 @@ services:
       # The api names an edited structure (validate, export) through chem, alone of the model services, over
       # the `chem-api` network. `-` and not `:-`: `CHEM_URL=` in .env really is empty and switches names off.
       CHEM_URL: ${CHEM_URL-http://chem:8004}
+      # The ingest sidecar (below). `-` and not `:-`: `INGEST_SIDECAR_URL=` in .env really is empty and
+      # switches back to child processes of the api (and then API_MEM_LIMIT must be 4608m).
+      INGEST_SIDECAR_URL: ${INGEST_SIDECAR_URL-tcp://ingest:9000}
       # The two arq queues: the api sends a small job to the fast queue only while a fast worker's
       # health-check key (<WORKER_FAST_QUEUE_NAME>:health-check) exists in Redis, so while worker-fast is
       # not running (stopped, starting, scaled to 0) every job goes to the default queue and the default
@@ -361,8 +431,14 @@ services:
       - app
       - backend
       - chem-api
+      - ingest
+      - glitchtip-sdk
+    # The api is not ready without its sidecar (/readyz asks it), so it waits for it: the sidecar has no
+    # models to load and is healthy within seconds.
     depends_on:
       redis:
+        condition: service_healthy
+      ingest:
         condition: service_healthy
     # An upload in flight can take INGEST_WAIT_SECONDS (20) + INGEST_TIMEOUT_SECONDS (30) + the
     # request's own time: 70 s lets running requests finish on `docker stop`.
@@ -374,9 +450,59 @@ services:
       nofile:
         soft: 4096
         hard: 4096
-    mem_limit: 4608m
-    memswap_limit: 4608m
+    mem_limit: ${API_MEM_LIMIT:-1g}
+    memswap_limit: ${API_MEM_LIMIT:-1g}
     cpus: 2
+    pids_limit: 256
+
+  # The ingest sidecar (TODO, the API review's "run ingest in a sidecar"): the api's untrusted-file work in
+  # a container of its own. It runs `python -m decimer_api.sidecar`, which starts the same children the api used to
+  # (one process per upload with a deadline and hard limits, `INGEST_CONCURRENCY` at a time; a pool of
+  # `MAX_CONCURRENT_ANALYSES` long-lived RDKit children for molfiles), so a compromised parser sees one upload
+  # on a private scratch volume and not all of DATA_DIR, and has no route to Redis, chem, the edge, GlitchTip
+  # or the internet: its only network, `ingest`, holds the api. The uploads travel over the connection (TCP, a
+  # length-prefixed protocol: decimer_api/sidecar_wire.py) and the normalised files come back the same way;
+  # the api writes them into DATA_DIR itself and checks what it gets (names, sizes, counts).
+  #   * No secret: env_file gives it the limits (the same .env as the api, so the two cannot disagree), and the
+  #     two secrets in it are blanked. It makes itself non-dumpable like the api.
+  #   * read_only root with a small RAM /tmp; the scratch volume (`ingest-scratch`) is disk, because a 50 MP
+  #     page is tens of MB and a 100 MB upload is held next to its result. It is emptied after every request and
+  #     at start-up is whatever a crash left (the sidecar removes only its own folders: `docker volume rm` it
+  #     if a crash ever leaves big ones).
+  #   * Memory: 2 ingest children x INGEST_MEMORY_MB (1536) + 2 molfile children x about 450 MB + the server
+  #     (about 100 MB) = about 4.0 GB at their limits at the same moment, so 4352m. Resident: about 0.3 GB.
+  #   * A compromised child here can still see the other request that is in flight (same user, same scratch
+  #     volume): at most INGEST_CONCURRENCY - 1 other uploads, for seconds. That is the price of the design.
+  ingest:
+    <<: [*service, *api-image]
+    command: ["python", "-m", "decimer_api.sidecar"]
+    env_file: .env
+    environment:
+      <<: *no-glitchtip-secrets
+      SIDECAR_HOST: 0.0.0.0
+      SIDECAR_PORT: "9000"
+      SIDECAR_SCRATCH_DIR: /scratch
+      # env_file hands over everything in .env: no secret, no reporting, no route to Redis anyway.
+      REDIS_PASSWORD: ""
+      IP_HASH_SECRET: ""
+      SENTRY_DSN: ""
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    volumes:
+      - ingest-scratch:/scratch
+    networks:
+      - ingest
+    healthcheck:
+      test: ["CMD", "python", "-m", "decimer_api.sidecar", "--ping"]
+      interval: 15s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+    stop_grace_period: 40s
+    mem_limit: ${INGEST_MEM_LIMIT:-4352m}
+    memswap_limit: ${INGEST_MEM_LIMIT:-4352m}
+    cpus: ${INGEST_CPUS:-2}
     pids_limit: 256
 
   worker:
@@ -395,8 +521,13 @@ services:
     networks:
       - backend
       - models
-    # Wait for every replica of the models to answer a real inference, so the first jobs after a start do
-    # not fail. chem is optional for the worker (names off without CHEM_URL), but it is part of the stack.
+      - glitchtip-sdk
+    # Wait for every replica of seg, cls and ocsr to answer a real inference, so the first jobs after a start
+    # do not fail. NOT for chem's health: chem is optional for the worker (a job without it has no IUPAC name,
+    # one warning, and a few seconds of waiting: WorkerSettings.chem_connect_retry_budget_seconds), and it takes
+    # the JVM a minute to load, so `service_started` only puts it ahead in the start order. A chem that is down
+    # never keeps the worker from starting or from running jobs (tests/worker/test_chem_down.py;
+    # deploy/check-compose.py keeps this line honest).
     depends_on:
       redis:
         condition: service_healthy
@@ -407,7 +538,7 @@ services:
       ocsr:
         condition: service_healthy
       chem:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD", "python", "/usr/local/bin/worker_healthcheck.py"]
       interval: 30s
@@ -449,6 +580,7 @@ services:
     networks:
       - backend
       - models
+      - glitchtip-sdk
     depends_on:
       redis:
         condition: service_healthy
@@ -459,7 +591,7 @@ services:
       ocsr:
         condition: service_healthy
       chem:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD", "python", "/usr/local/bin/worker_healthcheck.py"]
       interval: 30s
@@ -480,9 +612,11 @@ services:
     command: ["python", "-m", "decimer_api.sweep", "--every", "300"]
     env_file: .env
     environment:
+      <<: *no-glitchtip-secrets
       REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env (openssl rand -hex 24)}@redis:6379/0
       DATA_DIR: /data/jobs
       IP_HASH_SECRET: ""
+      SENTRY_DSN: ""   # the sweep does not report (env_file would hand it the DSN)
     volumes:
       - jobs:/data/jobs
     networks:
@@ -497,8 +631,170 @@ services:
     cpus: 0.5
     pids_limit: 64
 
-  # nginx: the app, /api/ to the api, job media from the job volume (read-only here), rate limits.
-  # The only published port, on the loopback interface only (8080 is the legacy site's).
+  # --- error reports: GlitchTip, self-hosted ------------------------------------
+  # Crash reports from the api, the worker and the web app go to a GlitchTip on this VM, through the standard
+  # Sentry SDKs, so no report leaves Jena. What a report may carry is decimer_api/scrub.py and
+  # web/src/observability/scrub.ts (no SMILES, molfile, file name or IP address; tests prove it).
+  # GlitchTip 6 needs only itself and Postgres: one container runs the web server and the task worker
+  # (`GLITCHTIP_EMBED_WORKER`, a documented mode that GlitchTip's own compose file uses), and with `VALKEY_URL`
+  # empty Postgres is the task queue, the cache and the session store (documented: "Set to empty string to
+  # disable VALKEY and utilize Postgres"), so there is no Redis in this stack for it. Measured on 2026-10-23 with
+  # these settings: 125 MiB resident idle, 169 MiB after 100 events; Postgres 53 and 74 MiB.
+  #   * Not public: GlitchTip is on internal networks only. The browsers' reports reach it through one
+  #     POST-only location of the edge (one project id, no IP-naming header, 64 KB, no Content-Encoding); the api
+  #     and the workers through the `glitchtip-gate` (that one endpoint, nothing else); its UI is on a loopback-only
+  #     listener (127.0.0.1:8091, the edge). It has no route to the internet, so it sends no mail
+  #     (EMAIL_URL=consolemail://) and does no uptime checks.
+  #   * Registration is off, and the first account exists before the web server starts (see `glitchtip` below).
+  #   * Retention: GLITCHTIP_RETENTION_DAYS, 90 (its banner at start says "Event retention: 90 days").
+  #   * Memory, about 0.5 GB as D21 said: 384m + 160m. GRANIAN_WORKERS_MAX_RSS is set because GlitchTip derives
+  #     it from the container limit with a floor of 1 GiB, which is above this limit: a web worker above 224 MiB is
+  #     replaced (granian starts the new one before it stops the old, about 130 MiB each: 354 MiB < 384).
+  glitchtip-db:
+    <<: *service
+    image: postgres:18.4-alpine3.23@sha256:996d0920e4ff9df1fc19dacb904492f3c1ec0ec1cc338f0ad7123be7731c5f5e
+    # The image's entrypoint starts as root and drops to postgres, which needs capabilities that cap_drop
+    # removes; starting as postgres needs none (the named volume takes the image's ownership at first mount).
+    user: postgres
+    command:
+      - postgres
+      # GlitchTip's partitioned tables: a query that cannot be narrowed to one partition locks every partition
+      # and index; its install docs say 512.
+      - -c
+      - max_locks_per_transaction=512
+      - -c
+      - shared_buffers=32MB
+      - -c
+      - effective_cache_size=96MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - max_connections=40
+    environment:
+      POSTGRES_USER: glitchtip
+      POSTGRES_DB: glitchtip
+      POSTGRES_PASSWORD: ${GLITCHTIP_DB_PASSWORD:?set GLITCHTIP_DB_PASSWORD in deploy/.env (openssl rand -hex 24)}
+    volumes:
+      # Postgres 18's image keeps its data in /var/lib/postgresql/18/docker, under this volume.
+      - glitchtip-pgdata:/var/lib/postgresql
+    networks:
+      - glitchtip-db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glitchtip -d glitchtip"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    mem_limit: 160m
+    memswap_limit: 160m
+    cpus: 1
+    pids_limit: 64
+
+  # The account is made BEFORE the web server starts (`command`): GlitchTip lets anybody register while it has no
+  # user at all (`ENABLE_USER_REGISTRATION or not User.objects.exists()`), however ENABLE_USER_REGISTRATION is set,
+  # so the first minutes of a fresh GlitchTip would be a race against whoever else is on its networks. The
+  # one-shot is glitchtip-init.py (run through `manage.py shell`, after the migrations and the cache table, which is
+  # a table in Postgres here): the superuser of
+  # GLITCHTIP_ADMIN_EMAIL / GLITCHTIP_ADMIN_PASSWORD (deploy/.env) when there is no user at all, the organisation
+  # `decimer`, its two projects, "scrub IP addresses" on for all of them, and a line per project with the DSN to
+  # use (`$DC logs glitchtip | grep DSN`). It is idempotent, never adds an account to a GlitchTip that has one,
+  # and if it fails the container stops without starting the web server (`&&`).
+  glitchtip:
+    <<: *service
+    image: glitchtip/glitchtip:6.2.6@sha256:a3d8eb1b36c1e1603d55ab32711ea3dd8115874742a781a57391a62a16e0dff6
+    command:
+      - sh
+      - -c
+      - python manage.py migrate --no-input --skip-checks && python manage.py createcachetable && python manage.py shell < /init/glitchtip-init.py && exec ./bin/start.sh
+    volumes:
+      - ./glitchtip-init.py:/init/glitchtip-init.py:ro
+    environment:
+      DATABASE_URL: postgres://glitchtip:${GLITCHTIP_DB_PASSWORD:?set GLITCHTIP_DB_PASSWORD in deploy/.env (openssl rand -hex 24)}@glitchtip-db:5432/glitchtip
+      SECRET_KEY: ${GLITCHTIP_SECRET_KEY:?set GLITCHTIP_SECRET_KEY in deploy/.env (openssl rand -hex 32)}
+      GLITCHTIP_ADMIN_EMAIL: ${GLITCHTIP_ADMIN_EMAIL:?set GLITCHTIP_ADMIN_EMAIL in deploy/.env (the operator's e-mail address)}
+      GLITCHTIP_ADMIN_PASSWORD: ${GLITCHTIP_ADMIN_PASSWORD:?set GLITCHTIP_ADMIN_PASSWORD in deploy/.env (openssl rand -hex 24)}
+      # The address the operator's browser uses for the UI (links, the login's Origin check). The loopback
+      # port of the edge; through `ssh -L 8091:127.0.0.1:8091` it is the same.
+      GLITCHTIP_DOMAIN: ${GLITCHTIP_DOMAIN:-http://127.0.0.1:8091}
+      ALLOWED_HOSTS: ${GLITCHTIP_ALLOWED_HOSTS:-127.0.0.1,localhost,glitchtip}
+      # One container for the web server and the task worker; Postgres as queue, cache and sessions.
+      GLITCHTIP_EMBED_WORKER: "true"
+      VALKEY_URL: ""
+      VTASKS_CONCURRENCY: "4"
+      GRANIAN_WORKERS: "1"
+      GRANIAN_WORKERS_MAX_RSS: "224"
+      # No route out: no mail (the alerts show in the UI only), no uptime checks, no log ingestion.
+      EMAIL_URL: consolemail://
+      DEFAULT_FROM_EMAIL: glitchtip@decimer.ai
+      GLITCHTIP_ENABLE_UPTIME: "false"
+      GLITCHTIP_ENABLE_LOGS: "false"
+      ENABLE_USER_REGISTRATION: "false"
+      ENABLE_ORGANIZATION_CREATION: "false"
+      # Server-side scrubbing of what is sent (keys such as passwords and tokens, card numbers, key blocks) for
+      # every project, as a last line behind the SDKs' own scrubbers. IP addresses are the project's and the
+      # organisation's "scrub IP addresses" (glitchtip-init.py turns it on; it is also GlitchTip's default).
+      GLITCHTIP_PII_SCRUB_DEFAULT: '{"enabled": true}'
+      # Browsers send nothing to GlitchTip from another origin: its UI is the only one (the edge strips the Origin
+      # header of the reports, which come from the site's own origin anyway).
+      CORS_ORIGIN_ALLOW_ALL: "false"
+      CORS_ORIGIN_WHITELIST: ${GLITCHTIP_DOMAIN:-http://127.0.0.1:8091}
+      GLITCHTIP_RETENTION_DAYS: ${GLITCHTIP_RETENTION_DAYS:-90}
+      LOG_LEVEL: WARNING
+    networks:
+      - glitchtip-db
+      - glitchtip-edge
+    depends_on:
+      glitchtip-db:
+        condition: service_healthy
+    # The image's own check (GET /_health/); the first start runs the migrations and takes about 40 s.
+    healthcheck:
+      test: ["CMD", "python", "/code/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+    mem_limit: 384m
+    memswap_limit: 384m
+    cpus: 1
+    pids_limit: 128
+
+  # The only way from the api and the workers to GlitchTip: nginx with nothing but `POST /api/<id>/envelope/`
+  # (nginx/glitchtip-gate.conf, mounted as its whole configuration). It is on `glitchtip-sdk` (api, worker,
+  # worker-fast: SENTRY_DSN=http://<key>@glitchtip-gate:8000/<project id>) and on `glitchtip-edge` (GlitchTip's side),
+  # so a compromised api or worker cannot reach GlitchTip's login, API or admin. Uid 101, read-only root file
+  # system, RAM /tmp; the image's entrypoint scripts (they edit /etc/nginx/conf.d) are skipped.
+  glitchtip-gate:
+    <<: *service
+    image: nginx:1.31.8-alpine3.24@sha256:1ef7ca94d7879df82421428ce13bd1eaa412404953859cf7a5b6512c25e67a60
+    user: "101:101"
+    entrypoint: ["nginx", "-g", "daemon off;"]
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    volumes:
+      - ./nginx/glitchtip-gate.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - glitchtip-sdk
+      - glitchtip-edge
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8000/healthz"]
+      interval: 15s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    mem_limit: 32m
+    memswap_limit: 32m
+    cpus: 0.5
+    pids_limit: 32
+
+  # nginx: the app, /api/ to the api, job media from the job volume (read-only here), rate limits, and for
+  # GlitchTip the endpoint the browsers' error reports go to (/glitchtip/api/<project>/envelope/, POST only)
+  # and a second listener with GlitchTip's own UI.
+  # Two published ports, both on the loopback interface only (8080 is the legacy site's): the site on
+  # 127.0.0.1:8090, and GlitchTip's UI on 127.0.0.1:8091 (EDGE_PORT, GLITCHTIP_PORT): the UI listener is
+  # `nginx/glitchtip-ui.conf`, a server of its own that the front door of the public site never forwards to.
   # /var/cache/nginx is a disk-backed volume because the edge buffers uploads (up to 100 MB each) there
   # (proxy_request_buffering stays on); /tmp is RAM and holds only the pid file and a generated include.
   # /var/log/nginx is the edge-logs volume: nginx's ERROR LOG, the one place the edge writes a client address, is
@@ -506,7 +802,8 @@ services:
   # daily and deletes after seven days (nginx/edge-logs.sh; deploy/README.md, "Error log"): the image's
   # HEALTHCHECK runs it every 15 s, so keep the healthcheck. A stopped edge prunes nothing (the next start does,
   # or the one-liner in the README). The access log has no address and goes to stdout as before.
-  # The edge reaches the api over `app`; clients and the legacy nginx reach the edge over `public`.
+  # The edge reaches the api over `app`; clients and the legacy nginx reach the edge over `public`; GlitchTip
+  # over `glitchtip-edge`. It does not wait for GlitchTip: the name is looked up per request.
   edge:
     <<: *service
     image: localhost/decimer-next/edge:${DECIMER_TAG:-local}
@@ -517,7 +814,16 @@ services:
       args:
         # `http` is the real client, still TODO; `mock` gives a UI demo on canned data.
         VITE_API: ${VITE_API:-http}
+        # The browser's error reporting: the DSN of GlitchTip's `decimer-web` project, with THIS site's host
+        # and /glitchtip/ in it (https://<public key>@decimer.ai/glitchtip/<project id>; the local stack:
+        # http://<key>@127.0.0.1:8090/glitchtip/<id>), because the page's CSP lets it talk to its own origin only.
+        # Empty: the app carries no error-reporting code at all. Baked in at build time: rebuild to change it.
+        VITE_SENTRY_DSN: ${VITE_SENTRY_DSN:-}
+        VITE_RELEASE: ${DECIMER_TAG:-local}
     environment:
+      # The one GlitchTip project the browsers' reports may name (the id in VITE_SENTRY_DSN): edge.conf answers 404
+      # for any other, and for all of them while this is empty (edge-entrypoint.sh).
+      GLITCHTIP_WEB_PROJECT_ID: ${GLITCHTIP_WEB_PROJECT_ID:-}
       # The proxies whose X-Forwarded-For the edge believes: the public network (the host side of the
       # published port, and the legacy nginx if it is attached) plus the campus proxies from deploy/.env
       # (TODO Q3: empty until their addresses are known; the trailing comma is harmless).
@@ -527,6 +833,7 @@ services:
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-100}
     ports:
       - "127.0.0.1:${EDGE_PORT:-8090}:8080"
+      - "127.0.0.1:${GLITCHTIP_PORT:-8091}:8081"
     volumes:
       - jobs:/data/jobs:ro
       - edge-cache:/var/cache/nginx
@@ -540,6 +847,7 @@ services:
         aliases:
           - decimer-next-edge
       app: {}
+      glitchtip-edge: {}
     depends_on:
       api:
         condition: service_healthy
@@ -566,6 +874,18 @@ networks:
   # holds the api and chem and nothing else, so the api reaches no other model service.
   chem-api:
     internal: true
+  # The ingest sidecar: the api and the sidecar, nothing else.
+  ingest:
+    internal: true
+  # Error reports: the Python SDKs (api, worker, worker-fast) to GlitchTip; the edge to GlitchTip (the
+  # browsers' reports and the operator's UI); GlitchTip to its Postgres. Three networks so that no two
+  # containers share more than one (see the header: the edge and the api must share `app` alone).
+  glitchtip-sdk:
+    internal: true
+  glitchtip-edge:
+    internal: true
+  glitchtip-db:
+    internal: true
 
 volumes:
   # Job files: written by api, worker (and swept by sweep), read by edge (X-Accel-Redirect). Lives
@@ -578,3 +898,11 @@ volumes:
   edge-cache: {}
   # The edge's error log and its rotated days (at most seven): see the edge service. Not a backup candidate either.
   edge-logs: {}
+  # The usage counter's append-only file: small, and the only thing here worth backing up
+  #; losing it loses the history of the counts, not the service.
+  usage-data: {}
+  # GlitchTip's Postgres (error reports of the last 90 days). Not personal data by construction (the scrubber),
+  # not worth a backup either; `docker volume rm decimer-next_glitchtip-pgdata` starts a fresh GlitchTip.
+  glitchtip-pgdata: {}
+  # The ingest sidecar's scratch directory: one folder per request in flight, removed after it.
+  ingest-scratch: {}

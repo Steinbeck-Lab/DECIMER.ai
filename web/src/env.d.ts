@@ -12,4 +12,15 @@ interface ImportMetaEnv {
   readonly VITE_API_URL?: string;
   /** Quiet time after the last canvas change before an edit is reported (ms). Tests lengthen it; unset in production. */
   readonly VITE_EDIT_DEBOUNCE_MS?: string;
+  /**
+   * Where the browser's error reports go (GlitchTip, D21): `https://<public key>@<this site's host>/glitchtip/<project id>`.
+   * Unset or empty (the default): no reports. The edge proxies `/glitchtip/api/<project id>/envelope/` to GlitchTip, so the
+   * reports use the page's own origin and the CSP (`connect-src 'self'`) needs no entry. A DSN on another origin, or one
+   * that is not a DSN, is refused at start-up with a console warning (src/observability/sentry.ts): the page runs without
+   * reports. Build-time, so it is a build ARG of the web image (deploy/web.Dockerfile): a build without it contains no
+   * reporting code at all, and one with it loads the SDK as a chunk of its own (src/main.tsx).
+   */
+  readonly VITE_SENTRY_DSN?: string;
+  /** The release the reports are filed under (the git revision of the build). Optional. */
+  readonly VITE_RELEASE?: string;
 }

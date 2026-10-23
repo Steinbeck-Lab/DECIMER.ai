@@ -9,6 +9,8 @@
 #   PROXY_READ_TIMEOUT_SECONDS  the API refuses to start unless INGEST_WAIT_SECONDS + the ingest
 #                               child's deadline + 5 s is below this, so nginx must not wait less
 #                               than the API assumes -> proxy_read_timeout
+#   GLITCHTIP_WEB_PROJECT_ID    the id of GlitchTip's web project: the only one the browsers' reports may name
+#                               (empty: none) -> $glitchtip_web_project
 #   MAX_UPLOAD_MB               the API's upload limit (default 100). nginx's limit is one MB more, so that
 #                               multipart framing never trips nginx first and the API makes the call on the
 #                               file sizes -> client_max_body_size, and $max_upload_mb for the 413 message
@@ -72,6 +74,17 @@ esac
     echo "client_max_body_size $((upload_mb + 1))m;"
     echo "set \$max_upload_mb $upload_mb;"
 } >> "$out"
+
+# The one GlitchTip project the browsers' error reports may go to (the id in the web app's DSN, VITE_SENTRY_DSN):
+# edge.conf's /glitchtip/ location answers 404 for any other project id, and for every id while this is empty.
+project=${GLITCHTIP_WEB_PROJECT_ID:-}
+case "$project" in
+    '') ;;
+    *[!0-9]* | 0* | ??????????*)
+        echo "edge: GLITCHTIP_WEB_PROJECT_ID='$project' is not a project id (a whole number, 1 to 999999999)" >&2
+        exit 1 ;;
+esac
+echo "set \$glitchtip_web_project \"$project\";" >> "$out"
 
 # A failure here stops the container: better no edge than an error log nobody deletes. (`check` refuses,
 # among other things, an error.log that is a symlink to stderr, as a volume seeded by the stock nginx image

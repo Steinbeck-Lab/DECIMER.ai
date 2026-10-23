@@ -98,8 +98,9 @@ COPY deploy/healthcheck.py /usr/local/bin/healthcheck.py
 # PYSTOW_HOME: where decimer_segmentation looks for DECIMER-Segmentation_model/mask_rcnn_molecule.h5.
 # OPENCV_IO_MAX_IMAGE_PIXELS: the service's own default, written out; do NOT raise it. The API admits
 # pages up to 50 MP (MAX_IMAGE_PIXELS), but seg answers 422 above this value, because the library keeps
-# one full-page mask per detection (services/seg/README.md). The worker is to downscale pages for seg
-# (TODO: that code is a dependency of this setting, see deploy/README.md).
+# one full-page mask per detection (services/seg/README.md). The worker sends seg a smaller copy of every
+# page above SEG_INPUT_MAX_PIXELS (25 MP) or 36 MiB encoded (done in P3-04, worker/files.py), so no page
+# reaches this cap; it stays as seg's own backstop and the memory limit is sized for it.
 # TF_NUM_*: 4 + 1 (compose limits the container to 4 CPUs); tune with measurements.
 # HOME and MPLCONFIGDIR point at /tmp, a tmpfs under compose's read_only.
 ENV PATH=/opt/venv/bin:$PATH \

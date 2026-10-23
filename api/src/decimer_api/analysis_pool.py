@@ -216,6 +216,10 @@ class AnalysisPool:
         except (TimeoutError, OSError, protocol.FrameError, asyncio.IncompleteReadError) as error:
             await _kill(process)
             raise self._unavailable("did not become ready") from error
+        except asyncio.CancelledError:
+            # The pool is closing: the process is not the child's yet, so nobody else would.
+            await _kill(process)
+            raise
         if ready.get("ready") is not True:
             await _kill(process)
             raise self._unavailable("answered nonsense at start-up")
