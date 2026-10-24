@@ -519,8 +519,10 @@ def test_whatever_the_library_prints_while_loading_stays_off_stdout(tmp_path: Pa
     (tmp_path / "lib").mkdir()
     (tmp_path / "lib" / "decimer_segmentation.py").write_text(
         "print('/some/weights/dir')\n"
+        "import types\n"
         "def get_model():\n"
         "    print('get_model ran')\n"
+        "    return types.SimpleNamespace(keras_model=object())\n"
         "def segment_chemical_structures(image, **kwargs):\n"
         "    return [], []\n"
     )
