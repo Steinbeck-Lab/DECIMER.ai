@@ -4,6 +4,8 @@
 imported (and downloads the weights if they are missing). This module therefore imports it only
 inside `SegModel.load()`, after checking that the weights are on disk, so importing the service
 module stays fast and pure logic can be tested with an injected `segment_fn` and no TensorFlow.
+
+The pinned library also leaks memory on every call (see `_PredictOnBatch`); `load()` patches that.
 """
 
 from __future__ import annotations
@@ -60,13 +62,71 @@ def _require_weights() -> None:
     )
 
 
+# --- TEMPORARY: memory-leak shim for decimer-segmentation 6914cac -----------------
+#
+# WHY. In the pinned library, `MaskRCNN.detect` runs its forward pass as a direct eager call of the
+# Keras model, `self.keras_model(tf.constant inputs, training=False)`. Under TF 2.15 on CPU that
+# leaks about 3.5 MB per call (measured 2026-10-24: 200 calls on 3 images grew the process from 1.79
+# to 2.49 GB, linearly; the 3 GiB replicas were OOM-killed after about 14 h of health-check
+# selftests alone). `keras_model.predict_on_batch([numpy arrays])` does not leak (1.77 to 1.73 GB
+# over the same 200 calls) and is about 30 % faster; the detections are the same (same counts, class
+# ids and boxes, scores within 1.2e-7, at most 1 differing mask pixel per page).
+#
+# HOW. `_PredictOnBatch` takes the place of `MaskRCNN.keras_model` and turns the one call the
+# library makes, `keras_model(inputs, training=False)` followed by `.numpy()` on outputs 0 and 3,
+# into a `predict_on_batch` call. Every other attribute (`layers`, `predict_on_batch`, ...) is the
+# model's, and nothing in the library is edited or copied. It is harmless once the library is fixed:
+# a library that calls `keras_model.predict_on_batch(...)` itself reaches the model through
+# `__getattr__` and never touches the wrapper's `__call__`.
+#
+# REMOVE when seg is re-pinned to a decimer-segmentation release that contains the upstream fix
+# (`predict_on_batch` in `MaskRCNN.detect`, branch kohulan-review/pymupdf-optional, 1.6.0): delete
+# this block, the call in `_real_segment_fn`, and tests/test_forward_pass_shim.py plus the slow test
+# `test_the_leak_shim_does_not_change_what_the_model_finds`.
+
+
+class _NumpyOutput(np.ndarray[Any, np.dtype[Any]]):
+    """A numpy array that also answers `.numpy()`, the one tensor method the library calls."""
+
+    def numpy(self) -> NDArray[Any]:
+        return self.view(np.ndarray)
+
+
+class _PredictOnBatch:
+    """The Keras model of a `MaskRCNN`, with a direct call run as `predict_on_batch` instead."""
+
+    def __init__(self, keras_model: Any) -> None:
+        self._keras_model = keras_model
+
+    def __call__(self, inputs: Any, training: bool = False, **kwargs: Any) -> Any:
+        if training or kwargs or not isinstance(inputs, list | tuple):
+            return self._keras_model(inputs, training=training, **kwargs)  # not detect()'s call
+        outputs = self._keras_model.predict_on_batch([np.asarray(x) for x in inputs])
+        if not isinstance(outputs, list | tuple):
+            return np.asarray(outputs).view(_NumpyOutput)
+        return [np.asarray(o).view(_NumpyOutput) for o in outputs]
+
+    def __getattr__(self, name: str) -> Any:
+        if name == "_keras_model":  # not set yet (copy, unpickle): do not recurse
+            raise AttributeError(name)
+        return getattr(self._keras_model, name)
+
+
+def _route_forward_pass_through_predict_on_batch(model: Any) -> None:
+    """Put `_PredictOnBatch` on a loaded `MaskRCNN` (once: a second call changes nothing)."""
+    if not isinstance(model.keras_model, _PredictOnBatch):
+        model.keras_model = _PredictOnBatch(model.keras_model)
+
+
 def _real_segment_fn() -> SegmentFn:
     # Importing loads the model and warms it up; the library also prints the weights directory.
     printed = io.StringIO()
     with contextlib.redirect_stdout(printed):
         import decimer_segmentation
 
-        decimer_segmentation.get_model()  # no-op after the import; keeps the intent explicit
+        # The model the library segments with is this very object (`segmentation_model` is
+        # `get_model()`), so patching it here is enough. The warm-up has already run, unpatched.
+        _route_forward_pass_through_predict_on_batch(decimer_segmentation.get_model())
     if printed.getvalue().strip():
         log.info("decimer_segmentation printed: %s", printed.getvalue().strip())
 
