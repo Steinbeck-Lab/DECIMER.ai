@@ -8,7 +8,7 @@ authors = [
 ]
 requires-python = "==3.11.*"
 dependencies = [
-    "decimer==2.8.0",
+    "decimer==2.8.1",
     "decimer-service",
     "numpy==1.26.3",
     "opencv-python-headless==4.11.0.86",

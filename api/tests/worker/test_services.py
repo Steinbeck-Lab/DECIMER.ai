@@ -225,8 +225,10 @@ async def test_connection_errors_are_retried_with_doubling_backoff(
 async def test_the_backoff_covers_a_cold_start_of_about_a_minute(
     build: Build, sleep: FakeSleep
 ) -> None:
-    """ocsr needs about 50 s to load; a worker that finds it down keeps trying for that long.
-    The delays double up to a cap, so the probing stays steady."""
+    """ocsr needs about 25 s to load (50 s before decimer 2.8.1, longer on a busy box). This
+    simulates a service that stays down for 55 s: a worker that finds it down keeps trying for that
+    long, which the 90 s retry budget covers. The delays double up to a cap, so the probing stays
+    steady."""
     seen = {"n": 0}
 
     def hook(_request: httpx.Request, _parts: dict[str, bytes]) -> httpx.Response | None:

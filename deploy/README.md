@@ -93,12 +93,16 @@ are never pulled (`pull_policy: never`): there is no registry namespace somebody
   `services/chem/README.md` lists (a download from the GitHub releases verified against them); the third
   chem jar, `cdk-2.8.jar` (CDK 2.8, the fallback of D4), is the file legacy ships, and a fresh https download of
   the `cdk-2.8` release asset of github.com/cdk/cdk has the same SHA-256 and size.
-* **ocsr bakes BOTH DECIMER models (owner decision D15).** `import DECIMER` loads the printed and the
-  hand-drawn model and would download a missing one at start-up, so both are in the image (about 650 MB).
-  The hand-drawn one is never used by the service and costs 1.9 GB of memory and 26 s of start-up: that is
-  why ocsr's limit is **6 GB** and its health check waits (**start period 180 s**, probes every 5 s during
-  start-up, every 120 s afterwards; start-up is about 50 s). Reopen only if memory gets tight on the VM
-  (then make the hand-drawn load lazy upstream in DECIMER).
+* **ocsr bakes BOTH DECIMER models (owner decision D15), and loads only the printed one.** The image
+  holds the printed and the hand-drawn model (about 650 MB on disk, shared by all replicas), checked as
+  nine files by `verify.sh --strict`. decimer 2.8.0 loaded both on `import DECIMER` (+1.9 GB of memory and
+  26 s of start-up for a model the service never uses; that is why ocsr's limit is **6 GB** and its health
+  check waits). decimer 2.8.1 loads models on first use, and the service loads only the
+  printed one when it starts, so the hand-drawn weights now cost disk and nothing else: about 3.0 GB
+  resident per replica instead of 4.8, start-up about 25 s instead of 50. The limit (6 GB) and the health
+  check (**start period 180 s**, probes every 5 s during start-up, every 120 s afterwards) are unchanged.
+  Dropping the hand-drawn weights from the image is a decision for the owner; the list of what to
+  remove is in the comment of `deploy/weights/SHA256SUMS`.
 * **chem (services/chem).** `CHEM_JARS_DIR=/opt/orthonym/jars` holds three jars (OPSIN, centres and
   `cdk-2.8.jar`, all root-owned and read-only for the service user; the service re-checks all three against
   their hashes before it starts and never downloads one); the jars are made world-readable (Orthonym
@@ -317,9 +321,10 @@ hash routes. HSTS is left to the TLS terminator (commented line in the snippet).
 
 > **Amended 2026-10-23:** OCSR is the bottleneck (P5-03 load test, `golden/runs/measure-20261023`), so the
 > defaults are now **2 seg / 3 ocsr / 2 cls beside legacy** and **6 seg / 4 ocsr / 3 cls after cutover**. One more ocsr
-> replica adds about 4.4 GB resident and 6 GB of limit to the tables below, which still show the earlier 2/2/2 and
-> 6/3/3 layouts: beside legacy about 22 GB resident for the stack, after cutover about 36 GB. Measured beside legacy
-> with 3 ocsr: the host kept about 20 GB available.
+> replica adds about 3.0 GB resident (4.4 to 4.8 GB with decimer 2.8.0) and 6 GB of limit to the tables below, which
+> still show the earlier 2/2/2 and 6/3/3 layouts: beside legacy about 17 GB resident for the stack (14.0 + 3.0), after
+> cutover about 29.5 GB (26.5 + 3.0); with decimer 2.8.0 these were about 22 and 36 GB. Measured beside legacy with
+> 3 ocsr (decimer 2.8.0): the host kept about 20 GB available.
 
 Legacy runs 6 segmentation, 3 OCSR and 3 classifier socket servers in one container (about 22 GB). The new
 stack must never be slower or more blocking than that, so the model services are **replicated** (counts
@@ -452,16 +457,17 @@ How to read it:
 
 ### Memory
 
-Per replica (limits are per container; resident from the READMEs): seg 3 GB / about 2 GB, ocsr 6 GB / about 4.8 GB
-(both DECIMER models, D15), cls 2.5 GB / about 1 GB, chem 1.5 GB / about 0.4 GB. Everything in GiB, whole stack:
+Per replica (limits are per container; resident from the READMEs): seg 3 GB / about 2 GB, ocsr 6 GB / about 3.0 GB
+(the printed DECIMER model only since decimer 2.8.1; 4.8 GB with both models, D15), cls 2.5 GB / about 1 GB, chem
+1.5 GB / about 0.4 GB. Everything in GiB, whole stack:
 
 | Service | Beside legacy 2/2/2: limit / resident | After cutover 6/3/3: limit / resident |
 |---|---|---|
 | seg | 2 x 3 = 6.0 / 4.0 | 6 x 3 = 18.0 / 12.0 |
-| ocsr | 2 x 6 = 12.0 / 9.6 | 3 x 6 = 18.0 / 14.4 |
+| ocsr | 2 x 6 = 12.0 / 6.0 | 3 x 6 = 18.0 / 9.0 |
 | cls | 2 x 2.5 = 5.0 / 2.0 | 3 x 2.5 = 7.5 / 3.0 |
 | chem | 1.5 / 0.4 | 1.5 / 0.4 |
-| **models** | **24.5 / 16.0** | **45.0 / 29.8** |
+| **models** | **24.5 / 12.4** | **45.0 / 24.4** |
 | api (`API_MEM_LIMIT`: 1 g; itself about 100 MB, its spooled bodies and its routes) | 1.0 / 0.15 | 1.0 / 0.15 |
 | ingest sidecar (`INGEST_MEM_LIMIT`: 4352m = 2 ingest children x 1.5 + 2 molfile children x 0.45 + the server; resident about 0.2) | 4.25 / 0.2 | 4.25 / 0.2 |
 | worker (`WORKER_MEM_LIMIT`: 2 g, after cutover 3 g with 8 jobs and 2 renders) | 2.0 / 0.5 | 3.0 / 1.0 |
@@ -469,24 +475,24 @@ Per replica (limits are per container; resident from the READMEs): seg 3 GB / ab
 | redis, sweep, edge | 0.8 / 0.2 | 0.8 / 0.2 |
 | usage (the counter's Redis: 96m) | 0.1 / 0.01 | 0.1 / 0.01 |
 | GlitchTip + its Postgres + the gate (384m + 160m + 32m, D21's "about 0.5 GB"; measured 169 + 74 MiB after 100 events, the gate 2.4 MiB) | 0.5 / 0.25 | 0.5 / 0.25 |
-| **whole stack** | **34.2 / 17.6** | **55.7 / 31.9** |
-| plus what the VM already uses (legacy about 22.2 until cutover, the rest of the host about 2.6) | 59.2 / 42.6 of 62.8 | legacy gone: 58.3 / 34.5 of 62.8 |
+| **whole stack** | **34.2 / 14.0** | **55.7 / 26.5** |
+| plus what the VM already uses (legacy about 22.2 until cutover, the rest of the host about 2.6) | 59.2 / 39.0 of 62.8 | legacy gone: 58.3 / 29.1 of 62.8 |
 
-* **Beside legacy the new stack is about 17.6 GB resident**: the models alone 16.0 (seg 4.0, ocsr 9.6, cls 2.0, chem
-  0.4), the whole stack 17.6. D18 first said "about 17 GB of models", about 1 GB above the models' 16.0; D18 now
-  says 16. The resident figures come from the service READMEs; the api, sidecar, worker, redis and usage rows are
+* **Beside legacy the new stack is about 14.0 GB resident**: the models alone 12.4 (seg 4.0, ocsr 6.0, cls 2.0, chem
+  0.4), the whole stack 14.0. (With decimer 2.8.0, which loaded both DECIMER models, ocsr was 9.6 and these were 16.0
+  and 17.6, the figures D18 quotes: "about 16 GB of models".) The resident figures come from the service READMEs; the api, sidecar, worker, redis and usage rows are
   estimates, GlitchTip's were measured (2026-10-23, scratch containers with the compose settings: 125 MiB idle and
   169 MiB after 100 events for GlitchTip, 53 and 74 MiB for Postgres). **The ceilings are higher** (34.2 GB: ocsr's
   6 GB limit x 2 is most of it). The 62.8 GiB VM already uses about 25 GiB besides the new stack (legacy about 22.2,
   the rest of the host about 2.6), so the ceilings together make 34.2 + 25.0 = 59.2 GiB: **3.6 GiB of headroom** for
   the kernel and page cache if every container were at its limit at the same moment (it was 5 before P3-11: the
   ingest sidecar moves the parsers' 3.9 GiB out of the api's 4.5 and adds the 4.25 GiB limit of its own, +0.75,
-  GlitchTip with its Postgres +0.53, the usage Redis +0.09). That never happens (resident is 42.6 GiB), but it is
-  the number to watch. If memory gets tight, `OCSR_REPLICAS=1` takes 6 GB off the ceiling and 4.8 GB off the
+  GlitchTip with its Postgres +0.53, the usage Redis +0.09). That never happens (resident is 39.0 GiB), but it is
+  the number to watch. If memory gets tight, `OCSR_REPLICAS=1` takes 6 GB off the ceiling and 3.0 GB off the
   resident total, running without `worker-fast` (`$DC up -d --scale worker-fast=0`, safe: see "Two queues") takes
   1 GB, and `INGEST_MEM_LIMIT` goes with `INGEST_CONCURRENCY` and `INGEST_MEMORY_MB` (one ingest child: 2.8 GB).
-* **After cutover** about 32 GB resident (29.8 GB of it models, D18's "about 30 GB") and
-  a 55.7 GB ceiling; with the host's 2.6 GiB that is 58.3 of 62.8 GiB, since legacy is gone. The limits are
+* **After cutover** about 26.5 GB resident (24.4 GB of it models; D18's "about 30 GB" counted both DECIMER models in
+  every ocsr replica) and a 55.7 GB ceiling; with the host's 2.6 GiB that is 58.3 of 62.8 GiB, since legacy is gone. The limits are
   ceilings: a container over its limit is OOM-killed and restarted, never swapped (`memswap_limit` equals
   `mem_limit`).
 * **The worker's pages in memory.** A page is read, decoded and held as a PNG (2-4 MB for an A4 page at 300
@@ -496,7 +502,7 @@ Per replica (limits are per container; resident from the READMEs): seg 3 GB / ab
   and no more decoding threads than that.
 * Images are several GB each for the three TensorFlow services (estimate, not built), shared by all replicas of
   a service; disk is no concern. 12 replicas starting at once after a reboot load their models together (ocsr
-  about 50 s, CPU-heavy): expect a couple of minutes until `$DC ps` shows everything healthy.
+  about 25 s since decimer 2.8.1, CPU-heavy): expect a couple of minutes until `$DC ps` shows everything healthy.
 
 ### The worker's settings (.env)
 
@@ -810,7 +816,7 @@ of this directory.
 
 **Switching layout** (beside legacy to after cutover, or back): edit the replica, thread, CPU and worker lines in
 `.env` (the block in `.env.example` says which), then `$DC up -d`. Compose creates or removes replicas and
-recreates the services whose settings changed (ocsr takes about 50 s to load); do it when the site is quiet.
+recreates the services whose settings changed (ocsr takes about 25 s to load); do it when the site is quiet.
 Cutover itself (legacy removed) is what frees the memory for 6/3/3.
 
 **Updating** one service: build it with a new tag, set `DECIMER_TAG`, `$DC up -d`. After the `api`

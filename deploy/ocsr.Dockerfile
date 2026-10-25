@@ -1,18 +1,19 @@
 # DECIMER Image Transformer (OCSR) model service (TODO, service TODO). Python 3.11,
-# TensorFlow 2.15.1, decimer 2.8.0, CPU only.
+# TensorFlow 2.15.1, decimer 2.8.1, CPU only.
 #
 # The build context is the REPOSITORY ROOT (path dependency on services/common). Fetch the weights
 # first (deploy/weights/fetch.sh ocsr), then:
 #   docker build -f deploy/ocsr.Dockerfile -t localhost/decimer-next/ocsr:local .
 #
-# Weights: `import DECIMER` loads TWO SavedModels (DECIMER_model, and DECIMER_HandDrawn_model, which
-# the service never calls) from $PYSTOW_HOME/DECIMER-V2/ and downloads whatever is missing, so BOTH are
-# baked in (about 650 MB) and checked against the ocsr/ lines of deploy/weights/SHA256SUMS with
-# `verify.sh --strict` (exactly those nine files, nothing else). Owner decision D15: both models stay
-# in the image. That costs 1.9 GB of memory and 26 s of start-up (services/ocsr/README.md), and is why the
-# limit is 6 GB and the health check waits; reopen it only if the VM gets short of memory (then make the
-# hand-drawn load lazy upstream in DECIMER). There are no .model_url marker files on purpose: without
-# them decimer 2.8.0 never re-downloads.
+# Weights: decimer loads its models from $PYSTOW_HOME/DECIMER-V2/ and downloads whatever is missing.
+# Since 2.8.1 it loads only the printed-structure model (DECIMER_model, which the service calls), when
+# the service starts, and never touches DECIMER_HandDrawn_model (the service cannot ask for it). Both
+# are baked in all the same (about 650 MB on disk, shared by all replicas) and checked against the ocsr/
+# lines of deploy/weights/SHA256SUMS with `verify.sh --strict` (exactly those nine files, nothing else):
+# owner decision D15 keeps a hand-drawn option possible later, and since 2.8.1 the hand-drawn model
+# costs no memory or start-up time (services/ocsr/README.md), only 348 MB of disk. Dropping it is the
+# owner's call (SHA256SUMS says what to remove). There are no .model_url marker files on purpose:
+# without them decimer never re-downloads.
 #
 # Before building, apply deploy/patches/apply-pyproject-patches.sh to services/ocsr (opencv-python-
 # headless instead of opencv-python; without it build with OPENCV_GUI_LIBS=1).
@@ -89,7 +90,8 @@ COPY --from=weights /w/ocsr/ /models/
 COPY --from=builder /opt/venv /opt/venv
 COPY deploy/healthcheck.py /usr/local/bin/healthcheck.py
 
-# PYSTOW_HOME: decimer reads $PYSTOW_HOME/DECIMER-V2/{DECIMER_model,DECIMER_HandDrawn_model}.
+# PYSTOW_HOME: decimer reads $PYSTOW_HOME/DECIMER-V2/DECIMER_model (and DECIMER_HandDrawn_model only
+# for hand_drawn=True, which the service never asks for).
 # OPENCV_IO_MAX_IMAGE_PIXELS: the service decodes with Pillow (at most 17.5 MP) and hands arrays to
 # DECIMER, so this is a second guard only; same value as seg.
 # TF_NUM_*: 4 + 1 for a standalone run; compose sets the counts per replica (OCSR_TF_*_THREADS).
@@ -105,8 +107,9 @@ ENV PATH=/opt/venv/bin:$PATH \
     PORT=8002
 
 USER 10001:10001
-# Smoke test at build time: imports only (decimer itself would load both models), no network.
-RUN python -c "import decimer_ocsr, decimer_service, cv2, tensorflow as tf; print('tensorflow', tf.__version__, 'cv2', cv2.__version__)" \
+# Smoke test at build time: imports only, no network. `import DECIMER` is part of it since 2.8.1: it loads
+# no model and creates nothing (the models are loaded when the service starts).
+RUN python -c "import decimer_ocsr, decimer_service, DECIMER, cv2, tensorflow as tf; print('decimer', DECIMER.__version__, 'tensorflow', tf.__version__, 'cv2', cv2.__version__)" \
     && test -r /models/README.md \
     && find /models -type f -exec head -c 1 {} + > /dev/null \
     && test -r /models/DECIMER-V2/DECIMER_model/saved_model.pb \
@@ -116,8 +119,9 @@ RUN python -c "import decimer_ocsr, decimer_service, cv2, tensorflow as tf; prin
 
 EXPOSE 8002
 # /readyz reads a real structure (the selftest compares the SMILES; 6 s the first time, a few seconds
-# after). Start-up is about 50 s (both models load; services/ocsr/README.md), and longer when the box
-# is busy: 180 s of start period. Once running, a check every 120 s (an idle service pays the selftest on
+# after). Start-up is about 25 s (the printed-structure model loads; 50 s with decimer 2.8.0, which
+# also loaded the hand-drawn one; services/ocsr/README.md), and longer when the box is busy: 180 s of
+# start period, left as it was. Once running, a check every 120 s (an idle service pays the selftest on
 # each one); during start-up one every 5 s, so depends_on service_healthy does not wait a whole interval.
 # --start-interval needs Docker 25 or newer (28.4 on the VM).
 HEALTHCHECK --interval=120s --timeout=40s --start-period=180s --start-interval=5s --retries=3 \

@@ -96,9 +96,10 @@ class WorkerSettings(BaseSettings):
     busy_retry_after_max_seconds: float = Field(default=30.0, ge=0)
     # Could not connect (refused, or no answer to the connection attempt): the service is down or
     # starting. Retry with doubling backoff, each wait at most `connect_backoff_max_seconds`,
-    # until this much time has been spent waiting. ocsr needs about 50 s to load, so the default
-    # covers a restart. (Re-queueing the job with arq's Retry would redo the render and seg
-    # work and count against arq's tries; waiting inside the call loses nothing.)
+    # until this much time has been spent waiting. ocsr needs about 25 s to load (50 s before
+    # decimer 2.8.1, longer on a busy box), so the default covers a restart. (Re-queueing the job
+    # with arq's Retry would redo the render and seg work and count against arq's tries; waiting
+    # inside the call loses nothing.)
     connect_retry_budget_seconds: float = Field(default=90.0, ge=0)
     # chem is optional (no chem: names are null and a warning says so), so a job does not wait for
     # it as it waits for a model it cannot do without: while chem refuses connections the check

@@ -34,7 +34,7 @@ async def test_the_endpoint_lists_every_engine_with_its_version(client: httpx.As
         "id": "decimer",
         "name": "DECIMER Image Transformer",
         "role": "ocsr",
-        "version": "2.8.0",
+        "version": "2.8.1",
         "revision": None,
     }
     assert by_id["orthonym"]["revision"] == "110ed8153b365973ad90c518a3ea96fbebb13c8b"

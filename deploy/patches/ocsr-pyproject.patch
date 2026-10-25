@@ -12,13 +12,13 @@ headless wheel at the locked version (4.11.0.86) and [tool.uv] exclude-dependenc
 opencv-python from the resolution altogether (it is not in uv.lock; an override with a marker that never
 matches would leave an sdist-only entry that a later `uv lock` fails to build, see seg-pyproject.patch).
 Without this patch, build the image with --build-arg OPENCV_GUI_LIBS=1 instead.
-decimer 2.8.0 imports cv2 and declares opencv-python, so this project had no direct opencv dependency:
+decimer imports cv2 and declares opencv-python, so this project had no direct opencv dependency:
 the patch adds the headless wheel as one. ocsr needs no build pins: every dependency has a wheel.
 
 --- a/services/ocsr/pyproject.toml
 +++ b/services/ocsr/pyproject.toml
 @@ -11,6 +11,7 @@
-     "decimer==2.8.0",
+     "decimer==2.8.1",
      "decimer-service",
      "numpy==1.26.3",
 +    "opencv-python-headless==4.11.0.86",

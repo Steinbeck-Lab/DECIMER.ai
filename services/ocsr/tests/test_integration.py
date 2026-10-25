@@ -41,16 +41,16 @@ LABELS = labels_on_the_first_crops()
 
 @pytest.fixture(scope="module", autouse=True)
 def weights_are_on_disk() -> None:
-    """Fail with the path instead of silently downloading 600 MB into someone's home directory."""
+    """Fail with the path instead of silently downloading 300 MB into someone's home directory."""
     path = weights_dir()
     if (
         os.environ.get("OCSR_ALLOW_WEIGHT_DOWNLOAD") != "1"
         and not (path / "DECIMER_model" / "saved_model.pb").is_file()
     ):
         pytest.fail(
-            f"DECIMER weights are missing: expected DECIMER_model/ and DECIMER_HandDrawn_model/ "
-            f"in {path} (the directory comes from PYSTOW_HOME), or set "
-            "OCSR_ALLOW_WEIGHT_DOWNLOAD=1 to let DECIMER download them.",
+            f"DECIMER weights are missing: expected DECIMER_model/ in {path} (the directory "
+            "comes from PYSTOW_HOME), or set OCSR_ALLOW_WEIGHT_DOWNLOAD=1 to let DECIMER "
+            "download it.",
             pytrace=False,
         )
 
@@ -199,11 +199,26 @@ def test_the_confidence_is_not_a_constant(reads: list[Read]) -> None:
 
 
 @pytest.mark.usefixtures("client")  # the library is imported (and the models loaded) by now
-def test_the_installed_library_still_uses_the_urls_and_files_we_check() -> None:
+def test_the_installed_library_still_uses_the_url_and_files_we_check() -> None:
     from DECIMER import decimer
 
-    assert {f"{k}_model": v for k, v in decimer.model_urls.items()} == model_module.MODEL_URLS
+    assert {"DECIMER_model": decimer.model_urls["DECIMER"]} == model_module.MODEL_URLS
     assert Path(str(decimer.default_path)) == weights_dir()
+
+
+@pytest.mark.usefixtures("client")
+def test_start_up_loads_the_printed_model_and_never_the_hand_drawn_one() -> None:
+    # decimer 2.8.1 keeps what it has loaded in its module's globals (the names that 2.8.0 bound
+    # on import). Reading them with `vars` does not trigger the lazy load that `decimer.<name>`
+    # would; and the real request path has run (the `client` fixture ran the lifespan, and other
+    # tests in this module have read crops), so the hand-drawn one staying out shows that nothing
+    # on that path asks for it.
+    from DECIMER import decimer
+
+    loaded = vars(decimer)
+    assert "tokenizer" in loaded
+    assert "DECIMER_V2" in loaded
+    assert "DECIMER_Hand_drawn" not in loaded
 
 
 @pytest.mark.usefixtures("client")
