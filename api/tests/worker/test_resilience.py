@@ -32,7 +32,8 @@ def raising(error: Exception) -> Callable[..., httpx.Response | None]:
 
 
 async def test_a_job_waits_for_a_service_that_is_starting(make_rig: RigFactory) -> None:
-    """ocsr takes about 50 s to load. The job finds it down, waits, and carries on."""
+    """ocsr takes about 25 s to load (50 s before decimer 2.8.1). Here it stays down for 50 s, which
+    the 90 s retry budget covers: the job finds it down, waits, and carries on."""
     backend_state = {"calls": 0}
 
     def hook(_request: httpx.Request, _parts: dict[str, bytes]) -> httpx.Response | None:

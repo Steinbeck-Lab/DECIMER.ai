@@ -104,7 +104,7 @@ def test_a_non_finite_confidence_is_an_error_not_a_json_crash(bad: float) -> Non
 
 
 def test_a_decode_cut_off_at_the_token_limit_is_refused_as_unreadable_input() -> None:
-    # decimer 2.8.0 returns the whole SMILES but the confidences of all tokens except the last
+    # decimer 2.8.1 returns the whole SMILES but the confidences of all tokens except the last
     # when decoding hits the token limit (golden crop 15, a figure with correlation arrows, does).
     # The SMILES is then cut off mid-structure; it is not passed on as if it were an answer.
     with pytest.raises(ValueError) as excinfo:
@@ -383,32 +383,41 @@ def test_an_unsupported_pixel_mode_is_a_value_error(monkeypatch: pytest.MonkeyPa
     assert fake.calls == []
 
 
-def test_the_real_predictor_asks_decimer_for_the_printed_structure_model_with_confidence(
+def test_the_real_predictor_loads_the_printed_model_up_front_and_asks_for_it_with_confidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # The wiring to the library, without TensorFlow: a stand-in `DECIMER` module records the call.
+    # The wiring to the library, without TensorFlow: a stand-in `DECIMER` module records the calls.
     seen: list[tuple[object, dict[str, object]]] = []
+    loads: list[dict[str, object]] = []
+
+    def load_models(**kwargs: object) -> None:
+        assert seen == []  # before any prediction: the first request must not pay for the load
+        loads.append(kwargs)
 
     def predict_SMILES(image: object, **kwargs: object) -> tuple[str, list[tuple[str, float]]]:  # noqa: N802
         seen.append((image, kwargs))
         return "CC", [("C", 0.5), ("C", 0.75)]
 
     stand_in = types.ModuleType("DECIMER")
+    stand_in.load_models = load_models  # type: ignore[attr-defined]
     stand_in.predict_SMILES = predict_SMILES  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "DECIMER", stand_in)
 
     predict = model_module._real_predict_fn()
+    # Said outright (the library's defaults happen to be the same): only the printed model.
+    assert loads == [{"printed": True, "hand_drawn": False}]
     answer = predict("ARRAY")  # type: ignore[arg-type]
 
     assert answer == ("CC", [("C", 0.5), ("C", 0.75)])
     assert seen == [("ARRAY", {"confidence": True, "hand_drawn": False})]
+    assert len(loads) == 1
 
 
-def test_what_import_decimer_printed_is_logged_even_when_the_import_fails(
+def test_what_the_library_printed_is_logged_even_when_importing_it_fails(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Any, caplog: pytest.LogCaptureFixture
 ) -> None:
-    # The library prints download progress and paths while it imports; if it then raises (a failed
-    # download, a corrupt file) those lines are the only clue, and must not be lost.
+    # The library may print while it is imported; if it then raises, those lines are the only
+    # clue, and must not be lost.
     package = tmp_path / "DECIMER"
     package.mkdir()
     (package / "__init__.py").write_text(
@@ -426,7 +435,33 @@ def test_what_import_decimer_printed_is_logged_even_when_the_import_fails(
     assert "Downloading trained model to /some/dir" in caplog.text
 
 
-def test_what_import_decimer_printed_is_logged_when_it_succeeds(
+def test_what_the_library_printed_is_logged_even_when_loading_the_models_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    # decimer 2.8.1 prints (download progress, paths) in `load_models`, not in the import, and
+    # the failures worth explaining (a failed download, a corrupt SavedModel) happen there.
+    package = tmp_path / "DECIMER"
+    package.mkdir()
+    (package / "__init__.py").write_text(
+        "def predict_SMILES(*args, **kwargs):\n"
+        "    return '', []\n"
+        "def load_models(**kwargs):\n"
+        "    print('Downloading trained model to /some/dir')\n"
+        "    raise OSError('connection reset')\n"
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.delitem(sys.modules, "DECIMER", raising=False)
+
+    with (
+        caplog.at_level(logging.INFO, logger="decimer_ocsr"),
+        pytest.raises(OSError, match="reset"),
+    ):
+        model_module._real_predict_fn()
+
+    assert "Downloading trained model to /some/dir" in caplog.text
+
+
+def test_what_the_library_printed_is_logged_when_it_succeeds(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
     caplog: pytest.LogCaptureFixture,
@@ -438,6 +473,8 @@ def test_what_import_decimer_printed_is_logged_when_it_succeeds(
         "print('printed while importing')\n"
         "def predict_SMILES(*args, **kwargs):\n"
         "    return '', []\n"
+        "def load_models(**kwargs):\n"
+        "    print('printed while loading')\n"
     )
     monkeypatch.syspath_prepend(str(tmp_path))
     monkeypatch.delitem(sys.modules, "DECIMER", raising=False)
@@ -446,7 +483,8 @@ def test_what_import_decimer_printed_is_logged_when_it_succeeds(
         model_module._real_predict_fn()
 
     assert "printed while importing" in caplog.text
-    assert "printed while importing" not in capsys.readouterr().out
+    assert "printed while loading" in caplog.text
+    assert "printed while" not in capsys.readouterr().out
 
 
 # --- failures inside the library are ours, not the caller's -------------------------------

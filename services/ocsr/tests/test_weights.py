@@ -1,4 +1,4 @@
-"""The weights check: DECIMER 2.8.0 downloads silently on import, so we look before it does."""
+"""The weights check: DECIMER 2.8.1 downloads silently when it loads models, so we look first."""
 
 import logging
 import os
@@ -12,7 +12,6 @@ from decimer_ocsr import model as ocsr_model
 from decimer_ocsr.model import OcsrModel
 
 OCSR_ROOT = Path(__file__).resolve().parents[1]
-MODEL_DIRS = ("DECIMER_model", "DECIMER_HandDrawn_model")
 FILES = (
     "saved_model.pb",
     "variables/variables.index",
@@ -25,14 +24,13 @@ def store(home: Path) -> Path:
     return home / "DECIMER-V2"
 
 
-def put_weights(home: Path, *, skip: tuple[str, ...] = ()) -> None:
-    """A weights tree with every file DECIMER 2.8.0 reads at import (contents are irrelevant)."""
-    for directory in MODEL_DIRS:
-        wanted = [*FILES, TOKENIZER] if directory == "DECIMER_model" else list(FILES)
-        for name in wanted:
+def put_weights(home: Path, *, hand_drawn: bool = False) -> None:
+    """A weights tree with every file DECIMER 2.8.1 reads for printed structures (contents are
+    irrelevant), and, if asked for, the hand-drawn model's files that the image also carries."""
+    directories = ["DECIMER_model", *(["DECIMER_HandDrawn_model"] if hand_drawn else [])]
+    for directory in directories:
+        for name in [*FILES, *([TOKENIZER] if directory == "DECIMER_model" else [])]:
             path = store(home) / directory / name
-            if str(path.relative_to(store(home))) in skip:
-                continue
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"x")
 
@@ -51,12 +49,9 @@ def real_loader(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     return calls
 
 
-def test_the_urls_are_the_ones_decimer_2_8_0_checks_its_marker_files_against() -> None:
+def test_the_url_is_the_one_decimer_2_8_1_checks_its_marker_file_against() -> None:
     assert ocsr_model.MODEL_URLS == {
         "DECIMER_model": "https://zenodo.org/record/8300489/files/models.zip",
-        "DECIMER_HandDrawn_model": (
-            "https://zenodo.org/records/10781330/files/DECIMER_HandDrawn_model.zip"
-        ),
     }
 
 
@@ -80,17 +75,14 @@ def test_every_file_the_library_needs_is_checked_and_named_when_missing(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, real_loader: list[str]
 ) -> None:
     monkeypatch.setenv("PYSTOW_HOME", str(tmp_path))
-    needed = [
-        *(f"DECIMER_model/{name}" for name in (*FILES, TOKENIZER)),
-        *(f"DECIMER_HandDrawn_model/{name}" for name in FILES),
-    ]
-    # The checker's own list is pinned too: these seven are what `import DECIMER` reads.
+    needed = [f"DECIMER_model/{name}" for name in (*FILES, TOKENIZER)]
+    # The checker's own list is pinned too: these four are what `load_models(printed=True)` reads.
     assert set(needed) == {
         f"{directory}/{name}"
         for directory, names in ocsr_model.REQUIRED_FILES.items()
         for name in names
     }
-    assert len(needed) == 7
+    assert len(needed) == 4
 
     for missing in needed:
         put_weights(tmp_path)
@@ -101,23 +93,29 @@ def test_every_file_the_library_needs_is_checked_and_named_when_missing(
     assert real_loader == []
 
 
-def test_the_hand_drawn_weights_are_needed_too_because_the_library_loads_them_at_import(
+def test_the_hand_drawn_weights_are_not_needed_because_the_library_never_loads_them_here(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, real_loader: list[str]
 ) -> None:
+    # decimer 2.8.0 loaded both models on import and would download a missing one. 2.8.1 touches
+    # the hand-drawn directory only for `hand_drawn=True`, which nothing here asks for, so a tree
+    # without it (or with a stale marker in it, or with it incomplete) starts the service.
     monkeypatch.setenv("PYSTOW_HOME", str(tmp_path))
     put_weights(tmp_path)
-    for name in FILES:
-        (store(tmp_path) / "DECIMER_HandDrawn_model" / name).unlink()
+    OcsrModel().load()
 
-    with pytest.raises(RuntimeError, match="DECIMER_HandDrawn_model"):
-        OcsrModel().load()
+    put_weights(tmp_path, hand_drawn=True)
+    (store(tmp_path) / "DECIMER_HandDrawn_model" / "saved_model.pb").unlink()
+    (store(tmp_path) / "DECIMER_HandDrawn_model" / ".model_url").write_text("https://elsewhere/x")
+    OcsrModel().load()
+
+    assert real_loader == ["imported", "imported"]
 
 
 def test_complete_weights_let_the_library_load(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, real_loader: list[str]
 ) -> None:
     monkeypatch.setenv("PYSTOW_HOME", str(tmp_path))
-    put_weights(tmp_path)
+    put_weights(tmp_path, hand_drawn=True)  # as in the image
 
     OcsrModel().load()
 
@@ -141,8 +139,8 @@ def test_a_marker_file_with_the_expected_url_is_fine(
 def test_a_marker_file_with_another_url_would_make_the_library_download_again(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, real_loader: list[str], directory: str
 ) -> None:
-    # DECIMER 2.8.0 deletes the model directory and downloads again when `.model_url` differs;
-    # that holds for the hand-drawn model too, so a stale marker there must stop the start-up.
+    # DECIMER 2.8.1 deletes the model directory and downloads again when `.model_url` differs, so
+    # a stale marker must stop the start-up.
     monkeypatch.setenv("PYSTOW_HOME", str(tmp_path))
     put_weights(tmp_path)
     marker = store(tmp_path) / directory / ".model_url"
@@ -154,13 +152,14 @@ def test_a_marker_file_with_another_url_would_make_the_library_download_again(
     assert str(marker) in str(excinfo.value)
     assert "download" in str(excinfo.value)
     assert real_loader == []
-    for name in (*FILES, TOKENIZER) if directory == "DECIMER_model" else FILES:
+    for name in (*FILES, TOKENIZER):
         assert (store(tmp_path) / directory / name).exists()  # nothing deleted
 
 
 def test_every_model_directory_is_covered_by_the_marker_check() -> None:
     # The parametrised test above follows MODEL_URLS; pin what it follows.
-    assert list(ocsr_model.MODEL_URLS) == ["DECIMER_model", "DECIMER_HandDrawn_model"]
+    assert list(ocsr_model.MODEL_URLS) == ["DECIMER_model"]
+    assert list(ocsr_model.REQUIRED_FILES) == list(ocsr_model.MODEL_URLS)
 
 
 def test_weight_download_has_to_be_asked_for_explicitly(
@@ -224,10 +223,14 @@ def test_missing_weights_never_import_tensorflow_or_the_library(tmp_path: Path) 
 
 
 def test_whatever_the_library_prints_while_loading_stays_off_stdout(tmp_path: Path) -> None:
-    # DECIMER prints "Downloading trained model to ..." and tqdm bars when it is imported.
+    # DECIMER prints "Downloading trained model to ..." and tqdm bars while it loads its models.
+    # The stand-in also records how it was asked to load: the printed model, and only that.
     (tmp_path / "lib" / "DECIMER").mkdir(parents=True)
     (tmp_path / "lib" / "DECIMER" / "__init__.py").write_text(
-        "print('Downloading trained model to /some/dir')\n"
+        "loads = []\n"
+        "def load_models(**kwargs):\n"
+        "    print('Downloading trained model to /some/dir')\n"
+        "    loads.append(kwargs)\n"
         "def predict_SMILES(image, confidence=False, hand_drawn=False):\n"
         "    return '', []\n"
     )
@@ -240,7 +243,7 @@ def test_whatever_the_library_prints_while_loading_stays_off_stdout(tmp_path: Pa
         "import sys\n"
         "from decimer_ocsr.model import OcsrModel\n"
         "OcsrModel().load()\n"
-        "assert 'DECIMER' in sys.modules\n",
+        "assert sys.modules['DECIMER'].loads == [{'printed': True, 'hand_drawn': False}]\n",
         env,
     )
 

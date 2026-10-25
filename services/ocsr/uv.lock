@@ -288,7 +288,7 @@ wheels = [
 
 [[package]]
 name = "decimer"
-version = "2.8.0"
+version = "2.8.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "efficientnet" },
@@ -298,9 +298,9 @@ dependencies = [
     { name = "selfies" },
     { name = "tensorflow" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5c/8d/7d9f188e35e2905fe6ffa4cacf2065c998c35a9c87355f3b896fad858b6f/decimer-2.8.0.tar.gz", hash = "sha256:1d9d8d69f97795618094fb323bed348bcb8725a7455d1d4aeddcbde1d3478df7", size = 40073, upload-time = "2025-12-02T14:11:20.625Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/45/ab/2eb6b2b988a18ffd9edf2816f92be3a3badf85fd7c2e72be24b4bda4fb21/decimer-2.8.1.tar.gz", hash = "sha256:4d594fbe14f63c4951aab44230709cdb702a691a5a95bcf8fa98d53322deb092", size = 45033, upload-time = "2026-10-25T16:14:53.398Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3b/43/8437ea4cdc03b9144a6519e4cce6e990b6257a86830bb58105cd9fbb9933/decimer-2.8.0-py3-none-any.whl", hash = "sha256:39e524bb87b5892e9fe045ff352aed4638cab5d6eff50844993a01606057ec34", size = 48835, upload-time = "2025-12-02T14:11:19.682Z" },
+    { url = "https://files.pythonhosted.org/packages/f4/8b/6ec3ed7b7d66c599f8ac6ebeebed8fb59da23f327abefd4029a074a82d8a/decimer-2.8.1-py3-none-any.whl", hash = "sha256:1c42159d1bf3f8520b6475d71cc3621a83d1f258d074779ad12d622344b7abc6", size = 50959, upload-time = "2026-10-25T16:14:52.32Z" },
 ]
 
 [[package]]
@@ -330,7 +330,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "decimer", specifier = "==2.8.0" },
+    { name = "decimer", specifier = "==2.8.1" },
     { name = "decimer-service", editable = "../common" },
     { name = "numpy", specifier = "==1.26.3" },
     { name = "opencv-python-headless", specifier = "==4.11.0.86" },

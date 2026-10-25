@@ -7,7 +7,7 @@
 #
 #   seg    deploy/weights/seg/DECIMER-Segmentation_model/mask_rcnn_molecule.h5
 #   ocsr   deploy/weights/ocsr/DECIMER-V2/{DECIMER_model,DECIMER_HandDrawn_model}/
-#          (both: import DECIMER loads both, owner decision D15)
+#          (both: owner decision D15 keeps the hand-drawn one in the image; decimer 2.8.1 never loads it)
 #   chem   deploy/weights/chem/{opsin-cli-2.9.0-jar-with-dependencies.jar,centres-cli-1.2.1.jar,
 #          cdk-2.8.jar}
 #   cls    nothing to fetch: the weights ship inside the pip package; cls.Dockerfile checks the
@@ -120,7 +120,7 @@ fetch_ocsr() {
         unzip_to "$tmp/models.zip" "$dest"   # the zip's top level directory is DECIMER_model/
         rm -f "$tmp/models.zip"
     fi
-    # `import DECIMER` loads the hand-drawn model too and would try to download it at start-up.
+    # Not loaded by the service (decimer 2.8.1 only loads it for hand_drawn=True), but baked in: D15.
     download "$HAND_URL" "$tmp/hand.zip" "$HAND_MD5" "$HAND_SHA256"
     unzip_to "$tmp/hand.zip" "$dest"          # top level directory DECIMER_HandDrawn_model/
     rm -f "$tmp/hand.zip"

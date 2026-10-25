@@ -1,16 +1,19 @@
 """The `ocsr` model: reads one chemical structure depiction and returns its SMILES.
 
-`DECIMER` (decimer 2.8.0) imports TensorFlow, loads two SavedModels (the printed-structure model
-and the hand-drawn one) and downloads them from Zenodo if they are missing, all as a side effect
-of `import DECIMER`. This module therefore imports it only inside `OcsrModel.load()`, after
-checking that the weights are on disk, so importing the service module stays fast and the pure
-logic can be tested with an injected `predict_fn` and no TensorFlow at all.
+`DECIMER` (decimer 2.8.1) imports TensorFlow and nothing else when it is imported; its models are
+downloaded from Zenodo (if they are missing) and loaded by `DECIMER.load_models()`, or by the first
+`predict_SMILES()` if that was not called. (decimer 2.8.0 did all of it, for both the printed-
+structure and the hand-drawn model, as a side effect of `import DECIMER`.) This module therefore
+imports the library only inside `OcsrModel.load()`, after checking that the weights are on disk (the
+service never downloads), and has it load the printed-structure model there and then, so the first
+request does not pay for it and /readyz's selftest finds a loaded model. Importing the service
+module stays fast and the pure logic can be tested with an injected `predict_fn` and no TensorFlow.
 
 The service calls `DECIMER.predict_SMILES(array, confidence=True, hand_drawn=False)`. The library
 accepts a numpy array as well as a path, so the request bytes are decoded here (strictly, see
 `_decode`) and handed over as the RGBA array that `Image.open(path).convert("RGBA")` would give;
-no temporary file is written. The hand-drawn model is loaded by the library whether we use it or
-not (it is part of `import DECIMER`), but nothing in a request can select it.
+no temporary file is written. The hand-drawn model is never loaded (not by `load_models` as called
+here, not by `predict_SMILES(hand_drawn=False)`), and nothing in a request can select it.
 
 Response of `infer` (always exactly these three keys, all plain Python types):
 
@@ -77,15 +80,18 @@ SUPPORTED_MODES = frozenset({"1", "L", "LA", "P", "PA", "RGB", "RGBA", "CMYK", "
 
 # --- weights --------------------------------------------------------------------------------
 
-# `DECIMER.decimer.model_urls` in decimer 2.8.0 (a slow test checks the installed library still
-# has these). The library keeps the URL it downloaded from in `<model dir>/.model_url` and
-# downloads again, after deleting the directory, when the file says something else.
+# `DECIMER.decimer.model_urls["DECIMER"]` in decimer 2.8.1 (a slow test checks the installed library
+# still has it). The library keeps the URL it downloaded from in `<model dir>/.model_url` and
+# downloads again, after deleting the directory, when the file says something else. Only the
+# printed-structure model is listed: the library does not look at the hand-drawn directory unless
+# `hand_drawn=True` is asked for, which this service never does (the image still carries those
+# weights, D15, but nothing checks or reads them).
 MODEL_URLS = {
     "DECIMER_model": "https://zenodo.org/record/8300489/files/models.zip",
-    "DECIMER_HandDrawn_model": "https://zenodo.org/records/10781330/files/DECIMER_HandDrawn_model.zip",
 }
 
-# What `import DECIMER` reads: both SavedModels, and the tokenizer of the printed-structure model.
+# What `DECIMER.load_models(printed=True, hand_drawn=False)` reads: the printed-structure SavedModel
+# and its tokenizer (which decodes the output of either model).
 REQUIRED_FILES = {
     "DECIMER_model": (
         "saved_model.pb",
@@ -93,16 +99,11 @@ REQUIRED_FILES = {
         "variables/variables.index",
         "variables/variables.data-00000-of-00001",
     ),
-    "DECIMER_HandDrawn_model": (
-        "saved_model.pb",
-        "variables/variables.index",
-        "variables/variables.data-00000-of-00001",
-    ),
 }
 
 
 def weights_dir() -> Path:
-    """Where decimer 2.8.0 looks for (and, if missing, downloads) its weights."""
+    """Where decimer 2.8.1 looks for (and, if missing, downloads) its weights."""
     return pystow.join("DECIMER-V2", ensure_exists=False)
 
 
@@ -115,14 +116,14 @@ def _weight_problems(root: Path) -> list[str]:
         marker = root / directory / ".model_url"
         if marker.is_file() and marker.read_text().strip() != MODEL_URLS[directory]:
             problems.append(
-                f"{marker} names another download URL than decimer 2.8.0 expects "
+                f"{marker} names another download URL than decimer 2.8.1 expects "
                 f"({MODEL_URLS[directory]}), so the library would delete the model and download it"
             )
     return problems
 
 
 def _require_weights() -> None:
-    """Refuse to start without the weights: importing the library would download 600 MB."""
+    """Refuse to start without the weights: loading the models would download 300 MB."""
     root = weights_dir()
     problems = _weight_problems(root)
     if not problems:
@@ -131,21 +132,26 @@ def _require_weights() -> None:
         log.warning("weights not usable, letting DECIMER download them: %s", "; ".join(problems))
         return
     raise RuntimeError(
-        f"DECIMER weights not found in {root} ({'; '.join(problems)}). Put DECIMER_model/ and "
-        "DECIMER_HandDrawn_model/ there (the directory comes from PYSTOW_HOME, default "
-        "~/.data), or set OCSR_ALLOW_WEIGHT_DOWNLOAD=1 to let DECIMER download them from Zenodo."
+        f"DECIMER weights not found in {root} ({'; '.join(problems)}). Put DECIMER_model/ there "
+        "(the directory comes from PYSTOW_HOME, default ~/.data), or set "
+        "OCSR_ALLOW_WEIGHT_DOWNLOAD=1 to let DECIMER download it from Zenodo."
     )
 
 
 def _real_predict_fn() -> PredictFn:
-    # Importing loads both models; the library also prints download progress and paths.
+    # The library prints download progress and paths while it loads.
     printed = io.StringIO()
     try:
         with contextlib.redirect_stdout(printed):
-            from DECIMER import predict_SMILES
+            from DECIMER import load_models, predict_SMILES
+
+            # Now, not at the first request: the tokenizer and the printed-structure model (about
+            # 2 GB resident and 20 to 30 s). The hand-drawn model is not loaded and no request
+            # can ask for it.
+            load_models(printed=True, hand_drawn=False)
     finally:
-        # Also when the import raises: a failed download or a corrupt file is explained by what
-        # the library printed just before.
+        # Also when this raises: a failed download or a corrupt file is explained by what the
+        # library printed just before.
         if printed.getvalue().strip():
             log.info("DECIMER printed: %s", printed.getvalue().strip())
 
@@ -198,7 +204,7 @@ def selftest_png() -> bytes:
 
 
 # `selftest.png` is daidzein, the crop of golden-set label 11 (a PubChem-confirmed structure) as the
-# segmentation cuts it out: RGBA, 434 x 198. SELFTEST_SMILES is what decimer 2.8.0 reads from it
+# segmentation cuts it out: RGBA, 434 x 198. SELFTEST_SMILES is what decimer 2.8.1 reads from it
 # (all 37 tokens at 0.92 or better); a test checks with RDKit that it is daidzein.
 SELFTEST_SMILES = "C1=CC(=CC=C1C2=COC3=CC(=CC=C3C2=O)O)O"
 SELFTEST_INCHIKEY = "ZQSIJRDFPHDXIC-UHFFFAOYSA-N"
@@ -232,7 +238,7 @@ def _result(smiles: object, pairs: Sequence[tuple[str, float]]) -> dict[str, Any
     joined = "".join(tokens)
     if joined != smiles:
         if smiles.startswith(joined):
-            # decimer 2.8.0 drops the last token's confidence when decoding stops at the model's
+            # decimer 2.8.1 drops the last token's confidence when decoding stops at the model's
             # token limit (302) without an end token, so the pairs are the SMILES minus its last
             # token. Such a SMILES is cut off in the middle: no structure was read to the end.
             raise ValueError(f"{NO_STRUCTURE}: too long or not a structure")

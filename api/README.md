@@ -541,9 +541,9 @@ A service call is retried only where retrying can help:
 * **Could not connect** (the service is down or starting): doubling backoff, each wait at most
   `CONNECT_BACKOFF_MAX_SECONDS` (10 s), until `CONNECT_RETRY_BUDGET_SECONDS` (90 s) have been spent on waiting and
   on attempts that took a while to fail (an address that swallows packets instead of refusing).
-  ocsr needs about 50 s to load, so a worker that finds it restarting waits for it. This is done inside the
-  call rather than by re-queueing the job with arq's `Retry`: a re-queued job would redo the render and seg
-  work, show the user a restart, and use up arq's tries.
+  ocsr needs about 25 s to load (longer on a busy box), so a worker that finds it restarting waits for it.
+  This is done inside the call rather than by re-queueing the job with arq's `Retry`: a re-queued job would
+  redo the render and seg work, show the user a restart, and use up arq's tries.
 * **The connection broke after the request went out** (reset, closed by the server): once more, then that call
   fails. The work may have started, or this very input may crash the service; it is not waited for.
 * 422 (the service refuses this input), 500 and a **read timeout** are not retried.
