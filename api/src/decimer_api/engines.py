@@ -26,13 +26,7 @@ class Engine:
 # The model services' pins. `revision` is the git commit of a version that has no release.
 MODEL_ENGINES = (
     Engine("decimer", "DECIMER Image Transformer", "ocsr", "2.8.0"),
-    Engine(
-        "decimer-segmentation",
-        "DECIMER Segmentation",
-        "segmentation",
-        "1.5.1",
-        "6914cacea266d59e4dcbdae549b0ffff39fcc604",
-    ),
+    Engine("decimer-segmentation", "DECIMER Segmentation", "segmentation", "1.6.0"),
     Engine(
         "decimer-image-classifier",
         "DECIMER Image Classifier",

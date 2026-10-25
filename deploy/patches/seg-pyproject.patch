@@ -1,6 +1,8 @@
-seg: opencv-python-headless and pinned build backends. Apply from the repository
-root with deploy/patches/apply-pyproject-patches.sh (git apply, then `uv lock`; only the opencv entries
-and a [manifest] table change in uv.lock: opencv-python goes, opencv-python-headless comes).
+seg: opencv-python-headless and a pinned project build backend. Apply from the
+repository root with deploy/patches/apply-pyproject-patches.sh (git apply, then `uv lock`; only the
+opencv entries and a [manifest] table change in uv.lock: opencv-python goes, opencv-python-headless
+comes). The hunks carry one line of context, not three, so that an edit next to them (the text of the
+`slow` marker moved the context once, and the patch stopped applying) does not break them.
 
 opencv: opencv-python's cv2 needs libGL.so.1, libglib2.0-0, libgthread, libX11 and libxcb at import
 time (checked with ldd on the locked wheel); the headless wheel of the same version needs only libc, libm,
@@ -11,36 +13,33 @@ headless wheel at the locked version (4.11.0.86) and [tool.uv] exclude-dependenc
 opencv-python from the resolution altogether (it is not in uv.lock). The first version of this patch used
 an override with a marker that never matches (the trick services/cls uses for ipyplot); that leaves an
 sdist-only opencv-python entry in the lock, and the next `uv lock` after any manifest change (a pin, a new
-dependency) failed with "Failed to download and build opencv-python==4.11.0.86" (its build requires
-setuptools==59.2.0, which conflicts with the pinned setuptools 84.0.0). exclude-dependencies has no such
-entry: a re-lock after a changed pin works (checked in a scratch copy).
+dependency) failed with "Failed to download and build opencv-python==4.11.0.86". exclude-dependencies has
+no such entry: a re-lock after a changed pin works (checked in a scratch copy).
+decimer-segmentation 1.6.0 (the release; before it, git commit 6914cac) still declares opencv-python, so
+the exclusion is still needed.
 Without this patch, build the image with --build-arg OPENCV_GUI_LIBS=1 instead.
 
-build pins: the git dependencies are built from source during `uv sync`, in an isolated build
-environment whose backend uv resolves fresh from PyPI. That code runs at install time with network
-access, so an unpinned backend is a supply-chain hole and makes the image non-reproducible, although
-uv.lock pins every runtime package. [tool.uv] build-constraint-dependencies pins the backend and its
-own dependencies (and uv-build, the projects' own backend, to the version CI uses). Tried: the
-constraints are honored when the git dependency is built (uv -v shows setuptools>=84.0.0,<84.0.0+).
-Prebuilding and hashing wheels was the alternative; it would take the git dependencies out of
-uv.lock, which is worse. uv.lock records the constraints in its [manifest], so `uv sync --locked`
-needs the lock refreshed after the patch: apply-pyproject-patches.sh does it.
+build pin: `uv sync --no-editable` builds the project and its path dependency (services/common) from
+source during the install, in an isolated build environment whose backend uv resolves fresh from PyPI.
+That code runs at install time with network access, so an unpinned backend makes the image
+non-reproducible, although uv.lock pins every runtime package. [tool.uv] build-constraint-dependencies
+pins uv-build, the projects' own backend, to the version CI uses (0.13.5). uv.lock records the
+constraints in its [manifest], so `uv sync --locked` needs the lock refreshed after the patch:
+apply-pyproject-patches.sh does it. Until the P2-02b re-pin this list also pinned setuptools 84.0.0 for
+the git build of decimer-segmentation (a setup.py project, built from source at install time); 1.6.0 is
+a wheel from PyPI, so no third-party backend runs for seg any more and that pin is gone. cls and chem
+still have git dependencies and still pin theirs (cls-pyproject.patch, chem-pyproject.patch).
 
 --- a/services/seg/pyproject.toml
 +++ b/services/seg/pyproject.toml
-@@ -11,7 +11,7 @@
-     "decimer-segmentation",
-     "decimer-service",
+@@ -13,3 +13,3 @@
      "numpy==1.26.3",
 -    "opencv-python>=4.11.0.86",
 +    "opencv-python-headless==4.11.0.86",
      "protobuf==4.25.1",
-     "tensorflow==2.15.1",
+@@ -48,2 +48,19 @@
  ]
-@@ -47,6 +47,25 @@
-     "slow: runs the real Mask R-CNN on rendered pages of the golden PDF (CPU, about 35 s); select with -m slow",
- ]
- 
++
 +[tool.uv]
 +# The service imports cv2 but never opens a window. opencv-python also needs libGL.so.1 and
 +# libglib2.0-0 at import time; the headless wheel does not, so the runtime image needs no apt
@@ -48,18 +47,13 @@ needs the lock refreshed after the patch: apply-pyproject-patches.sh does it.
 +# (not locked at all), and the headless wheel, pinned to the version that was locked before (the
 +# two wheels share a version scheme), is a direct dependency instead. Not an override with a marker
 +# that never matches: that leaves an sdist-only opencv-python entry in uv.lock, which every later
-+# `uv lock` has to build to read its metadata, and that build fails against the pinned setuptools.
++# `uv lock` has to build to read its metadata.
 +exclude-dependencies = ["opencv-python"]
-+# Build backends are pinned too (deploy/patches). decimer-segmentation is built from source at
-+# install time (setup.py, setuptools), in an isolated environment. Without this uv takes
-+# the newest setuptools on PyPI that day and runs it (wheel is not pinned: a setup.py-only
-+# project never requests it under the fallback backend). Versions: the newest releases
-+# that were two weeks old on 2026-10-22. uv-build is the project's own backend (CI uses 0.13.5).
++# The project's own build backend is pinned too (deploy/patches): `uv sync --no-editable` builds
++# decimer-seg and decimer-service from source in an isolated environment, and without this uv takes
++# the newest uv-build that [build-system] allows. CI uses 0.13.5. decimer-segmentation itself is a
++# wheel from PyPI (1.6.0), so no third-party build backend runs at install time.
 +build-constraint-dependencies = [
-+    "setuptools==84.0.0",
 +    "uv-build==0.13.5",
 +]
-+
- [tool.uv.sources]
- decimer-segmentation = { git = "https://github.com/Kohulan/DECIMER-Image-Segmentation", rev = "6914cacea266d59e4dcbdae549b0ffff39fcc604" }
- decimer-service = { path = "../common", editable = true }
+ 

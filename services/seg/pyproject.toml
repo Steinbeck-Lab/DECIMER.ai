@@ -8,7 +8,7 @@ authors = [
 ]
 requires-python = "==3.11.*"
 dependencies = [
-    "decimer-segmentation",
+    "decimer-segmentation==1.6.0",
     "decimer-service",
     "numpy==1.26.3",
     "opencv-python-headless==4.11.0.86",
@@ -54,20 +54,17 @@ markers = [
 # (not locked at all), and the headless wheel, pinned to the version that was locked before (the
 # two wheels share a version scheme), is a direct dependency instead. Not an override with a marker
 # that never matches: that leaves an sdist-only opencv-python entry in uv.lock, which every later
-# `uv lock` has to build to read its metadata, and that build fails against the pinned setuptools.
+# `uv lock` has to build to read its metadata.
 exclude-dependencies = ["opencv-python"]
-# Build backends are pinned too (deploy/patches). decimer-segmentation is built from source at
-# install time (setup.py, setuptools), in an isolated environment. Without this uv takes
-# the newest setuptools on PyPI that day and runs it (wheel is not pinned: a setup.py-only
-# project never requests it under the fallback backend). Versions: the newest releases
-# that were two weeks old on 2026-10-22. uv-build is the project's own backend (CI uses 0.13.5).
+# The project's own build backend is pinned too (deploy/patches): `uv sync --no-editable` builds
+# decimer-seg and decimer-service from source in an isolated environment, and without this uv takes
+# the newest uv-build that [build-system] allows. CI uses 0.13.5. decimer-segmentation itself is a
+# wheel from PyPI (1.6.0), so no third-party build backend runs at install time.
 build-constraint-dependencies = [
-    "setuptools==84.0.0",
     "uv-build==0.13.5",
 ]
 
 [tool.uv.sources]
-decimer-segmentation = { git = "https://github.com/Kohulan/DECIMER-Image-Segmentation", rev = "6914cacea266d59e4dcbdae549b0ffff39fcc604" }
 decimer-service = { path = "../common", editable = true }
 
 [dependency-groups]

@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import time
+import types
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -514,8 +515,42 @@ def test_missing_weights_never_import_tensorflow_or_the_library(tmp_path: Path) 
     assert str(weights_in(tmp_path)) in done.stdout
 
 
+def test_the_library_loads_its_model_at_start_up_and_segments_with_bboxes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # decimer-segmentation 1.6.0 does not load the model when it is imported: get_model() does,
+    # and segment_chemical_structures() would do it on the first page. The service calls it itself,
+    # so that the first request does not wait for the load.
+    calls: list[tuple[str, dict[str, object]]] = []
+    page = np.zeros((4, 4, 3), dtype=np.uint8)
+
+    def get_model() -> None:
+        calls.append(("get_model", {}))
+
+    def segment_chemical_structures(image: object, **kwargs: object) -> object:
+        calls.append(("segment", kwargs))
+        return [image], [(0, 0, 1, 1)]
+
+    library = types.ModuleType("decimer_segmentation")
+    library.get_model = get_model  # type: ignore[attr-defined]
+    library.segment_chemical_structures = segment_chemical_structures  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "decimer_segmentation", library)
+
+    segment = seg_model._real_segment_fn()
+
+    assert calls == [("get_model", {})]  # loaded before any page, and once
+    segments, bboxes = segment(page)
+    assert segments == [page]
+    assert list(bboxes) == [(0, 0, 1, 1)]
+    assert calls[1:] == [
+        ("segment", {"expand": True, "visualization": False, "return_bboxes": True})
+    ]
+
+
 def test_whatever_the_library_prints_while_loading_stays_off_stdout(tmp_path: Path) -> None:
-    # decimer_segmentation prints the weights directory when it is imported.
+    # decimer_segmentation before 1.6.0 printed the weights directory when it was imported; this
+    # stand-in prints at import and in get_model(), the two places a library can print while
+    # loading.
     (tmp_path / "lib").mkdir()
     (tmp_path / "lib" / "decimer_segmentation.py").write_text(
         "print('/some/weights/dir')\n"

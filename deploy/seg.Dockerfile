@@ -4,17 +4,17 @@
 # Fetch the weights first (deploy/weights/fetch.sh seg), then:
 #   docker build -f deploy/seg.Dockerfile -t localhost/decimer-next/seg:local .
 #
-# The build needs the network (PyPI, GitHub for the pinned decimer-segmentation commit); the image
-# needs none: the weights are baked in and checked against deploy/weights/SHA256SUMS (`verify.sh
-# --strict`: the directory must be exactly the listed files), so a corrupted, swapped or extra file
-# fails the build. This file only reads deploy/weights/seg/ (see seg.Dockerfile.dockerignore for
-# everything else that reaches the build).
+# The build needs the network (PyPI); the image needs none: the weights are baked in and checked
+# against deploy/weights/SHA256SUMS (`verify.sh --strict`: the directory must be exactly the listed
+# files), so a corrupted, swapped or extra file fails the build. This file only reads
+# deploy/weights/seg/ (see seg.Dockerfile.dockerignore for everything else that reaches the build).
 #
 # The pyproject patch (deploy/patches/apply-pyproject-patches.sh) is applied to services/seg in the
-# repository: it switches to opencv-python-headless and pins the build backend (setuptools) of the
-# decimer-segmentation git dependency. A checkout without it can still build with the legacy fallback
-# --build-arg OPENCV_GUI_LIBS=1, but then runs an unpinned backend. For release builds see the
-# --no-cache note in deploy/README.md.
+# repository: it switches to opencv-python-headless and pins the project's own build backend
+# (uv-build). A checkout without it can still build with the legacy fallback --build-arg
+# OPENCV_GUI_LIBS=1, but then runs an unpinned backend. decimer-segmentation is a wheel from PyPI
+# (1.6.0), pinned in services/seg/uv.lock, and the build fails if PyMuPDF (AGPL, docs/DECISIONS.md D10)
+# is installed. For release builds see the --no-cache note in deploy/README.md.
 #
 # Base image: python 3.11 on Debian 13 (trixie). The wheels are manylinux, so the distribution only
 # matters for its support window: bookworm is in LTS since 2026-06, trixie has regular security
@@ -45,11 +45,6 @@ RUN printf '%s\n' 'Model weights baked into the image at build time (deploy/weig
 # ---- builder: the virtualenv, from services/seg/uv.lock ----------------------------------------
 FROM ${PYTHON_IMAGE} AS builder
 COPY --from=uv /uv /uvx /bin/
-# git: decimer-segmentation is a git dependency. Builder stage only; nothing from it ships.
-# hadolint ignore=DL3008
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends git \
-    && rm -rf /var/lib/apt/lists/*
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never \
@@ -115,14 +110,17 @@ ENV PATH=/opt/venv/bin:$PATH \
     PORT=8001
 
 # Smoke test at build time, as the service user: the venv runs on this base (no missing system
-# library), and numpy, TensorFlow, cv2, pystow and the service's production wiring (decimer_seg.app)
-# import. weights_file() is the path the service's own start-up guard checks, resolved by pystow from
-# PYSTOW_HOME: the file must be there (this exercises pystow on the read-only /models, README.md
-# included). No model is loaded, nothing needs the network. decimer_seg.app comes first: importing
-# the package sets the OpenCV pixel limit before cv2 is imported. The last test: nothing under /models
-# may be writable for the service user.
+# library), and numpy, TensorFlow, cv2, pystow, decimer_segmentation and the service's production
+# wiring (decimer_seg.app) import. weights_file() is the path the service's own start-up guard checks,
+# resolved by pystow from PYSTOW_HOME: the file must be there (this exercises pystow on the read-only
+# /models, README.md included). No model is loaded (decimer_segmentation 1.6.0 loads it in
+# get_model(), not on import), nothing needs the network. decimer_seg.app comes first: importing the
+# package sets the OpenCV pixel limit before cv2 is imported. PyMuPDF is AGPL: it must not be
+# in the image, not even unused (the pdf extra of decimer-segmentation, or a dev dependency that
+# `--no-dev` should have left out). The last test: nothing under /models may be writable for the
+# service user.
 USER 10001:10001
-RUN python -c "import decimer_seg.app, decimer_service, pystow, cv2, tensorflow as tf; from decimer_seg.model import weights_file; p = weights_file(); assert p.is_file(), p; print('tensorflow', tf.__version__, 'cv2', cv2.__version__, 'weights', p)" \
+RUN python -c "import importlib.util, decimer_seg.app, decimer_service, decimer_segmentation, pystow, cv2, tensorflow as tf; from decimer_seg.model import weights_file; p = weights_file(); assert p.is_file(), p; agpl = [m for m in ('pymupdf', 'fitz') if importlib.util.find_spec(m)]; assert not agpl, ('PyMuPDF (AGPL, D10) is in the image', agpl); print('tensorflow', tf.__version__, 'cv2', cv2.__version__, 'decimer-segmentation', decimer_segmentation.__version__, 'weights', p)" \
     && test -r /models/DECIMER-Segmentation_model/mask_rcnn_molecule.h5 \
     && test -r /models/README.md \
     && find /models -type f -exec head -c 1 {} + > /dev/null \
