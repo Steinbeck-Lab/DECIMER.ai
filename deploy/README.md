@@ -44,8 +44,9 @@ are never pulled (`pull_policy: never`): there is no registry namespace somebody
   Dockerfiles and `compose.yaml`. **Trixie, not bookworm:** the wheels are manylinux, so the distribution
   only matters for its support window; bookworm went to LTS in June 2026, trixie has regular security
   updates until 2028. Update tag and digest together.
-* **Multi-stage, non-root, no build tools in the final stage.** The builder has `git` (three services
-  have git dependencies) and `uv`; the runtime stage has neither. Services run as uid 10001; the edge
+* **Multi-stage, non-root, no build tools in the final stage.** The builders of cls and chem have `git`
+  (their dependencies are pinned git commits; seg's decimer-segmentation has been a PyPI wheel since
+  P2-02b) and `uv`; the runtime stage has neither. Services run as uid 10001; the edge
   as nginx (101). `uv sync --locked --no-dev --no-editable` from each project's `uv.lock`;
   `--no-editable` matters because `decimer-service` is a path dependency (`../common`) and the source
   tree is not in the final image (checked: it installs as a real package).
@@ -53,21 +54,26 @@ are never pulled (`pull_policy: never`): there is no registry namespace somebody
   and runs `uv lock` (checked in a scratch copy: only the opencv entries and a `[manifest]` table change in
   the locks; chem installs with it, and the build hook downloads nothing). Services are not edited by this
   task, hence patches.
+  * **No PyMuPDF in any image.** `apply-pyproject-patches.sh` fails if `uv export --locked --no-dev`
+    of any service lists `pymupdf` (it is AGPL; seg has it in its dev group, for the tests), and
+    `seg.Dockerfile`'s smoke test fails the build if `pymupdf` is importable in the image.
   * **opencv-python-headless (seg, ocsr).** `opencv-python`'s `cv2` needs libGL, glib, X11 and xcb at
     import time (checked with `ldd`); the headless wheel of the same version needs only libc, libm, libgcc
     and libstdc++. With it the runtime images contain no apt packages, no mesa or X11 libraries, and the
     wheel is 13 MB smaller. cls has no OpenCV. Until the patch is applied, build with `OPENCV_GUI_LIBS=1`
     (in `deploy/.env`, or `--build-arg`): the Dockerfiles then install `libgl1` and `libglib2.0-0`. Either
     way the build imports `cv2` and TensorFlow as a smoke test.
-  * **Pinned build backends (seg, cls, chem): `[tool.uv] build-constraint-dependencies`.** The git
-    dependencies (decimer-segmentation and decimer-image-classifier with setuptools, Orthonym with
-    hatchling and a build hook) are built from source during `uv sync`, in an isolated environment whose
-    backend uv resolves fresh from PyPI. That code runs at install time, with network access, and
-    `uv.lock` does not pin it. The constraints pin setuptools 84.0.0 (seg, cls; `wheel` is not pinned,
-    because a setup.py-only project never requests it under the fallback backend), hatchling 1.32.4 and
-    its dependencies (chem), and `uv-build` 0.13.5 (the newest releases that were two weeks old on
-    2026-10-22). **Release builds must pass `--no-cache`** (next to the build commands in step 4).
-    Checked: uv honors them when it builds the git dependency. The alternative, prebuilding the three
+  * **Pinned build backends (cls, chem; seg only `uv-build`): `[tool.uv] build-constraint-dependencies`.**
+    The git dependencies (decimer-image-classifier with setuptools, Orthonym with hatchling and a build
+    hook) are built from source during `uv sync`, in an isolated environment whose backend uv resolves
+    fresh from PyPI. That code runs at install time, with network access, and `uv.lock` does not pin it.
+    The constraints pin setuptools 84.0.0 (cls; `wheel` is not pinned, because a setup.py-only project
+    never requests it under the fallback backend), hatchling 1.32.4 and its dependencies (chem), and
+    `uv-build` 0.13.5, the projects' own backend (all three; the newest releases that were two weeks old
+    on 2026-10-22). seg had a setuptools pin too, for its git dependency decimer-segmentation; since the
+    re-pin to the 1.6.0 wheel on PyPI no third-party backend runs for seg and the pin is gone.
+    **Release builds must pass `--no-cache`** (next to the build commands in step 4).
+    Checked: uv honors them when it builds the git dependency. The alternative, prebuilding the two
     wheels and hashing them, would take them out of `uv.lock`; the constraints keep the lock the single
     source and are a few lines each. Without the patches the builds still work, with an unpinned backend.
     For chem the Dockerfile also exports `ORTHONYM_SKIP_JAR_PREFETCH=1` (Orthonym's build hook would
@@ -734,13 +740,14 @@ docker build -f deploy/web.Dockerfile  -t localhost/decimer-next/edge:local .   
 ```
 
 **Release builds pass `--no-cache`** (`docker build --no-cache ...`, or `$DC build --no-cache <service>`), so that
-the pinned setuptools really builds the git wheels (decimer-segmentation, decimer-image-classifier, Orthonym).
+the pinned setuptools and hatchling really build the git wheels (decimer-image-classifier, Orthonym).
 The `uv sync` step keeps uv's cache in a BuildKit cache mount, and with a warm mount uv installs the wheel it
 built from the git dependency in an earlier build instead of building it again: a seg rebuild after `uv.lock`
-had changed printed no `Built decimer-segmentation` line, so a changed backend pin would not have been
-applied. With `--no-cache` the mount starts empty (checked for seg and cls: every package is downloaded and
-`Built decimer-segmentation` / `Built decimer-image-classifier` appears again; 62 s for seg, 52 s for cls on
-the VM). If a build must keep the cache, at least make uv rebuild decimer-segmentation.
+had changed (when decimer-segmentation was still a git dependency) printed no `Built decimer-segmentation`
+line, so a changed backend pin would not have been applied. With `--no-cache` the mount starts empty (checked
+for seg and cls at that time: every package is downloaded and `Built decimer-segmentation` /
+`Built decimer-image-classifier` appears again; 62 s for seg, 52 s for cls on the VM). If a build must keep
+the cache, at least make uv rebuild decimer-image-classifier and Orthonym.
 
 The builds need the network (PyPI, GitHub, npm, Docker Hub for the base images); the images do not. Tag releases
 (`DECIMER_TAG=2026-11-03` in `.env`, or `-t localhost/decimer-next/seg:2026-11-03`) so that the previous images stay.
