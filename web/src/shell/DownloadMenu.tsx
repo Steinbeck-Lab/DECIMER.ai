@@ -2,7 +2,7 @@ import { Menu } from '@mantine/core';
 import type { ExportFormat } from '../api/contract';
 import { strings } from '../strings';
 import { useAppState, useController } from '../state/react';
-import { IconChevronDown, IconDownload } from '../ui/icons';
+import { IconArrowDown, PillIcon } from '../ui/icons';
 
 const ITEMS: { format: ExportFormat; label: string }[] = [
   { format: 'zip', label: strings.results.downloadZip },
@@ -17,7 +17,15 @@ export function DownloadMenu({ placement }: { placement: 'header' | 'results' })
   const busy = useAppState().exporting;
 
   return (
-    <Menu position="bottom-end" shadow="md" radius="lg" width={300} withinPortal zIndex={500}>
+    <Menu
+      position="bottom-end"
+      shadow="md"
+      radius="lg"
+      width={300}
+      withinPortal
+      zIndex={500}
+      classNames={{ dropdown: 'dc-menu', item: 'dc-menu__item' }}
+    >
       <Menu.Target>
         <button
           type="button"
@@ -26,10 +34,11 @@ export function DownloadMenu({ placement }: { placement: 'header' | 'results' })
           aria-busy={busy}
           disabled={busy}
         >
-          <IconDownload size={18} />
           <span>{busy ? strings.results.downloading : strings.results.download}</span>
           <span className="dc-download__formats">{strings.results.downloadFormats}</span>
-          <IconChevronDown size={16} />
+          <PillIcon>
+            <IconArrowDown size={16} strokeWidth={1.8} />
+          </PillIcon>
         </button>
       </Menu.Target>
       <Menu.Dropdown aria-label={strings.results.downloadMenuLabel}>

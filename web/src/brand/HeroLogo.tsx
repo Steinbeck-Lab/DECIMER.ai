@@ -35,8 +35,8 @@ function Intro() {
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [loaded]);
-  // The GIF is 16:9 with the logo and the tagline in the middle band; the frame shows that band at the
-  // size of the static wordmark (see .dc-intro-frame).
+  // The GIF is 16:9 with the logo and the tagline in the middle band; the frame shows that band, and the static
+  // wordmark of a later visit is drawn to the GIF's last frame (see .dc-intro-frame and .dc-wordmark--hero in home.css).
   return (
     <div className="dc-intro-frame">
       <img

@@ -12,10 +12,12 @@ export function EmptyView() {
   const [intro] = useState(shouldPlayIntro);
   return (
     <main id="main" tabIndex={-1} className="dc-home">
-      <h1 className="dc-hero">
-        <HeroLogo intro={intro} />
-      </h1>
-      <p className={intro ? 'dc-sr' : 'dc-tagline'}>{strings.tagline}</p>
+      <div className="dc-hero-block" data-intro={intro}>
+        <h1 className="dc-hero">
+          <HeroLogo intro={intro} />
+        </h1>
+        <p className={intro ? 'dc-sr' : 'dc-tagline'}>{strings.tagline}</p>
+      </div>
       <UploadZone onFiles={(files) => void controller.submit(files)} problem={problem} />
     </main>
   );

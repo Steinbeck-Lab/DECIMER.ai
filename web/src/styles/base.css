@@ -1,9 +1,32 @@
-/* Journal Scheme: white ground, ink text, pastel state fills (tokens come from theme.ts as --dc-*). */
+/*
+ * The page, the browser surfaces we did not draw, and the porcelain pill. Tokens come from theme.ts as --dc-*.
+ * Flat surfaces only: volume comes from shadows (an inset highlight, an inset shade, a soft drop), never from a
+ * gradient. Light only.
+ */
 
 :root {
   color-scheme: light;
   --dc-gutter: 40px;
   --dc-ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Porcelain: highlight top-left, shade bottom-right, then the soft drop. */
+  --dc-porcelain-forest:
+    inset 1.5px 1.5px 3px rgb(255 255 255 / 0.28), inset -2px -2px 5px rgb(0 0 0 / 0.35), 0 2px 4px rgb(30 50 38 / 0.12),
+    0 12px 24px -10px rgb(30 50 38 / 0.35);
+  --dc-porcelain-forest-raised:
+    inset 1.5px 1.5px 3px rgb(255 255 255 / 0.34), inset -2px -2px 5px rgb(0 0 0 / 0.35), 0 3px 6px rgb(30 50 38 / 0.14),
+    0 16px 28px -10px rgb(30 50 38 / 0.42);
+  --dc-porcelain-forest-pressed:
+    inset 2px 2px 5px rgb(0 0 0 / 0.42), inset -1px -1px 2px rgb(255 255 255 / 0.14), 0 1px 2px rgb(30 50 38 / 0.18);
+  --dc-porcelain-egg:
+    inset 2px 2px 4px rgb(255 255 255 / 0.8), inset -2px -2px 5px rgb(120 90 20 / 0.14), 0 1px 2px rgb(30 50 38 / 0.1),
+    0 10px 20px -10px rgb(30 50 38 / 0.28);
+  --dc-porcelain-egg-raised:
+    inset 2px 2px 4px rgb(255 255 255 / 0.9), inset -2px -2px 5px rgb(120 90 20 / 0.16), 0 2px 4px rgb(30 50 38 / 0.12),
+    0 14px 24px -10px rgb(30 50 38 / 0.34);
+  --dc-porcelain-egg-pressed:
+    inset 2px 2px 5px rgb(120 90 20 / 0.24), inset -1px -1px 2px rgb(255 255 255 / 0.7), 0 1px 1px rgb(30 50 38 / 0.1);
+  --dc-porcelain-icon: inset 1.5px 1.5px 2px rgb(255 255 255 / 0.45), inset -2px -2px 4px rgb(0 0 0 / 0.22);
 }
 
 @media (max-width: 640px) {
@@ -20,39 +43,54 @@
 
 html {
   -webkit-text-size-adjust: 100%;
-  scrollbar-color: var(--dc-sky-line) transparent;
+  background: var(--dc-page);
+  /* The scrollbar belongs to the page too. */
+  scrollbar-color: var(--dc-line-strong) var(--dc-page);
+  accent-color: var(--dc-forest);
 }
 
 body {
   margin: 0;
-  background: var(--dc-white);
+  background: var(--dc-page);
   color: var(--dc-ink);
   font-family: var(--dc-font-ui);
   font-size: 1rem;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* Only the cuts that are loaded: a missing weight is not faked. */
+  font-synthesis-weight: none;
 }
 
 /* The parts of the browser we did not draw still belong to the palette. */
 ::selection {
-  background: var(--dc-lilac);
-  color: var(--dc-ink);
+  background: var(--dc-mustard);
+  color: var(--dc-forest);
 }
 
 input,
-textarea {
-  caret-color: var(--dc-ink);
+textarea,
+[contenteditable] {
+  caret-color: var(--dc-copper);
+}
+
+::placeholder {
+  color: var(--dc-muted);
+  opacity: 1;
 }
 
 a {
   color: var(--dc-link);
+  text-decoration-line: underline;
+  text-decoration-color: var(--dc-copper);
   text-decoration-thickness: 1px;
-  text-underline-offset: 0.18em;
+  text-underline-offset: 0.22em;
+  transition: color 0.15s ease;
 }
 
 a:hover {
   color: var(--dc-link-hover);
+  text-decoration-color: var(--dc-garnet);
   text-decoration-thickness: 2px;
 }
 
@@ -65,10 +103,11 @@ button {
   color: inherit;
 }
 
-/* Focus is always visible: an ink ring that reads on white and on every pastel. */
+/* Focus is always visible: a forest ring one gap away from the control, so it reads on the page, on a tile and on a
+   forest pill alike. */
 :focus-visible {
-  outline: 3px solid var(--dc-ink);
-  outline-offset: 2px;
+  outline: 3px solid var(--dc-forest);
+  outline-offset: 3px;
 }
 
 [tabindex='-1']:focus {
@@ -79,6 +118,13 @@ h1,
 h2,
 h3 {
   text-wrap: balance;
+}
+
+/* Our headings speak in the display face; Ketcher's own dialogs keep theirs. Zero specificity: a component's own
+   `font` wins over this default. */
+:where(.dc-app :is(h1, h2, h3):not(.Ketcher-root *)) {
+  font-family: var(--dc-font-display);
+  font-weight: 500;
 }
 
 .dc-sr {
@@ -98,19 +144,19 @@ h3 {
   top: 8px;
   left: 8px;
   z-index: 1000;
-  padding: 10px 16px;
+  padding: 10px 18px;
   border: 0;
-  border-radius: 22px;
-  background: var(--dc-ink);
-  color: var(--dc-white);
+  border-radius: 999px;
+  background: var(--dc-forest);
+  color: var(--dc-egg);
   font-weight: 600;
   transform: translateY(-200%);
 }
 
 .dc-skip:focus-visible {
   transform: none;
-  outline-color: var(--dc-white);
-  outline-offset: -4px;
+  outline-color: var(--dc-egg);
+  outline-offset: -5px;
 }
 
 .dc-contents {
@@ -136,68 +182,130 @@ h3 {
   flex-direction: column;
 }
 
-/* Pills: the one button shape. */
+/*
+ * The porcelain pill: the one button shape. Primary is velvet forest with egg-nog text; an optional round copper icon
+ * sits at the right end (.dc-pill__icon). Secondary (--quiet) is egg-nog porcelain.
+ */
 .dc-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: 44px;
-  padding: 0 20px;
+  gap: 12px;
+  min-height: 46px;
+  padding: 0 24px;
   border: 0;
-  border-radius: 22px;
-  font: 600 0.9375rem/1 var(--dc-font-ui);
+  border-radius: 999px;
+  background: var(--dc-forest);
+  color: var(--dc-egg);
+  font: 500 0.9375rem/1 var(--dc-font-ui);
   text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
+  box-shadow: var(--dc-porcelain-forest);
   transition:
+    transform 0.2s var(--dc-ease),
+    box-shadow 0.2s var(--dc-ease),
     background-color 0.15s ease,
     color 0.15s ease;
 }
 
-.dc-pill--small {
-  min-height: 36px;
-  padding: 0 14px;
-  font-size: 0.875rem;
+.dc-pill:has(> .dc-pill__icon) {
+  padding-right: 6px;
+}
+
+.dc-pill:hover:not(:disabled, [aria-disabled='true']) {
+  color: var(--dc-egg);
+  text-decoration: none;
+  transform: translateY(-1px);
+  box-shadow: var(--dc-porcelain-forest-raised);
+}
+
+.dc-pill:active:not(:disabled, [aria-disabled='true']) {
+  transform: translateY(0);
+  box-shadow: var(--dc-porcelain-forest-pressed);
+}
+
+.dc-pill:disabled,
+.dc-pill[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .dc-pill--ink {
-  background: var(--dc-ink);
-  color: var(--dc-white);
+  background: var(--dc-forest);
+  color: var(--dc-egg);
 }
 
-.dc-pill--ink:hover:not(:disabled) {
-  background: var(--dc-ink-2);
-  color: var(--dc-white);
+.dc-pill--small {
+  min-height: 38px;
+  padding: 0 18px;
+  gap: 10px;
+  font-size: 0.875rem;
 }
 
-.dc-pill--mint {
-  background: var(--dc-mint-button);
-  color: var(--dc-mint-button-ink);
+.dc-pill--small:has(> .dc-pill__icon) {
+  padding-right: 5px;
 }
 
-.dc-pill--mint:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--dc-mint-button) 82%, var(--dc-mint-button-ink));
-  color: var(--dc-mint-button-ink);
-}
-
-.dc-pill--mint[aria-pressed='true'] {
-  background: var(--dc-mint);
-}
-
+/* Secondary: egg-nog porcelain. */
 .dc-pill--quiet {
-  background: var(--dc-white);
-  color: var(--dc-ink);
-  box-shadow: inset 0 0 0 1px var(--dc-sky-line);
+  background: var(--dc-egg);
+  color: var(--dc-forest);
+  box-shadow: var(--dc-porcelain-egg);
 }
 
-.dc-pill--quiet:hover:not(:disabled) {
-  background: var(--dc-sky-hover);
+.dc-pill--quiet:hover:not(:disabled, [aria-disabled='true']) {
+  color: var(--dc-forest);
+  box-shadow: var(--dc-porcelain-egg-raised);
 }
 
-.dc-pill:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.dc-pill--quiet:active:not(:disabled, [aria-disabled='true']) {
+  background: var(--dc-egg-deep);
+  box-shadow: var(--dc-porcelain-egg-pressed);
+}
+
+/* "Mark as checked": the checked tone; pressed means it is checked. */
+.dc-pill--check {
+  background: var(--dc-checked-button);
+  color: var(--dc-checked-button-ink);
+  box-shadow: var(--dc-porcelain-egg);
+}
+
+.dc-pill--check:hover:not(:disabled, [aria-disabled='true']) {
+  color: var(--dc-checked-button-ink);
+  box-shadow: var(--dc-porcelain-egg-raised);
+}
+
+.dc-pill--check[aria-pressed='true'] {
+  background: var(--dc-checked);
+  box-shadow: var(--dc-porcelain-egg-pressed);
+}
+
+/* The round copper end of a pill: an arrow or a glyph drawn in SVG. */
+.dc-pill__icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--dc-copper);
+  color: var(--dc-tile);
+  box-shadow: var(--dc-porcelain-icon);
+}
+
+.dc-pill--small .dc-pill__icon {
+  width: 28px;
+  height: 28px;
+}
+
+.dc-pill__icon svg {
+  transition: transform 0.25s var(--dc-ease);
+}
+
+.dc-pill:hover:not(:disabled) .dc-pill__icon svg {
+  transform: translate(1px, -1px);
 }
 
 .dc-icon-button {
@@ -208,22 +316,31 @@ h3 {
   padding: 0;
   border: 0;
   border-radius: 50%;
-  background: var(--dc-white);
+  background: var(--dc-egg);
   color: var(--dc-ink);
   cursor: pointer;
-  box-shadow: inset 0 0 0 1px var(--dc-sky-line);
+  box-shadow: var(--dc-porcelain-egg);
+  transition:
+    box-shadow 0.2s var(--dc-ease),
+    background-color 0.15s ease;
 }
 
 .dc-icon-button:hover:not(:disabled) {
-  background: var(--dc-sky-hover);
+  box-shadow: var(--dc-porcelain-egg-raised);
+}
+
+.dc-icon-button:active:not(:disabled) {
+  background: var(--dc-egg-deep);
+  box-shadow: var(--dc-porcelain-egg-pressed);
 }
 
 .dc-icon-button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
-/* Notices: a pastel fill carries the state, never a coloured edge. */
+/* Notices: a flat tint carries the state, never a coloured edge. */
 .dc-callout {
   margin: 14px 0 0;
   padding: 12px 16px;
@@ -234,11 +351,11 @@ h3 {
 }
 
 .dc-callout[data-kind='warning'] {
-  background: var(--dc-butter);
+  background: var(--dc-review);
 }
 
 .dc-callout[data-kind='problem'] {
-  background: var(--dc-peach);
+  background: var(--dc-not-sure);
 }
 
 @media (prefers-reduced-motion: reduce) {

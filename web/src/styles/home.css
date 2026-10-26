@@ -1,4 +1,4 @@
-/* Empty, working, failed and "no structures": one centred column, the same place every time. */
+/* The empty screen (logo, one drop pill inside the inspection frame), then the working, failed and "no structures" screens. */
 
 .dc-body {
   position: relative;
@@ -9,106 +9,541 @@
 }
 
 .dc-home {
+  /* No z-index here: that would make a stacking context, and the GIF's multiply blend needs the page behind it. */
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: clamp(8px, 4vh, 48px) var(--dc-gutter) 40px;
+  justify-content: center;
+  gap: clamp(40px, 7vh, 64px);
+  padding: 32px var(--dc-gutter) 24px;
   text-align: center;
+  /* The page guides run past the frame; they stop at the window's edge, never scroll it. */
+  overflow-x: clip;
 }
 
+/*
+ * The logo. At full size one 640 by 150 box holds either the first-visit GIF or the static wordmark and the tagline,
+ * so the two are the same size in the same place. Everything is a share of --w, the width the GIF is drawn at (it is
+ * 1920 by 1080; its last frame has the logo 60.4% of its width, centred, and the tagline under it). The static
+ * tagline is text in the flow, so on a narrow screen it can take two lines without touching what is below it.
+ */
+.dc-hero-block {
+  --w: min(640px, 124vw);
+  /* The tagline's line height, and so where its middle sits (22% of --w down, as in the GIF). */
+  --tag-lh: max(16px, calc(var(--w) * 0.03125));
+  position: relative;
+  width: min(640px, 100%);
+}
+
+/* The wordmark's box: the logo's top margin and its height. */
 .dc-hero {
+  position: relative;
+  height: calc(var(--w) * 0.1895);
   margin: 0;
   line-height: 0;
 }
 
-.dc-wordmark--hero {
+/* The GIF's box also holds the tagline it carries (the text is for assistive technology only while it plays). */
+.dc-hero-block[data-intro='true'] .dc-hero {
+  height: calc(var(--w) * 0.2344);
+}
+
+.dc-intro-frame {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* The GIF's white sits on the egg-nog page: multiply keeps its black and drops its white. */
+.dc-intro {
   display: block;
-  width: min(440px, 78vw);
+  flex: none;
+  width: var(--w);
+  max-width: none;
   height: auto;
+  margin-top: calc(var(--w) * -0.1656);
+  mix-blend-mode: multiply;
+}
+
+.dc-wordmark--hero {
+  position: absolute;
+  top: calc(var(--w) * 0.0334);
+  left: 50%;
+  display: block;
+  width: calc(var(--w) * 0.6163);
+  max-width: none;
+  height: auto;
+  transform: translateX(-50%);
+  mix-blend-mode: multiply;
 }
 
 .dc-tagline {
-  margin: 16px 0 32px;
-  max-width: 60ch;
-  color: var(--dc-muted);
-  font-size: 1.1875rem;
+  max-width: 100%;
+  margin: calc(var(--w) * 0.0303 - var(--tag-lh) / 2) auto 0;
+  color: var(--dc-ink);
+  font: 500 max(12px, calc(var(--w) * 0.0197)) / var(--tag-lh) var(--dc-font-ui);
+  letter-spacing: 0.01em;
   text-wrap: balance;
 }
 
+/* The drop zone: the pill, and around it the inspection frame (UploadZone.tsx). */
 .dc-upload {
-  width: min(720px, 100%);
+  width: min(774px, 100%);
   display: flex;
   flex-direction: column;
   align-items: stretch;
 }
 
 .dc-drop {
+  position: relative;
+  /* The frame is 7 px out from the pill. */
+  padding: 7px;
+}
+
+.dc-drop__pill {
+  position: relative;
+  z-index: 2;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 32px 28px 26px;
-  border-radius: 28px;
-  background: var(--dc-sky);
-  transition: background-color 0.18s ease;
+  justify-content: space-between;
+  gap: 24px;
+  height: 88px;
+  padding: 0 12px 0 40px;
+  border-radius: 999px;
+  background: var(--dc-tile);
+  text-align: left;
+  box-shadow:
+    inset 2px 2px 4px rgb(255 255 255 / 0.9),
+    inset -3px -3px 8px rgb(118 41 8 / 0.07),
+    0 1px 2px rgb(30 50 38 / 0.1),
+    0 18px 40px -12px rgb(30 50 38 / 0.24);
+  transition:
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
-.dc-drop[data-active='true'] {
-  background: var(--dc-sky-deep);
-  box-shadow: inset 0 0 0 2px var(--dc-ink);
-}
-
-.dc-drop__icon {
-  color: var(--dc-ink);
+.dc-drop__text {
+  min-width: 0;
 }
 
 .dc-drop__title {
-  margin: 4px 0 0;
-  font-size: 1.5rem;
-  font-weight: 700;
-  line-height: 1.2;
+  margin: 0;
+  font: 400 1.25rem/1.2 var(--dc-font-display);
+  letter-spacing: -0.01em;
 }
 
 .dc-drop__hint {
-  margin: 0;
-  max-width: 44ch;
-  color: var(--dc-ink-2);
-  text-wrap: balance;
+  margin: 2px 0 0;
+  color: var(--dc-muted);
+  font: 400 0.75rem/1.5 var(--dc-font-mono);
 }
 
 .dc-drop__button {
-  margin-top: 10px;
-  min-height: 48px;
-  padding-inline: 28px;
+  flex: none;
+  min-height: 52px;
+  gap: 16px;
+  padding-left: 26px;
   font-size: 1rem;
 }
 
-.dc-drop__limits {
-  margin: 14px 0 0;
-  max-width: 52ch;
-  color: var(--dc-muted);
-  font-size: 0.875rem;
-  text-wrap: balance;
+.dc-drop__button:has(> .dc-pill__icon) {
+  padding-right: 7px;
+}
+
+.dc-drop__button .dc-pill__icon {
+  width: 38px;
+  height: 38px;
+}
+
+/* A file is being dragged over the zone: the frame turns garnet and the pill takes the deeper egg nog. */
+.dc-drop[data-active='true'] .dc-drop__pill {
+  background: var(--dc-egg-deep);
+  box-shadow:
+    inset 2px 2px 4px rgb(255 255 255 / 0.7),
+    inset -3px -3px 8px rgb(118 41 8 / 0.12),
+    0 0 0 5px rgb(194 126 53 / 0.3),
+    0 18px 40px -12px rgb(30 50 38 / 0.3);
+}
+
+/* The inspection frame. Every part is decoration; the animations draw it in about a second: guides and
+   dimension lines first, then the frame, its handles and the labels. */
+.dc-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.dc-frame span {
+  position: absolute;
+}
+
+.dc-frame__line {
+  background: var(--dc-copper);
+  transition: background-color 0.2s ease;
+}
+
+.dc-frame__line--top,
+.dc-frame__line--bottom {
+  right: 0;
+  left: 0;
+  height: 1px;
+  transform-origin: left;
+  animation: dc-draw-x 0.6s cubic-bezier(0.23, 1, 0.32, 1) 0s both;
+}
+
+.dc-frame__line--top {
+  top: 0;
+}
+
+.dc-frame__line--bottom {
+  bottom: 0;
+  transform-origin: right;
+}
+
+.dc-frame__line--left,
+.dc-frame__line--right {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  animation: dc-draw-y 0.45s cubic-bezier(0.23, 1, 0.32, 1) 0.25s both;
+}
+
+.dc-frame__line--left {
+  left: 0;
+  transform-origin: bottom;
+}
+
+.dc-frame__line--right {
+  right: 0;
+  transform-origin: top;
+}
+
+.dc-frame__handle {
+  width: 7px;
+  height: 7px;
+  background: var(--dc-copper);
+  transition: background-color 0.2s ease;
+  animation: dc-pop 0.35s cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.dc-frame__handle--tl {
+  top: -3px;
+  left: -3px;
+  animation-delay: 0.45s;
+}
+
+.dc-frame__handle--tr {
+  top: -3px;
+  right: -3px;
+  animation-delay: 0.5s;
+}
+
+.dc-frame__handle--bl {
+  bottom: -3px;
+  left: -3px;
+  animation-delay: 0.55s;
+}
+
+.dc-frame__handle--br {
+  right: -3px;
+  bottom: -3px;
+  animation-delay: 0.6s;
+}
+
+.dc-frame__label {
+  top: -30px;
+  left: 0;
+  padding: 3px 8px;
+  border-radius: 3px;
+  background: var(--dc-copper);
+  color: var(--dc-on-copper);
+  font: 400 11px/1.5 var(--dc-font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transition: background-color 0.2s ease;
+  animation: dc-slide 0.4s cubic-bezier(0.23, 1, 0.32, 1) 0.5s both;
+}
+
+/* Page guides along the four edges, each stopping where it likes. */
+.dc-frame__guide {
+  background: color-mix(in srgb, var(--dc-copper) 24%, transparent);
+  animation: dc-fade 0.8s ease 0.2s both;
+}
+
+.dc-frame__guide--top {
+  top: 0;
+  right: -330px;
+  left: -190px;
+  height: 1px;
+}
+
+.dc-frame__guide--bottom {
+  right: -140px;
+  bottom: 0;
+  left: -270px;
+  height: 1px;
+}
+
+.dc-frame__guide--left {
+  top: -230px;
+  bottom: -110px;
+  left: 0;
+  width: 1px;
+}
+
+.dc-frame__guide--right {
+  top: -120px;
+  right: 0;
+  bottom: -250px;
+  width: 1px;
+}
+
+/* Dimension lines: the width with the accepted formats, the height with the size limit. */
+.dc-frame__dim {
+  background: var(--dc-copper);
+}
+
+.dc-frame__dim::before,
+.dc-frame__dim::after {
+  content: '';
+  position: absolute;
+  background: var(--dc-copper);
+}
+
+.dc-frame__dim--width {
+  right: 0;
+  bottom: -30px;
+  left: 0;
+  height: 1px;
+  transform-origin: center;
+  animation: dc-draw-x 0.7s cubic-bezier(0.23, 1, 0.32, 1) 0.3s both;
+}
+
+.dc-frame__dim--width::before,
+.dc-frame__dim--width::after {
+  top: -4px;
+  width: 1px;
+  height: 9px;
+}
+
+.dc-frame__dim--width::before {
+  left: 0;
+}
+
+.dc-frame__dim--width::after {
+  right: 0;
+}
+
+.dc-frame__dim--height {
+  top: 0;
+  right: -30px;
+  bottom: 0;
+  width: 1px;
+  transform-origin: center;
+  animation: dc-draw-y 0.6s cubic-bezier(0.23, 1, 0.32, 1) 0.35s both;
+}
+
+.dc-frame__dim--height::before,
+.dc-frame__dim--height::after {
+  left: -4px;
+  width: 9px;
+  height: 1px;
+}
+
+.dc-frame__dim--height::before {
+  top: 0;
+}
+
+.dc-frame__dim--height::after {
+  bottom: 0;
+}
+
+.dc-frame__caption {
+  color: var(--dc-copper-ink);
+  font: 400 10px/1.5 var(--dc-font-mono);
+  white-space: nowrap;
+  animation: dc-fade 0.5s ease 0.7s both;
+}
+
+.dc-frame__caption--width {
+  bottom: -48px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.dc-frame__caption--height {
+  top: 50%;
+  right: -104px;
+  transform: translateY(-50%);
+}
+
+/* Hover, keyboard focus and a drag all tint the frame garnet. */
+.dc-drop:hover .dc-frame__line,
+.dc-drop:hover .dc-frame__handle,
+.dc-drop:hover .dc-frame__label,
+.dc-drop:focus-within .dc-frame__line,
+.dc-drop:focus-within .dc-frame__handle,
+.dc-drop:focus-within .dc-frame__label,
+.dc-drop[data-active='true'] .dc-frame__line,
+.dc-drop[data-active='true'] .dc-frame__handle,
+.dc-drop[data-active='true'] .dc-frame__label {
+  background: var(--dc-garnet);
+}
+
+.dc-drop:hover .dc-frame__label,
+.dc-drop:focus-within .dc-frame__label,
+.dc-drop[data-active='true'] .dc-frame__label {
+  color: var(--dc-egg);
+}
+
+.dc-drop[data-active='true'] .dc-frame__line--top,
+.dc-drop[data-active='true'] .dc-frame__line--bottom {
+  height: 2px;
+}
+
+.dc-drop[data-active='true'] .dc-frame__line--left,
+.dc-drop[data-active='true'] .dc-frame__line--right {
+  width: 2px;
+}
+
+@keyframes dc-draw-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes dc-draw-y {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes dc-pop {
+  from {
+    opacity: 0;
+    transform: scale(0);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes dc-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dc-slide {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Reduced motion: the frame is simply there. */
+@media (prefers-reduced-motion: reduce) {
+  .dc-frame * {
+    animation: none !important;
+  }
 }
 
 .dc-upload .dc-callout {
+  margin-top: 56px;
   text-align: left;
 }
 
-.dc-upload__privacy {
-  margin: 14px 0 0;
+.dc-upload__quiet {
+  margin: 64px 0 0;
   color: var(--dc-muted);
-  font-size: 0.875rem;
+  font: 400 0.75rem/1.6 var(--dc-font-mono);
+  letter-spacing: 0.02em;
 }
 
-@media (max-width: 640px) {
-  .dc-drop {
-    padding: 28px 18px 22px;
-    border-radius: 22px;
+.dc-callout + .dc-upload__quiet {
+  margin-top: 16px;
+}
+
+/* Less room beside the zone: the guides shorten, then the height dimension goes. */
+@media (max-width: 1180px) {
+  .dc-frame__guide--top {
+    right: -120px;
+    left: -90px;
   }
-  .dc-drop__title {
-    font-size: 1.3125rem;
+  .dc-frame__guide--bottom {
+    right: -60px;
+    left: -110px;
+  }
+}
+
+@media (max-width: 1040px) {
+  .dc-frame__dim--height,
+  .dc-frame__caption--height,
+  .dc-frame__guide--left,
+  .dc-frame__guide--right {
+    display: none;
+  }
+  .dc-frame__guide--top {
+    right: -30px;
+    left: -30px;
+  }
+  .dc-frame__guide--bottom {
+    right: -30px;
+    left: -30px;
+  }
+}
+
+/* A phone: the frame, its handles and its label; the guides and dimension lines are left out, the pill stacks. */
+@media (max-width: 640px) {
+  /* The ribbons hang 126 px down at this size: the logo starts below them, on a short screen too. */
+  .dc-home {
+    gap: 48px;
+    padding-top: 148px;
+  }
+  .dc-frame__guide,
+  .dc-frame__dim,
+  .dc-frame__caption {
+    display: none;
+  }
+  .dc-drop__pill {
+    flex-direction: column;
+    justify-content: center;
+    gap: 14px;
+    height: auto;
+    padding: 22px 14px 14px;
+    border-radius: 34px;
+    text-align: center;
+  }
+  .dc-drop__button {
+    align-self: stretch;
+    justify-content: space-between;
+  }
+  .dc-upload__quiet {
+    margin-top: 28px;
+    text-wrap: balance;
+  }
+  .dc-upload .dc-callout {
+    margin-top: 24px;
   }
 }
 
@@ -136,7 +571,7 @@
   max-width: 100%;
   padding: 4px 14px 4px 4px;
   border-radius: 22px;
-  background: var(--dc-sky);
+  background: var(--dc-egg);
   font-size: 0.875rem;
 }
 
@@ -167,7 +602,7 @@
 
 .dc-working__title {
   margin: 0;
-  font: 800 clamp(1.625rem, 4.4vw, 2.25rem) / 1.15 var(--dc-font-display);
+  font: 500 clamp(1.625rem, 4.4vw, 2.25rem) / 1.15 var(--dc-font-display);
   letter-spacing: -0.01em;
 }
 
@@ -196,7 +631,7 @@
 }
 
 .dc-rule__segment[data-state='active'] {
-  background: var(--dc-ink);
+  background: var(--dc-copper);
   animation: dc-breathe 1.6s ease-in-out infinite;
 }
 
@@ -236,28 +671,4 @@
 
 .dc-working .dc-callout {
   margin-top: 18px;
-}
-
-/* The first-visit animation. The GIF is 1920 by 1080 with the logo and the tagline in the middle band (rows 32%
-   to 72%). The frame shows that band, with the logo at the width of the static wordmark: the logo is 60.6% of
-   the GIF's width, so the GIF is drawn 440 / 0.606 = 726 px wide (127vw on a phone, clipped at the sides).
-   `align-items: flex-start` keeps the picture's own proportions: a stretched flex item would squash it. */
-.dc-intro-frame {
-  --w: min(726px, 127vw);
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  width: min(720px, calc(100vw - 2 * var(--dc-gutter)));
-  height: calc(var(--w) * 0.225);
-  overflow: hidden;
-  margin-bottom: 20px;
-}
-
-.dc-intro {
-  display: block;
-  flex: none;
-  width: var(--w);
-  max-width: none;
-  height: auto;
-  margin-top: calc(var(--w) * -0.18);
 }

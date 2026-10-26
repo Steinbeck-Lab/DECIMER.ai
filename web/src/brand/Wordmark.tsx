@@ -14,7 +14,7 @@ interface WordmarkProps {
  */
 export function Wordmark({ height = 32, hero = false }: WordmarkProps) {
   if (hero) {
-    // 1200 by 304 is the file's own size; CSS sets the displayed width.
+    // 1200 by 304 is the file's own size; CSS sets the displayed width and places it where the first-visit GIF ends.
     return (
       <img
         className="dc-wordmark dc-wordmark--hero"

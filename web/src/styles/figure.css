@@ -33,7 +33,7 @@
 
 .dc-figure__title {
   margin: 0;
-  font: 800 1.625rem/1.2 var(--dc-font-display);
+  font: 500 1.625rem/1.2 var(--dc-font-display);
   letter-spacing: -0.01em;
 }
 
@@ -86,30 +86,30 @@
 
 .dc-count[data-status='checked'],
 .dc-status[data-status='checked'] {
-  background: var(--dc-mint);
-  color: var(--dc-mint-ink);
+  background: var(--dc-checked);
+  color: var(--dc-checked-ink);
 }
 
 .dc-count[data-status='review'],
 .dc-status[data-status='review'] {
-  background: var(--dc-butter);
-  color: var(--dc-butter-ink);
+  background: var(--dc-review);
+  color: var(--dc-review-ink);
 }
 
 .dc-count[data-status='edited'],
 .dc-status[data-status='edited'] {
-  background: var(--dc-lilac);
-  color: var(--dc-lilac-ink);
+  background: var(--dc-edited);
+  color: var(--dc-edited-ink);
 }
 
 .dc-count[data-status='notsure'],
 .dc-status[data-status='notsure'] {
-  background: var(--dc-peach);
-  color: var(--dc-peach-ink);
+  background: var(--dc-not-sure);
+  color: var(--dc-not-sure-ink);
 }
 
 .dc-count[data-status='unchecked'] {
-  background: var(--dc-paper);
+  background: var(--dc-egg);
   color: var(--dc-muted);
 }
 
@@ -118,8 +118,8 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: var(--dc-peach);
-  color: var(--dc-peach-ink);
+  background: var(--dc-not-sure);
+  color: var(--dc-not-sure-ink);
 }
 
 /* An edit the server has not answered yet: the depiction is from before it, so it is dimmed (a picture, not
@@ -145,19 +145,19 @@
 }
 
 .dc-dot[data-status='checked'] {
-  background: var(--dc-mint-dot);
+  background: var(--dc-checked-dot);
 }
 
 .dc-dot[data-status='review'] {
-  background: var(--dc-butter-dot);
+  background: var(--dc-review-dot);
 }
 
 .dc-dot[data-status='edited'] {
-  background: var(--dc-lilac-dot);
+  background: var(--dc-edited-dot);
 }
 
 .dc-dot[data-status='notsure'] {
-  background: var(--dc-peach-dot);
+  background: var(--dc-not-sure-dot);
 }
 
 .dc-figure > .dc-callout {
@@ -177,7 +177,7 @@
   padding: 0 16px;
   border: 0;
   border-radius: 20px;
-  background: var(--dc-paper);
+  background: var(--dc-egg);
   color: var(--dc-ink);
   font-size: 0.9375rem;
   font-weight: 500;
@@ -186,12 +186,12 @@
 }
 
 .dc-filter:hover {
-  background: var(--dc-sky);
+  background: var(--dc-egg-deep);
 }
 
 .dc-filter[aria-pressed='true'] {
   background: var(--dc-ink);
-  color: var(--dc-white);
+  color: var(--dc-tile);
 }
 
 .dc-filter__count {
@@ -242,11 +242,11 @@
 }
 
 .dc-tile__button:hover {
-  background: var(--dc-sky-hover);
+  background: var(--dc-tile);
 }
 
 .dc-tile__button[aria-current='true'] {
-  background: var(--dc-sky);
+  background: var(--dc-egg);
 }
 
 .dc-tile__figure {
@@ -302,7 +302,7 @@
 }
 
 .dc-tile__number {
-  font: 800 1.625rem/1.2 var(--dc-font-display);
+  font: 500 1.625rem/1.2 var(--dc-font-display);
   font-variant-numeric: tabular-nums;
 }
 
@@ -380,7 +380,7 @@
 
 .dc-hover__line + .dc-hover__line {
   margin-top: 4px;
-  color: var(--dc-sky-line);
+  color: var(--dc-mustard);
 }
 
 .dc-figure__foot {
@@ -414,7 +414,7 @@
   padding: 0 16px 0 12px;
   border: 0;
   border-radius: 20px;
-  background: var(--dc-paper);
+  background: var(--dc-egg);
   color: var(--dc-ink);
   font-size: 0.9375rem;
   font-weight: 500;
@@ -423,7 +423,7 @@
 }
 
 .dc-doc__toggle:hover {
-  background: var(--dc-sky);
+  background: var(--dc-egg-deep);
 }
 
 .dc-doc__chevron {
@@ -441,7 +441,7 @@
   overflow-y: hidden;
   overscroll-behavior-x: contain;
   border-radius: 14px;
-  background: var(--dc-paper);
+  background: var(--dc-egg);
 }
 
 .dc-doc__strip[hidden] {

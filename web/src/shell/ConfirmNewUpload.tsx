@@ -1,4 +1,5 @@
 import { Modal } from '@mantine/core';
+import { palette } from '../theme';
 import { strings } from '../strings';
 import { confirmBody } from './confirm';
 
@@ -19,7 +20,8 @@ export function ConfirmNewUpload({ opened, edited, checked, onCancel, onConfirm 
       title={strings.shell.confirmNewTitle}
       centered
       radius="lg"
-      classNames={{ title: 'dc-modal__title' }}
+      classNames={{ title: 'dc-modal__title', content: 'dc-modal', header: 'dc-modal__header' }}
+      overlayProps={{ color: palette.forest, backgroundOpacity: 0.45 }}
     >
       <p className="dc-modal__body">{confirmBody(edited, checked)}</p>
       <div className="dc-modal__actions">

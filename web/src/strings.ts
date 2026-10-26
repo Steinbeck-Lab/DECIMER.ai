@@ -65,13 +65,26 @@ export const strings = {
   },
 
   upload: {
-    title: 'Drop a PDF or images here',
-    orPaste: 'or paste an image with Ctrl+V (Cmd+V on a Mac). It starts at once.',
+    title: 'Drop a PDF or image',
+    /** "or paste ⌘V" on a Mac, "or paste Ctrl+V" elsewhere; pasting an image starts the job at once. */
+    pasteLead: 'or paste',
+    pasteKeyMac: '⌘V',
+    /** What a screen reader says for the Mac key (it reads ⌘ as a symbol, not as the Command key). */
+    pasteKeyMacSpoken: 'Cmd+V',
+    pasteKeyOther: 'Ctrl+V',
     browse: 'Choose files',
     dropActive: 'Drop to start',
+    /** The full sentences, kept for assistive technology: the screen shows the measuring lines and one quiet line instead. */
     formats: 'PDF, PNG, JPG, WebP or HEIC.',
     limits: `Up to ${LIMITS.maxUploadBytes / 1024 / 1024} MB, ${LIMITS.maxPages} PDF pages and ${LIMITS.maxStructures} structures per upload.`,
     privacy: 'No account. Uploaded files are deleted after one hour.',
+    /** The inspection frame's label: the real size of the drop zone on screen. */
+    zoneLabel: (width: number, height: number) => `Drop zone · ${width} × ${height}`,
+    /** The width dimension line's caption and the height dimension line's caption. */
+    formatsLine: 'PDF · PNG · JPG · WebP · HEIC',
+    sizeLimitLine: `≤ ${LIMITS.maxUploadBytes / 1024 / 1024} MB`,
+    /** The one quiet line under the drop zone. */
+    quietLine: `${LIMITS.maxPages} pages · ${LIMITS.maxStructures} structures · files deleted after one hour`,
     errorFormat: (names: string[]) =>
       names.length === 1
         ? `${names[0]} is not a supported file. Use PDF, PNG, JPG, WebP or HEIC.`
