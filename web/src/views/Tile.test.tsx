@@ -96,7 +96,7 @@ test('only the selected tile stands in the inspection frame, which is decoration
       </ul>
     </MantineProvider>,
   );
-  expect(container.querySelector('.dc-sel')).toBeNull();
+  expect(container.querySelector('.dc-frame--sel')).toBeNull();
   rerender(
     <MantineProvider>
       <ul>
@@ -104,9 +104,9 @@ test('only the selected tile stands in the inspection frame, which is decoration
       </ul>
     </MantineProvider>,
   );
-  const frame = container.querySelector('.dc-sel');
+  const frame = container.querySelector('.dc-frame--sel');
   expect(frame?.getAttribute('aria-hidden')).toBe('true');
-  expect(frame?.querySelectorAll('.dc-sel__handle')).toHaveLength(4);
+  expect(frame?.querySelectorAll('.dc-frame__handle')).toHaveLength(4);
   // It is not inside the button, so the button is still named by the structure alone.
   expect(screen.getByRole('button').contains(frame)).toBe(false);
 });

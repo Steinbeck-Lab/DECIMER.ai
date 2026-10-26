@@ -5,32 +5,34 @@ import { useRenderedSize } from '../ui/useRenderedSize';
 const OUTSET = 8;
 
 /**
- * The inspection frame of the selected result: the home page's copper frame (four edges, four corner handles, a label
- * with the real size) laid around a tile, with page guides that stop at uneven lengths. It is drawn quickly when the
- * tile is selected (figure.css) and stands still after. Decoration only: hidden from assistive technology, never in
- * the way of the pointer. It measures itself, so the label prints the tile's size on screen.
+ * The inspection frame of the selected result: the drop zone's frame (the `.dc-frame` rules of home.css: four edges,
+ * four corner handles, a label with the real size) laid around a tile, with page guides that stop at uneven lengths.
+ * `dc-frame--sel` (figure.css) sets what differs: it is drawn in a quarter of a second, the label stands on the top
+ * edge and the garnet tint comes with the pointer or keyboard focus on the tile. Decoration only: hidden from
+ * assistive technology, never in the way of the pointer. It measures itself, so the label prints the tile's size on
+ * screen.
  */
 export function SelectionFrame({ number }: { number: number }) {
-  const [ref, size] = useRenderedSize<HTMLSpanElement>();
+  const [ref, size] = useRenderedSize<HTMLDivElement>();
   return (
-    <span className="dc-sel" ref={ref} aria-hidden="true" style={{ inset: -OUTSET }}>
-      <span className="dc-sel__guide dc-sel__guide--top" />
-      <span className="dc-sel__guide dc-sel__guide--bottom" />
-      <span className="dc-sel__guide dc-sel__guide--left" />
-      <span className="dc-sel__guide dc-sel__guide--right" />
-      <span className="dc-sel__line dc-sel__line--top" />
-      <span className="dc-sel__line dc-sel__line--bottom" />
-      <span className="dc-sel__line dc-sel__line--left" />
-      <span className="dc-sel__line dc-sel__line--right" />
-      <span className="dc-sel__handle dc-sel__handle--tl" />
-      <span className="dc-sel__handle dc-sel__handle--tr" />
-      <span className="dc-sel__handle dc-sel__handle--bl" />
-      <span className="dc-sel__handle dc-sel__handle--br" />
+    <div className="dc-frame dc-frame--sel" ref={ref} aria-hidden="true" style={{ inset: -OUTSET }}>
+      <span className="dc-frame__guide dc-frame__guide--top" />
+      <span className="dc-frame__guide dc-frame__guide--bottom" />
+      <span className="dc-frame__guide dc-frame__guide--left" />
+      <span className="dc-frame__guide dc-frame__guide--right" />
+      <span className="dc-frame__line dc-frame__line--top" />
+      <span className="dc-frame__line dc-frame__line--bottom" />
+      <span className="dc-frame__line dc-frame__line--left" />
+      <span className="dc-frame__line dc-frame__line--right" />
+      <span className="dc-frame__handle dc-frame__handle--tl" />
+      <span className="dc-frame__handle dc-frame__handle--tr" />
+      <span className="dc-frame__handle dc-frame__handle--bl" />
+      <span className="dc-frame__handle dc-frame__handle--br" />
       {size && (
-        <span className="dc-sel__label">
+        <span className="dc-frame__label">
           {strings.results.frameLabel(number, size.width - 2 * OUTSET, size.height - 2 * OUTSET)}
         </span>
       )}
-    </span>
+    </div>
   );
 }

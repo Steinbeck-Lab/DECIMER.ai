@@ -595,195 +595,111 @@
 }
 
 /*
- * The selected result's inspection frame: the drop zone's frame (home.css) around a tile. Four edges, four handles, a
- * label with the tile's real size, and guides that stop at uneven lengths; drawn in about a quarter of a second when
- * the tile is selected, and still afterwards. Hover and keyboard focus tint it garnet.
+ * The selected result's inspection frame is the drop zone's: the markup and the base rules are `.dc-frame` in home.css
+ * (edges, handles, label, guides, the draw-in and the reduced-motion rule). This modifier changes what differs on a
+ * tile: it stands 8 px out (the inline `inset` of SelectionFrame), is drawn in about a quarter of a second instead of
+ * a second, its label sits on the top edge, its guides stop 10 to 26 px past the frame (the gutter and the gap to the
+ * editor take that), and the garnet tint comes with the pointer or keyboard focus on the tile.
  */
-.dc-sel {
-  position: absolute;
+.dc-frame--sel {
   z-index: 2;
-  pointer-events: none;
 }
 
-.dc-sel span {
-  position: absolute;
+.dc-frame--sel .dc-frame__line--top,
+.dc-frame--sel .dc-frame__line--bottom {
+  animation-duration: 0.22s;
 }
 
-.dc-sel__line,
-.dc-sel__handle {
-  background: var(--dc-copper);
-  transition: background-color 0.2s ease;
+.dc-frame--sel .dc-frame__line--left,
+.dc-frame--sel .dc-frame__line--right {
+  animation-duration: 0.2s;
+  animation-delay: 0.06s;
 }
 
-.dc-sel__line--top,
-.dc-sel__line--bottom {
-  right: 0;
-  left: 0;
-  height: 1px;
-  transform-origin: left;
-  animation: dc-sel-x 0.22s cubic-bezier(0.23, 1, 0.32, 1) both;
+.dc-frame--sel .dc-frame__handle {
+  animation-duration: 0.18s;
 }
 
-.dc-sel__line--top {
-  top: 0;
-}
-
-.dc-sel__line--bottom {
-  bottom: 0;
-  transform-origin: right;
-}
-
-.dc-sel__line--left,
-.dc-sel__line--right {
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  animation: dc-sel-y 0.2s cubic-bezier(0.23, 1, 0.32, 1) 0.06s both;
-}
-
-.dc-sel__line--left {
-  left: 0;
-  transform-origin: bottom;
-}
-
-.dc-sel__line--right {
-  right: 0;
-  transform-origin: top;
-}
-
-.dc-sel__handle {
-  width: 7px;
-  height: 7px;
-  animation: dc-sel-pop 0.18s cubic-bezier(0.23, 1, 0.32, 1) both;
-}
-
-.dc-sel__handle--tl {
-  top: -3px;
-  left: -3px;
+.dc-frame--sel .dc-frame__handle--tl {
   animation-delay: 0.12s;
 }
 
-.dc-sel__handle--tr {
-  top: -3px;
-  right: -3px;
+.dc-frame--sel .dc-frame__handle--tr {
   animation-delay: 0.14s;
 }
 
-.dc-sel__handle--bl {
-  bottom: -3px;
-  left: -3px;
+.dc-frame--sel .dc-frame__handle--bl {
   animation-delay: 0.16s;
 }
 
-.dc-sel__handle--br {
-  right: -3px;
-  bottom: -3px;
+.dc-frame--sel .dc-frame__handle--br {
   animation-delay: 0.18s;
 }
 
-.dc-sel__label {
+/* The label stands on the frame's top edge, joined to it. It is revealed by a clip, not faded, and its tint swaps at
+   once: text that is half transparent, or between copper and garnet, is below the contrast floor for a moment. */
+.dc-frame--sel .dc-frame__label {
+  top: auto;
   bottom: 100%;
   left: -1px;
-  padding: 3px 8px;
   border-radius: 3px 3px 0 0;
-  background: var(--dc-copper);
-  color: var(--dc-on-copper);
-  font: 400 0.6875rem/1.5 var(--dc-font-mono);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  /* No fade and no colour transition on the label: text that is half transparent, or between copper and garnet, is
-     below the contrast floor for a moment. It is revealed by a clip instead, and the tint swaps at once. */
-  animation: dc-sel-label 0.2s cubic-bezier(0.23, 1, 0.32, 1) 0.08s both;
+  transition: none;
+  animation: dc-reveal 0.2s cubic-bezier(0.23, 1, 0.32, 1) 0.08s both;
 }
 
-/* Guides: faint copper, each stopping where it likes. They reach at most 26 px past the frame, which the gutter
-   (40 px) and the gap to the editor (20 px) take; they are left out on a phone. */
-.dc-sel__guide {
+.dc-frame--sel .dc-frame__guide {
+  animation-duration: 0.4s;
+  animation-delay: 0.1s;
   background: color-mix(in srgb, var(--dc-copper) 26%, transparent);
-  animation: dc-sel-fade 0.4s ease 0.1s both;
 }
 
-.dc-sel__guide--top {
+.dc-frame--sel .dc-frame__guide--top {
   top: 0;
   right: -10px;
   left: -26px;
-  height: 1px;
 }
 
-.dc-sel__guide--bottom {
+.dc-frame--sel .dc-frame__guide--bottom {
   right: -20px;
   bottom: 0;
   left: -14px;
-  height: 1px;
 }
 
-.dc-sel__guide--left {
+.dc-frame--sel .dc-frame__guide--left {
   top: -26px;
   bottom: -12px;
   left: 0;
-  width: 1px;
 }
 
-.dc-sel__guide--right {
+.dc-frame--sel .dc-frame__guide--right {
   top: -10px;
   right: 0;
   bottom: -26px;
-  width: 1px;
 }
 
-.dc-tile:hover .dc-sel__line,
-.dc-tile:hover .dc-sel__handle,
-.dc-tile:hover .dc-sel__label,
-.dc-tile:has(> .dc-tile__button:focus-visible) .dc-sel__line,
-.dc-tile:has(> .dc-tile__button:focus-visible) .dc-sel__handle,
-.dc-tile:has(> .dc-tile__button:focus-visible) .dc-sel__label {
+/* The drop zone drops its side guides on narrower windows; a tile keeps them down to a phone, where all guides go. */
+@media (min-width: 641px) {
+  .dc-frame--sel .dc-frame__guide--left,
+  .dc-frame--sel .dc-frame__guide--right {
+    display: block;
+  }
+}
+
+.dc-tile:hover .dc-frame--sel .dc-frame__line,
+.dc-tile:hover .dc-frame--sel .dc-frame__handle,
+.dc-tile:hover .dc-frame--sel .dc-frame__label,
+.dc-tile:has(> .dc-tile__button:focus-visible) .dc-frame--sel .dc-frame__line,
+.dc-tile:has(> .dc-tile__button:focus-visible) .dc-frame--sel .dc-frame__handle,
+.dc-tile:has(> .dc-tile__button:focus-visible) .dc-frame--sel .dc-frame__label {
   background: var(--dc-garnet);
 }
 
-.dc-tile:hover .dc-sel__label,
-.dc-tile:has(> .dc-tile__button:focus-visible) .dc-sel__label {
+.dc-tile:hover .dc-frame--sel .dc-frame__label,
+.dc-tile:has(> .dc-tile__button:focus-visible) .dc-frame--sel .dc-frame__label {
   color: var(--dc-egg);
 }
 
-@keyframes dc-sel-x {
-  from {
-    transform: scaleX(0);
-  }
-  to {
-    transform: scaleX(1);
-  }
-}
-
-@keyframes dc-sel-y {
-  from {
-    transform: scaleY(0);
-  }
-  to {
-    transform: scaleY(1);
-  }
-}
-
-@keyframes dc-sel-pop {
-  from {
-    opacity: 0;
-    transform: scale(0);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes dc-sel-fade {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes dc-sel-label {
+@keyframes dc-reveal {
   from {
     clip-path: inset(0 100% 0 0);
     transform: translateY(4px);
@@ -791,19 +707,6 @@
   to {
     clip-path: inset(0);
     transform: none;
-  }
-}
-
-@media (max-width: 640px) {
-  .dc-sel__guide {
-    display: none;
-  }
-}
-
-/* Reduced motion: the frame is simply there. */
-@media (prefers-reduced-motion: reduce) {
-  .dc-sel * {
-    animation: none !important;
   }
 }
 
