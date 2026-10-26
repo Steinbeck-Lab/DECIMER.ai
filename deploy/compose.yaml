@@ -324,9 +324,10 @@ services:
     # with the page size and the number of detections; 3 GB covers A3 pages at 300 DPI with room to spare.
     # cpus = the thread cap plus half a core for TensorFlow's other threads and the mask-expansion pool
     # (up to 4 short-lived threads). SEG_CPUS does not follow SEG_TF_INTRAOP_THREADS by itself: change
-    # both by hand, together (threads + 0.5).
-    mem_limit: 3g
-    memswap_limit: 3g
+    # both by hand, together (threads + 0.5). SEG_MEM_LIMIT: 3g on linux/amd64; on linux/arm64 (Docker on Apple
+    # Silicon) seg holds about 4.2 GiB right after start-up, so it needs 6g there.
+    mem_limit: ${SEG_MEM_LIMIT:-3g}
+    memswap_limit: ${SEG_MEM_LIMIT:-3g}
     cpus: ${SEG_CPUS:-2.5}
     pids_limit: 512
 

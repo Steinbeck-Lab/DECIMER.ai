@@ -16,6 +16,10 @@ dependencies = [
     "protobuf==4.25.1",
     "pystow",
     "tensorflow==2.15.1",
+    # Linux arm64 only (e.g. Docker on Apple Silicon): tensorflow's aarch64 wheel is an empty wrapper around
+    # tensorflow-cpu-aws. uv locks a version's dependencies from one wheel's metadata, and here it took a macOS
+    # wheel's, which lacks the tensorflow-cpu-aws requirement that the Linux and Windows wheels declare.
+    "tensorflow-cpu-aws==2.15.1 ; sys_platform == 'linux' and platform_machine == 'aarch64'",
 ]
 
 [build-system]
