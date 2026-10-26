@@ -13,7 +13,7 @@ const closing: readonly Rich[] = t.closing;
 /** The legal disclosure the law asks for. The text is German; only the lead-in is English. */
 export function Impressum() {
   return (
-    <StaticPage title={t.title} titleLang="de" note={t.note}>
+    <StaticPage title={t.title} titleLang="de">
       <p>{t.lead}</p>
       {sections.map((section) => (
         <SectionView key={section.title} section={section} />

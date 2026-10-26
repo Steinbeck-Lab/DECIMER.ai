@@ -13,7 +13,7 @@ const closing: readonly Rich[] = t.closing;
 
 export function Privacy() {
   return (
-    <StaticPage title={t.title} note={t.note}>
+    <StaticPage title={t.title}>
       {intro.map((paragraph, i) => (
         <p key={i}>
           <RichText value={paragraph} />

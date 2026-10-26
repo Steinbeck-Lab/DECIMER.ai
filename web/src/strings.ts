@@ -493,7 +493,6 @@ export const strings = {
 
     privacy: {
       title: 'Privacy',
-      note: '[CONFIRM: draft until the data-protection officer has reviewed this text. Remove this notice then]',
       intro: [
         'Personal data (usually referred to just as "data" below) will only be processed by us to the extent necessary and for the purpose of providing a functional and user-friendly website, including its contents, and the services offered there.',
         'Per Art. 4 No. 1 of Regulation (EU) 2016/679, i.e. the General Data Protection Regulation (hereinafter referred to as the "GDPR"), "processing" refers to any operation or set of operations such as collection, recording, organization, structuring, storage, adaptation, alteration, retrieval, consultation, use, disclosure by transmission, dissemination, or otherwise making available, alignment, or combination, restriction, erasure, or destruction performed on personal data, whether by automated means or not.',
@@ -575,7 +574,6 @@ export const strings = {
               content: [
                 'The web server of this site writes an access log that records the date and time, the request method, the page requested (job identifiers are left out), the answer code, the time taken and the size of the answer. It records no IP address, no user agent (browser type or operating system), no referring page and no query string.',
                 'If the server hits an error, for example when it cannot pass a request on, when an upload is too large or when a file cannot be opened, its error log can name the IP address of the request, the request itself (the page address, which for a job includes the job identifier), the name of the site that was asked for and the page that referred to it. The error log is the only place where this site writes an IP address down. It is split into one file per day, and no line in it is kept longer than seven days.',
-                '[CONFIRM: what the university proxy in front of this site logs and for how long; ask the network team]',
               ],
             },
             {
@@ -596,7 +594,6 @@ export const strings = {
               title: 'Error reports and usage counts',
               content: [
                 'If the site fails, an error report goes to an error tracker (GlitchTip) that runs on our own server in Jena. It holds the technical details of the error, never your files, structures or IP addresses, and is kept for 90 days. The server counts how many jobs run per day, without IP addresses.',
-                '[CONFIRM: true once GlitchTip runs with 90-day retention and scrubbing, and the server counts jobs per day without IP addresses]',
               ],
             },
           ],
@@ -615,7 +612,6 @@ export const strings = {
 
     impressum: {
       title: 'Impressum',
-      note: '[CONFIRM: legal review of the Impressum. § 5 now cites the Digitale-Dienste-Gesetz (DDG), which replaced the Telemediengesetz (TMG) in May 2024, and the typos of the legacy text are corrected, but the liability text still cites §§ 8 to 10 TMG and keeps the legacy wording (for example "Nutzen" where "Nutzung" is meant). Ask the university\'s legal office to check the whole text, the provider data and the contact person, and to say whether the credit to the generator at the end is still needed]',
       lead: 'This legal disclosure (Impressum) is required by German law. It is in German.',
       sections: [
         {

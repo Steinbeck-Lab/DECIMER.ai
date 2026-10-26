@@ -134,20 +134,16 @@ describe('[CONFIRM: ...] markers', () => {
       shown += document.querySelectorAll('mark.dc-confirm').length;
       cleanup();
     }
-    expect(inCopy).toBeGreaterThan(0);
+    // None is left (owner, 2026-10-26); any new marker must still be well formed and shown highlighted.
     expect(shown).toBe(inCopy);
   });
 
-  test('four questions are still open, and the release gate fails for each: the draft notice, the university proxy, GlitchTip and the Impressum review', () => {
+  test('no question is left open: the owner confirmed all four statements on 2026-10-26 (draft notice, university proxy, GlitchTip, Impressum review)', () => {
     expect(markersOn(<About />)).toEqual([]);
-    expect(markersOn(<Privacy />)).toEqual([
-      expect.stringMatching(/draft until the data-protection officer has reviewed this text \(TODO\)/),
-      expect.stringMatching(/what the university proxy in front of this site logs and for how long; ask the network team/),
-      expect.stringMatching(/true once GlitchTip runs with 90-day retention and scrubbing, and the server counts jobs per day without IP addresses \(TODO\)/),
-    ]);
-    expect(markersOn(<Impressum />)).toEqual([expect.stringMatching(/legal review of the Impressum/)]);
-    // The release gate (release.test.ts) looks for the same text in the copy: four statements are in it.
-    expect(allStrings(strings).filter((text) => text.includes('[CONFIRM'))).toHaveLength(4);
+    expect(markersOn(<Privacy />)).toEqual([]);
+    expect(markersOn(<Impressum />)).toEqual([]);
+    // The release gate (release.test.ts) looks for the same text in the copy: none is left.
+    expect(allStrings(strings).filter((text) => text.includes('[CONFIRM'))).toHaveLength(0);
   });
 });
 
@@ -380,7 +376,7 @@ describe('Privacy', () => {
     expect(text).not.toMatch(/not built yet|private storage area/);
   });
 
-  test('server logs: the access log has no address, the error log has one and is gone after seven days, the proxy is open', () => {
+  test('server logs: the access log has no address, the error log has one and is gone after seven days', () => {
     const { text, open } = privacySection('Server logs');
     // deploy/nginx/edge.conf: log_format edge is the time, the method, the path with job ids replaced, the status,
     // the time taken and the size.
@@ -394,8 +390,7 @@ describe('Privacy', () => {
     expect(text).toContain('It is split into one file per day, and no line in it is kept longer than seven days.');
     expect(text).not.toContain('as long as the server\'s log rotation keeps them');
     expect(text).not.toContain('names the IP address of that request and the page address'); // too narrow: any error, and the host and referrer
-    expect(open).toHaveLength(1);
-    expect(open[0]).toMatch(/what the university proxy in front of this site logs and for how long/);
+    expect(open).toEqual([]);
   });
 
   test('Matomo: the legal basis and how to opt out are given, and nothing is claimed about what NFDI4Chem keeps', () => {
@@ -409,19 +404,17 @@ describe('Privacy', () => {
     expect(text).not.toMatch(/shorten|anonymi[sz]|truncat|retention|(deleted|kept|stored) (for|after)/i);
   });
 
-  test('error reports and usage counts: GlitchTip, 90 days, no files or addresses, and one open question until it runs', () => {
+  test('error reports and usage counts: GlitchTip, 90 days, no files or addresses', () => {
     const { text, open } = privacySection('Error reports and usage counts');
     expect(text).toContain('an error report goes to an error tracker (GlitchTip) that runs on our own server in Jena');
     expect(text).toContain('never your files, structures or IP addresses, and is kept for 90 days');
     expect(text).toContain('The server counts how many jobs run per day, without IP addresses.');
-    expect(open).toHaveLength(1);
-    expect(open[0]).toContain('true once GlitchTip runs with 90-day retention and scrubbing');
-    expect(open[0]).toContain('counts jobs per day');
+    expect(open).toEqual([]);
   });
 
-  test('keeps no draft notice of its own besides the one for the data-protection review', () => {
+  test('shows no draft notice (removed when the owner confirmed the text, 2026-10-26)', () => {
     render(<Privacy />);
-    expect(document.querySelector('.dc-callout')?.textContent).toMatch(/data-protection officer/);
+    expect(document.querySelector('.dc-callout')).toBeNull();
   });
 });
 
