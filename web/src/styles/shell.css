@@ -1,9 +1,53 @@
+/* Mantine reads these where we cannot give its parts a class: the tooltip and the menu follow the palette. */
+:root {
+  --tooltip-bg: var(--dc-forest);
+  --tooltip-color: var(--dc-egg);
+  --menu-item-hover: var(--dc-egg);
+}
+
+/* The ruler: a thin measured edge down the left of the window, mono tick labels 64, 128, ... Decorative. */
+.dc-ruler {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 0;
+  width: 34px;
+  border-right: 1px solid var(--dc-line);
+  background: url('../assets/ruler-ticks.svg') repeat-y right top / 34px 64px;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.dc-ruler span {
+  position: absolute;
+  left: 4px;
+  color: var(--dc-muted);
+  font: 400 9px/12px var(--dc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .dc-ruler {
+    display: none;
+  }
+}
+
+/* Header */
 .dc-header {
+  position: relative;
+  z-index: 5;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 20px;
-  padding: 18px var(--dc-gutter);
+  gap: 8px 24px;
+  padding: 22px var(--dc-gutter) 8px;
+}
+
+/* The empty screen: nothing in the flow, the ribbons hang from the edge. The canvases are wider than the cloth; the
+   window's edge cuts them (the page must never scroll sideways). */
+.dc-header[data-ribbons='true'] {
+  padding: 0;
+  gap: 0;
+  overflow-x: clip;
 }
 
 .dc-header__logo {
@@ -14,79 +58,177 @@
 .dc-nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  /* The first link's text lines up with the page gutter when there is no logo before it. */
-  margin-left: -12px;
+  align-items: center;
+  gap: 4px 28px;
+  margin-left: auto;
   font-size: 0.9375rem;
-}
-
-.dc-header__logo + .dc-nav {
-  margin-left: 0;
+  font-weight: 500;
 }
 
 .dc-nav__link {
   min-height: 44px;
   display: inline-flex;
   align-items: center;
-  padding: 0 12px;
   border: 0;
-  border-radius: 22px;
   background: none;
-  color: var(--dc-muted);
+  color: var(--dc-ink);
   font: inherit;
   text-decoration: none;
   cursor: pointer;
 }
 
 .dc-nav__link:hover {
-  color: var(--dc-ink);
-  background: var(--dc-paper);
-}
-
-.dc-nav__link[aria-current='page'] {
-  color: var(--dc-ink);
+  color: var(--dc-garnet);
   text-decoration: underline;
+  text-decoration-color: var(--dc-garnet);
   text-decoration-thickness: 2px;
   text-underline-offset: 6px;
 }
 
-.dc-header__tools {
-  display: flex;
-  align-items: center;
-  gap: 10px 14px;
-  margin-left: auto;
+.dc-nav__link[aria-current='page'] {
+  text-decoration: underline;
+  text-decoration-color: var(--dc-copper);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 6px;
 }
 
 .dc-capacity {
-  color: var(--dc-muted);
-  font-size: 0.875rem;
+  padding-left: 24px;
+  border-left: 1px solid var(--dc-line);
+  color: var(--dc-ink-2);
+  font: 400 0.75rem/1.6 var(--dc-font-mono);
+  letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
 }
 
 .dc-download__formats {
-  font-weight: 400;
+  font: 400 0.75rem/1 var(--dc-font-mono);
+  letter-spacing: 0.02em;
   opacity: 0.8;
 }
 
 @media (max-width: 640px) {
   .dc-header {
-    padding-block: 12px;
+    gap: 4px 12px;
+    padding-block: 12px 4px;
   }
-  .dc-header__tools {
-    width: 100%;
-    margin-left: 0;
-    justify-content: space-between;
+  .dc-header[data-ribbons='true'] {
+    padding: 0;
+  }
+  .dc-capacity {
+    padding-left: 0;
+    border-left: 0;
+  }
+  .dc-header .dc-download {
+    margin-left: auto;
   }
   .dc-download__formats {
     display: none;
   }
 }
 
+/*
+ * The ribbon bookmarks of the empty screen: two strips of cloth hanging from the top edge, About (copper) in front
+ * of GitHub (forest) by about 12 px. Each is a real link around a canvas (ClothRibbon.tsx simulates and draws the
+ * cloth) and a label printed on the cloth that follows it. The link is exactly as wide as the strip, so nothing
+ * beside the cloth is clickable. On a phone the pair is a little smaller.
+ */
+.dc-ribbons {
+  position: absolute;
+  top: 0;
+  right: var(--dc-gutter);
+  z-index: 5;
+  display: flex;
+  transform-origin: top right;
+}
+
+.dc-ribbon {
+  position: relative;
+  display: block;
+  width: 46px;
+  height: var(--ribbon-len);
+  color: var(--ribbon-ink);
+  text-decoration: none;
+}
+
+.dc-ribbon:first-child {
+  z-index: 2;
+}
+
+.dc-ribbon + .dc-ribbon {
+  z-index: 1;
+  margin-left: -12px;
+}
+
+.dc-ribbon:hover {
+  color: var(--ribbon-ink);
+  text-decoration: none;
+}
+
+.dc-ribbon canvas {
+  position: absolute;
+  top: 0;
+  left: -38px;
+  width: 122px;
+  height: 220px;
+  pointer-events: none;
+}
+
+.dc-ribbon__label {
+  position: absolute;
+  top: 0;
+  left: 23px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  transform-origin: 0 0;
+  /* Moved every frame by a transform alone: its own compositor layer, so nothing is laid out again. */
+  will-change: transform;
+  pointer-events: none;
+  color: var(--ribbon-ink);
+}
+
+.dc-ribbon__label b {
+  font: 500 12px/1 var(--dc-font-ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+/* The focus ring sits inside the link: the top edge of the window would cut an outer one. Egg nog inside and forest
+   outside, so it shows on the copper cloth and on the forest cloth alike. */
+.dc-ribbon:focus-visible {
+  z-index: 3;
+  outline: none;
+}
+
+.dc-ribbon:focus-visible::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 0 0 4px 4px;
+  box-shadow:
+    inset 0 0 0 3px var(--dc-forest),
+    inset 0 0 0 5px var(--dc-egg);
+  pointer-events: none;
+}
+
+@media (max-width: 640px) {
+  .dc-ribbons {
+    right: 16px;
+    transform: scale(0.8);
+  }
+}
+
 /* Footer */
 .dc-footer {
+  position: relative;
+  z-index: 1;
   margin-top: auto;
   padding: 16px var(--dc-gutter) 20px;
-  color: var(--dc-muted);
+  color: var(--dc-ink-2);
   font-size: 0.875rem;
 }
 
@@ -94,25 +236,12 @@
   margin: 0;
 }
 
-.dc-footer__credit {
-  text-wrap: pretty;
-}
-
 .dc-footer__row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px 24px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 2px solid var(--dc-ink);
-}
-
-.dc-footer__about {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  gap: 4px 24px;
 }
 
 .dc-footer__coffee {
@@ -121,18 +250,90 @@
   gap: 6px;
 }
 
-.dc-footer__cup {
-  color: var(--dc-ink);
+.dc-cup {
+  position: relative;
+  flex: none;
+  width: 22px;
+  height: 24px;
+  margin-top: -6px;
+  color: var(--dc-copper);
+}
+
+.dc-cup svg {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+/* The steam is an <svg> box that fades and rises: a compositor animation, no layout. */
+.dc-cup__steam {
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: dc-steam 2.4s ease-in-out infinite;
+}
+
+.dc-cup__steam--late {
+  animation-delay: 1.2s;
+}
+
+@keyframes dc-steam {
+  0% {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  40% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* Still under reduced motion: the steam stays as two faint lines. */
+@media (prefers-reduced-motion: reduce) {
+  .dc-cup__steam {
+    animation: none !important;
+    opacity: 0.7;
+  }
 }
 
 .dc-footer__nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 18px;
+  gap: 0 28px;
 }
 
-.dc-footer a {
+.dc-footer__nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
   color: var(--dc-ink);
+  text-decoration: none;
+}
+
+.dc-footer__nav a:hover {
+  color: var(--dc-garnet);
+  text-decoration: underline;
+  text-decoration-color: var(--dc-garnet);
+  text-underline-offset: 0.25em;
+}
+
+.dc-footer__small {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 24px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--dc-line);
+  color: var(--dc-muted);
+  font-size: 0.75rem;
+  line-height: 1.6;
+}
+
+.dc-footer__small a {
+  color: var(--dc-ink-2);
 }
 
 /* One polite message at a time, above everything */
@@ -150,19 +351,21 @@
 .dc-notice {
   margin: 0;
   max-width: 480px;
-  padding: 12px 20px;
-  border-radius: 22px;
-  background: var(--dc-ink);
-  color: var(--dc-white);
+  padding: 12px 22px;
+  border-radius: 24px;
+  background: var(--dc-forest);
+  color: var(--dc-egg);
   font-size: 0.9375rem;
-  box-shadow: 0 8px 24px rgb(27 27 36 / 0.22);
+  box-shadow: var(--dc-porcelain-forest);
   animation: dc-notice-in 0.3s var(--dc-ease);
 }
 
 .dc-notice[data-kind='error'] {
-  background: var(--dc-peach);
-  color: var(--dc-peach-ink);
-  box-shadow: 0 8px 24px rgb(138 53 22 / 0.2);
+  background: var(--dc-not-sure);
+  color: var(--dc-not-sure-ink);
+  box-shadow:
+    inset 2px 2px 4px rgb(255 255 255 / 0.6),
+    0 10px 22px -10px rgb(118 41 8 / 0.4);
 }
 
 @keyframes dc-notice-in {
@@ -176,9 +379,44 @@
   }
 }
 
-/* Mantine's modal and menu follow the palette */
+/* Mantine's menu and modal follow the palette */
+.dc-menu {
+  padding: 8px;
+  border: 1px solid var(--dc-line);
+  border-radius: 18px;
+  background: var(--dc-tile);
+  box-shadow:
+    0 2px 6px rgb(30 50 38 / 0.08),
+    0 20px 40px -14px rgb(30 50 38 / 0.32);
+}
+
+.dc-menu__item {
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  color: var(--dc-ink);
+  font: 500 0.9375rem/1.3 var(--dc-font-ui);
+}
+
+.dc-menu__item:hover,
+.dc-menu__item[data-hovered] {
+  background: var(--dc-egg);
+}
+
+.dc-modal {
+  background: var(--dc-tile);
+  border-radius: 22px;
+  box-shadow:
+    0 2px 6px rgb(30 50 38 / 0.08),
+    0 30px 60px -20px rgb(30 50 38 / 0.4);
+}
+
+.dc-modal__header {
+  background: var(--dc-tile);
+}
+
 .dc-modal__title {
-  font: 800 1.25rem/1.2 var(--dc-font-display);
+  font: 500 1.375rem/1.2 var(--dc-font-display);
   letter-spacing: -0.01em;
 }
 
@@ -190,5 +428,5 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 12px;
 }

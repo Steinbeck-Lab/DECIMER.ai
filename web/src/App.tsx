@@ -9,6 +9,7 @@ import { Footer } from './shell/Footer';
 import { useStrayDropGuard, useUnloadGuard } from './shell/guards';
 import { Header } from './shell/Header';
 import { NoticeRegion } from './shell/NoticeRegion';
+import { Ruler } from './shell/Ruler';
 import { useRoute, type Route } from './shell/router';
 import { hasResults, hasWork } from './state/selectors';
 import { useAppState, useController } from './state/react';
@@ -77,6 +78,7 @@ export function App() {
   return (
     <div className="dc-app">
       <div className="dc-contents" inert={sheetOpen}>
+        <Ruler />
         <button type="button" className="dc-skip" onClick={() => document.getElementById('main')?.focus()}>
           {strings.shell.skipToContent}
         </button>

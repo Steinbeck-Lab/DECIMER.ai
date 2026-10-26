@@ -1,12 +1,13 @@
-// Self-hosted fonts (the CSP allows no font CDN): Archivo for compound numbers and titles,
-// Source Sans 3 for the interface, JetBrains Mono for SMILES. Latin subsets only.
-import '@fontsource/archivo/latin-800.css';
-import '@fontsource/jetbrains-mono/latin-400.css';
-import '@fontsource/source-sans-3/latin-400.css';
-import '@fontsource/source-sans-3/latin-400-italic.css';
-import '@fontsource/source-sans-3/latin-500.css';
-import '@fontsource/source-sans-3/latin-600.css';
-import '@fontsource/source-sans-3/latin-700.css';
+// Self-hosted fonts (the CSP allows no font CDN): Wix Madefor Display for headlines and big numbers, Wix Madefor Text for
+// the interface and names, Geist Mono for labels, measurements and SMILES (a mono where 1 and l, 0 and O are told apart).
+// Latin subsets only.
+import '@fontsource/wix-madefor-display/latin-400.css';
+import '@fontsource/wix-madefor-display/latin-500.css';
+import '@fontsource/wix-madefor-text/latin-400.css';
+import '@fontsource/wix-madefor-text/latin-400-italic.css';
+import '@fontsource/wix-madefor-text/latin-500.css';
+import '@fontsource/wix-madefor-text/latin-600.css';
+import '@fontsource/geist-mono/latin-400.css';
 // Only the Mantine styles of the components used (Menu, Tooltip, Modal): the full sheet is 295 KB.
 import '@mantine/core/styles/default-css-variables.css';
 import '@mantine/core/styles/baseline.css';

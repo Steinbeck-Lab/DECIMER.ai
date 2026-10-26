@@ -354,7 +354,7 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
           <div className="dc-actions">
             <button
               type="button"
-              className="dc-pill dc-pill--mint"
+              className="dc-pill dc-pill--check"
               aria-pressed={view.checked}
               onClick={() => controller.setChecked(view.index, !view.checked)}
             >
