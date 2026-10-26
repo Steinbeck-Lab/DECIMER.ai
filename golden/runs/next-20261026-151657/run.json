@@ -1,0 +1,175 @@
+{
+  "stack": "next",
+  "started_at": "2026-10-26T15:16:57+00:00",
+  "base_url": "http://127.0.0.1:8090/",
+  "pdf": "zou2024_penicillium_shentong.pdf",
+  "pdf_sha256": "9429f108fc81cb950e6042e71868d7c7ef2fd35372cc6b664a452b777aace849",
+  "poll_seconds": 1.0,
+  "timeout_seconds": 900.0,
+  "status": "done",
+  "failure": null,
+  "job_id": "fb76f4a12f30ae4aaa36f32c31b58ca2",
+  "seconds": {
+    "upload": 0.31,
+    "processing": 41.21,
+    "total": 41.52,
+    "crops": 0.04,
+    "retry_wait": 0,
+    "per_page": 4.15
+  },
+  "queued_seconds": 1.0,
+  "stage_seconds": {
+    "render": 4.03,
+    "segment": 24.11,
+    "recognise": 11.06,
+    "check": 1.01
+  },
+  "stage_seen": {
+    "upload": {
+      "done": 0.31
+    },
+    "render": {
+      "active": 1.31,
+      "done": 5.34
+    },
+    "segment": {
+      "active": 1.31,
+      "done": 29.45
+    },
+    "recognise": {
+      "active": 12.37,
+      "done": 40.51
+    },
+    "check": {
+      "active": 13.37,
+      "done": 41.52
+    }
+  },
+  "trace": [
+    {
+      "t": 0.31,
+      "status": "queued",
+      "queue_position": 1,
+      "stages": {
+        "upload": "done",
+        "render": "pending",
+        "segment": "pending",
+        "recognise": "pending",
+        "check": "pending"
+      }
+    },
+    {
+      "t": 1.31,
+      "status": "running",
+      "queue_position": null,
+      "stages": {
+        "upload": "done",
+        "render": "active",
+        "segment": "active",
+        "recognise": "pending",
+        "check": "pending"
+      }
+    },
+    {
+      "t": 5.34,
+      "status": "running",
+      "queue_position": null,
+      "stages": {
+        "upload": "done",
+        "render": "done",
+        "segment": "active",
+        "recognise": "pending",
+        "check": "pending"
+      }
+    },
+    {
+      "t": 12.37,
+      "status": "running",
+      "queue_position": null,
+      "stages": {
+        "upload": "done",
+        "render": "done",
+        "segment": "active",
+        "recognise": "active",
+        "check": "pending"
+      }
+    },
+    {
+      "t": 13.37,
+      "status": "running",
+      "queue_position": null,
+      "stages": {
+        "upload": "done",
+        "render": "done",
+        "segment": "active",
+        "recognise": "active",
+        "check": "active"
+      }
+    },
+    {
+      "t": 29.45,
+      "status": "running",
+      "queue_position": null,
+      "stages": {
+        "upload": "done",
+        "render": "done",
+        "segment": "done",
+        "recognise": "active",
+        "check": "active"
+      }
+    },
+    {
+      "t": 40.51,
+      "status": "running",
+      "queue_position": null,
+      "stages": {
+        "upload": "done",
+        "render": "done",
+        "segment": "done",
+        "recognise": "done",
+        "check": "active"
+      }
+    },
+    {
+      "t": 41.52,
+      "status": "done",
+      "queue_position": null,
+      "stages": {
+        "upload": "done",
+        "render": "done",
+        "segment": "done",
+        "recognise": "done",
+        "check": "done"
+      }
+    }
+  ],
+  "polls": 41,
+  "retries": [],
+  "pages": 10,
+  "pages_processed": 10,
+  "page_images": 10,
+  "truncated": true,
+  "structures_found": 32,
+  "structures_dropped": 12,
+  "segments": 32,
+  "results": 20,
+  "stages": {
+    "upload": "done",
+    "render": "done",
+    "segment": "done",
+    "recognise": "done",
+    "check": "done"
+  },
+  "warnings": [
+    {
+      "code": "structures_truncated",
+      "message": "32 structures were found. Only the first 20 were processed."
+    },
+    {
+      "code": "recognition_failed",
+      "message": "Structure 13 could not be recognised."
+    }
+  ],
+  "inchikey_differs_from_api": [],
+  "memory": null
+}

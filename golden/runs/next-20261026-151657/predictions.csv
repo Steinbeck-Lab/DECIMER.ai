@@ -1,0 +1,33 @@
+index,segment,smiles,inchikey,classifier,page,valid,confidence,name,name_tier
+0,crops/00_crop-0.png,C=CC(C)(C)[C@@H]1Nc2ccccc2C(=O)[C@H]1CN1C(=O)CC[C@@H]1OC,GFYJLJXYTUQVEV-DKSSEZFCSA-N,True,3,True,0.9520120133956274,"(2R,3S)-3-{[(2S)-2-methoxy-5-oxopyrrolidin-1-yl]methyl}-2-(2-methylbut-3-en-2-yl)-4-oxo-1,2,3,4-tetrahydroquinoline",systematic_verified
+1,crops/01_crop-1.png,C=CC(C)(C)c1[nH]c2ccccc2c1CCN1C(=O)[C@@H](C)C[C@@H]1O,FZZDYAGINISCCC-GUYCJALGSA-N,True,3,True,0.8898967129212839,"3-{2-[(3S,5S)-5-hydroxy-3-methyl-2-oxopyrrolidin-1-yl]ethyl}-2-(2-methylbut-3-en-2-yl)-1H-indole",systematic_verified
+2,crops/02_crop-2.png,C[13CH2]C(O)CC/C=C\[13CH2]/C=C\C(O)CCCCC(=O)O,OZWLYEXLWAGQKE-UYJQNLHCSA-N,True,3,True,0.8871463272306654,"(7Z,10Z)-6,14-dihydroxy(9,15-13C2)hexadeca-7,10-dienoic acid",pin_verified
+3,crops/03_crop-3.png,OC[C@H](O)C(c1c[nH]c2ccccc12)c1c[nH]c2ccccc12,OGXNFSOEIVPPSG-SFHVURJKSA-N,True,3,True,0.9803235028304306,"(2R)-3,3-bis(1H-indol-3-yl)propane-1,2-diol",systematic_verified
+4,crops/04_crop-4.png,C[C@H]1CCC/C=C/C(=O)c2c(O)cc(O)cc2CC(=O)O1,AVIRMQMUBGNCKS-RWCYGVJQSA-N,True,3,True,0.9807647917005751,"(5S,9E)-13,15-dihydroxy-5-methyl-3,11-dioxo-4-oxabicyclo[10.4.0]hexadeca-1(16),9,12,14-tetraene",systematic_verified
+5,crops/05_crop-5.png,C[C@H]1CCCC(O)CC(=O)c2c(O)cc(O)cc2CC(=O)O1,QPBNFQKLPIXNFL-FTNKSUMCSA-N,True,3,True,0.9854116956392924,"(5S)-9,13,15-trihydroxy-5-methyl-3,11-dioxo-4-oxabicyclo[10.4.0]hexadeca-1(16),12,14-triene",systematic_verified
+6,crops/06_crop-6.png,C[C@H]1CCCCCC(=O)c2c(O)cc(O)cc2CC(=O)O1,VDUIGYAPSXCJFC-JTQLQIEISA-N,True,3,True,0.9885811238061815,"(5S)-13,15-dihydroxy-5-methyl-3,11-dioxo-4-oxabicyclo[10.4.0]hexadeca-1(16),12,14-triene",systematic_verified
+7,crops/07_crop-7.png,C[C@H]1CCC[C@@H]2CC(=O)c3c(cc(O)cc3O2)CC(=O)O1,AIZXVZWOWXBXEZ-JOYOIKCWSA-N,True,3,True,0.9806817478063156,"(4S,8R)-13-hydroxy-4-methyl-4,5,6,7,8,9-hexahydro-2H-8,11-epoxy-3-benzoxacyclododecine-2,10(1H)-dione",pin_verified
+8,crops/08_crop-8.png,CC[C@H](C)c1cnc(CC(C)C)c(=O)[nH]1,NQUCTITVLHEDIU-VIFPVBQESA-N,True,3,True,0.9975316673517227,6-[(2S)-butan-2-yl]-3-(2-methylpropyl)pyrazin-2(1H)-one,pin_verified
+9,crops/09_crop-9.png,CCC(C)c1cnc(C(C)CC)c(=O)[nH]1,JODWJXBQLSMNHA-UHFFFAOYSA-N,True,3,True,0.9948774746486119,"3,6-di(butan-2-yl)pyrazin-2(1H)-one",pin_verified
+10,crops/10_crop-10.png,O=c1c(-c2ccc(O)cc2)coc2cc(O)ccc12,ZQSIJRDFPHDXIC-UHFFFAOYSA-N,True,3,True,0.9941398275865091,7-hydroxy-3-(4-hydroxyphenyl)-4H-1-benzopyran-4-one,pin_verified
+11,crops/11_crop-11.png,O=c1c(-c2ccc(O)cc2)coc2cc(O)cc(O)c12,TZBJGXHYKVUXJN-UHFFFAOYSA-N,True,3,True,0.994731068611145,"5,7-dihydroxy-3-(4-hydroxyphenyl)-4H-1-benzopyran-4-one",pin_verified
+12,crops/12_crop-12.png,,,False,4,False,0.0,,
+13,crops/13_crop-13.png,CC1C(C)C2C(C(C)C1C)C(C3(C(C2F)C(C)OC3[Si]45C(C)(C)C(C)(C)C(C)(C)C(C)(C)C4(C)C)O[Si](C)(C)C(C)(C)C)F,,True,4,False,0.7613480680996609,,
+14,crops/14_crop-14.png,CC1(C)c2cccc(c2)[C@@]1(c1cccc([C@@](C)(c2ccccc2)N2C(=O)c3cccc(c3)[C@@]2(c2ccccc2)N2C(=O)c3cccc(c3)[C@@]2(C)O)c1)N1C(=O)c2cccc(c2)[C@@]1(C)O,MYJJAMHYEXEEDQ-RTNOTIBQSA-N,False,4,True,0.7802166055355754,"(4R)-4-[(4R)-4-hydroxy-4-methyl-2-oxo-3-azabicyclo[3.3.1]nona-1(8),5(9),6-trien-3-yl]-3-[(1R)-1-(3-{(6S)-6-[(4R)-4-hydroxy-4-methyl-2-oxo-3-azabicyclo[3.3.1]nona-1(9),5,7-trien-3-yl]-7,7-dimethylbicyclo[3.2.1]octa-1(8),2,4-trien-6-yl}phenyl)-1-phenylethyl]-2-oxo-4-phenyl-3-azabicyclo[3.3.1]nona-1(9),5,7-triene",systematic_verified
+15,crops/15_crop-15.png,C=C[C@@H](O)C[C@@H]1C=C[C@@H](C[C@@H]2CCCC[C@@H]2CCCCCC(=O)O)[C@@H]1O,RNBJOYWZKHGPJU-CMAYMZJCSA-N,True,4,True,0.7226799625684234,"6-[(1S,2S)-2-({(1R,4R,5S)-5-hydroxy-4-[(S)-2-hydroxybut-3-en-1-yl]cyclopent-2-en-1-yl}methyl)cyclohexyl]hexanoic acid",systematic_verified
+16,crops/16_crop-16.png,NC(Cc1c[nH]c2ccccc12)C(=O)O,QIVBCDIJIAJPQS-UHFFFAOYSA-N,True,7,True,0.9812329133351644,2-amino-3-(1H-indol-3-yl)propanoic acid,pin_verified
+17,crops/17_crop-17.png,C=CC(C)(C)c1[nH]c2ccccc2c1CC(N)C(=O)O,XOWJLZPKXHOSPF-UHFFFAOYSA-N,True,7,True,0.9929619997739791,2-amino-3-[2-(2-methylbut-3-en-2-yl)-1H-indol-3-yl]propanoic acid,systematic_verified
+18,crops/18_crop-18.png,C=CC(C)(C)c1[nH]c2ccccc2c1CCN,GFXYHFHVHILYHH-UHFFFAOYSA-N,True,7,True,0.9944787733256817,2-[2-(2-methylbut-3-en-2-yl)-1H-indol-3-yl]ethan-1-amine,systematic_verified
+19,crops/19_crop-19.png,C=CC(C)(C)c1[nH]c2cc(C)ccc2c1CCNC(=O)CCC(=O)O,ZBBKZPNDJIBAMT-UHFFFAOYSA-N,True,7,True,0.9640637263655663,4-({2-[6-methyl-2-(2-methylbut-3-en-2-yl)-1H-indol-3-yl]ethyl}amino)-4-oxobutanoic acid,systematic_verified
+20,,,,,,,,,
+21,,,,,,,,,
+22,,,,,,,,,
+23,,,,,,,,,
+24,,,,,,,,,
+25,,,,,,,,,
+26,,,,,,,,,
+27,,,,,,,,,
+28,,,,,,,,,
+29,,,,,,,,,
+30,,,,,,,,,
+31,,,,,,,,,
