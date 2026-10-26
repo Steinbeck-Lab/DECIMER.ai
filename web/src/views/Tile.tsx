@@ -5,6 +5,8 @@ import type { ResultView } from '../state/selectors';
 import { CropImage } from '../ui/CropImage';
 import { IconAlert } from '../ui/icons';
 import { imageSrc, nameHover, staleLabel, statusLabel, validityHover } from '../ui/format';
+import { pageNumber } from '../state/selectors';
+import { SelectionFrame } from './SelectionFrame';
 
 interface Props {
   view: ResultView;
@@ -15,9 +17,9 @@ interface Props {
 }
 
 /**
- * One structure of the figure: the depiction with the original crop as an
- * inset, the bold compound number with a status dot, the name (two lines at
- * most, Orthonym's tier on hover or focus) and the status word.
+ * One structure of the figure: the depiction, the name (three lines at most, Orthonym's tier on hover or focus) and a
+ * footer with the original crop as a thumbnail, the compound number, the page and the status as a dot and a word. The
+ * crop has a place of its own, so it never covers the drawing. The selected tile stands in the inspection frame.
  */
 export const Tile = memo(function Tile({ view, selected, order, onSelect }: Props) {
   const status = statusLabel(view.status);
@@ -56,6 +58,10 @@ export const Tile = memo(function Tile({ view, selected, order, onSelect }: Prop
           aria-current={selected ? 'true' : undefined}
           onClick={() => onSelect(view.index)}
         >
+          {/* Read first, so the button is named "Structure 4 (2R)-3,3-bis… Checked"; the number in the footer is for the eye. */}
+          <span className="dc-sr">
+            {strings.tile.structure} {view.number}
+          </span>
           <span className="dc-tile__figure">
             {view.svg ? (
               <img className="dc-tile__structure" src={imageSrc(view.svg)} alt="" width={360} height={260} />
@@ -64,29 +70,32 @@ export const Tile = memo(function Tile({ view, selected, order, onSelect }: Prop
                 {strings.tile.noDepiction}
               </span>
             )}
-            <CropImage className="dc-tile__crop" src={view.result.cropUrl} alt="" />
-          </span>
-          <span className="dc-tile__id">
-            <span className="dc-sr">{strings.tile.structure} </span>
-            <span className="dc-tile__number">{view.number}</span>
-            <span className="dc-dot" data-status={view.status} aria-hidden="true" />
           </span>
           <span className="dc-tile__name" data-empty={view.stale || view.name === null}>
             {name}
           </span>
-          <span className="dc-tile__flags">
-            <span className="dc-status" data-status={view.status}>
-              {status}
+          <span className="dc-tile__foot">
+            <CropImage className="dc-tile__crop" src={view.result.cropUrl} alt="" />
+            <span className="dc-tile__id" aria-hidden="true">
+              <span className="dc-tile__number">{view.number}</span>
+              <span className="dc-tile__page">p{pageNumber(view)}</span>
             </span>
-            {view.invalid && !view.stale && (
-              <span className="dc-status dc-status--invalid">
-                <IconAlert size={12} />
-                {view.validBy === 'cdk' ? strings.tile.cdkOnlyFlag : strings.editor.invalidFlag}
+            <span className="dc-tile__flags">
+              <span className="dc-status" data-status={view.status}>
+                <span className="dc-dot" data-status={view.status} aria-hidden="true" />
+                {status}
               </span>
-            )}
+              {view.invalid && !view.stale && (
+                <span className="dc-status dc-status--invalid">
+                  <IconAlert size={12} />
+                  {view.validBy === 'cdk' ? strings.tile.cdkOnlyFlag : strings.editor.invalidFlag}
+                </span>
+              )}
+            </span>
           </span>
         </button>
       </Tooltip>
+      {selected && <SelectionFrame number={view.number} />}
     </li>
   );
 });

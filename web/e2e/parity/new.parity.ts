@@ -297,7 +297,7 @@ test('a pasted image (job A): 3 paste, 5 stages, 9 result, 10-12 links and repor
     structureImage: ((await tile(1).locator('.dc-tile__structure').getAttribute('src')) ?? '').slice(0, 30),
     cropImageLoaded: await tile(1).locator('.dc-tile__crop').evaluate((img) => (img as HTMLImageElement).naturalWidth > 0),
     heading: await page.getByRole('heading', { level: 1 }).innerText(),
-    source: await page.locator('.dc-figure__source').innerText(),
+    source: await page.locator('.dc-doc__name').innerText(),
     counts: await page.getByRole('list', { name: 'Status of the structures' }).innerText().catch(() => ''),
     capacity: await page.locator('.dc-capacity').innerText(),
   });

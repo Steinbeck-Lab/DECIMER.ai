@@ -7,24 +7,14 @@ import { jobNotices } from '../state/notices';
 import { countsOf, filterCounts, filterViews, isPdfUpload } from '../state/selectors';
 import { preloadEditor } from '../editor/KetcherPanel';
 import { DownloadMenu } from '../shell/DownloadMenu';
+import { DocumentTile } from './DocumentTile';
 import { Tile } from './Tile';
 import { UploadedDocument } from './UploadedDocument';
 
-function sourceLabel(names: string[]): string {
-  const first = names[0];
-  if (!first) return strings.results.source(strings.results.pastedSource);
-  return strings.results.source(
-    names.length > 1 ? strings.results.moreSources(first, names.length - 1) : first,
-  );
-}
+const COUNT_ORDER: Status[] = ['review', 'notsure', 'edited', 'checked', 'unchecked'];
 
-const COUNT_ORDER: { status: Status; label: (n: number) => string }[] = [
-  { status: 'review', label: strings.results.countReview },
-  { status: 'notsure', label: strings.results.countNotSure },
-  { status: 'edited', label: strings.results.countEdited },
-  { status: 'checked', label: strings.results.countChecked },
-  { status: 'unchecked', label: strings.results.countUnchecked },
-];
+/** The filter pills' dot: the status the filter is about; "All" has none. */
+const FILTER_DOT: Partial<Record<Filter, Status>> = { review: 'review', edited: 'edited' };
 
 const FILTERS: { filter: Filter; label: string }[] = [
   { filter: 'all', label: strings.results.filterAll },
@@ -67,37 +57,55 @@ export function ResultsView() {
 
   if (!job) return null;
 
+  const pdf = isPdfUpload(state.sources);
+  const selectedView = selected === null ? undefined : views.find((v) => v.index === selected);
+
   return (
     <main id="main" tabIndex={-1} className="dc-figure">
-      <header className="dc-figure__head">
-        <h1 className="dc-figure__title">{strings.results.title}</h1>
-        <p className="dc-figure__source">{sourceLabel(state.sources.map((s) => s.name))}</p>
-        <ul className="dc-counts" aria-label={strings.results.countsLabel}>
-          {COUNT_ORDER.filter(({ status }) => counts[status] > 0).map(({ status, label }) => (
-            <li key={status} className="dc-count" data-status={status}>
-              {label(counts[status])}
-            </li>
-          ))}
-        </ul>
-      </header>
+      <div className="dc-top">
+        <div className="dc-slab dc-stats">
+          <h1 className="dc-stats__title">{strings.results.title}</h1>
+          <div className="dc-stats__body">
+            <p className="dc-stats__total">{counts.total}</p>
+            <ul className="dc-counts" aria-label={strings.results.countsLabel}>
+              {COUNT_ORDER.filter((status) => counts[status] > 0).map((status) => (
+                <li key={status} className="dc-count" data-status={status}>
+                  <span className="dc-dot" data-status={status} aria-hidden="true" />
+                  <b className="dc-count__n">{counts[status]}</b> {strings.results.countWords[status]}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+        {/* Legacy shows the document for a PDF only; an image is its own picture, and the tile shows its crop. */}
+        <DocumentTile
+          names={state.sources.map((s) => s.name)}
+          pages={job.pagesProcessed}
+          pageUrls={job.pageUrls}
+          views={views}
+          selectedPage={selectedView ? selectedView.result.pageIndex : null}
+          pdf={pdf}
+        />
+      </div>
 
       <JobNotices job={job} />
 
-      {/* Legacy shows the document for a PDF only; an image is its own picture, and the tile shows its crop. */}
-      {isPdfUpload(state.sources) && <UploadedDocument pageUrls={job.pageUrls} />}
-
       <div className="dc-filters" role="group" aria-label={strings.results.filterLabel}>
-        {FILTERS.map(({ filter: f, label }) => (
-          <button
-            key={f}
-            type="button"
-            className="dc-filter"
-            aria-pressed={filter === f}
-            onClick={() => controller.setFilter(f)}
-          >
-            {label} <span className="dc-filter__count">{chipCounts[f]}</span>
-          </button>
-        ))}
+        {FILTERS.map(({ filter: f, label }) => {
+          const dot = FILTER_DOT[f];
+          return (
+            <button
+              key={f}
+              type="button"
+              className="dc-filter"
+              aria-pressed={filter === f}
+              onClick={() => controller.setFilter(f)}
+            >
+              {dot && <span className="dc-dot" data-status={dot} aria-hidden="true" />}
+              {label} <span className="dc-filter__count">{chipCounts[f]}</span>
+            </button>
+          );
+        })}
       </div>
 
       {shown.length === 0 ? (
@@ -125,7 +133,7 @@ export function ResultsView() {
         </ul>
       )}
 
-      <div className="dc-figure__foot">
+      <div className="dc-slab dc-figure__foot">
         <DownloadMenu placement="results" />
         <p>{strings.results.downloadNote}</p>
       </div>

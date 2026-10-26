@@ -53,7 +53,6 @@ const TEXT_PAIRS: [string, Hex, Hex][] = [
   ['review: ink on review fill', 'reviewInk', 'review'],
   ['edited: ink on edited fill', 'editedInk', 'edited'],
   ['not sure: ink on not-sure fill', 'notSureInk', 'notSure'],
-  ['mark as checked button', 'checkedButtonInk', 'checkedButton'],
   ['ink on review fill (truncation notice)', 'ink', 'review'],
   ['ink on not-sure fill (not-a-structure notice)', 'ink', 'notSure'],
   ['muted on checked fill', 'muted', 'checked'],

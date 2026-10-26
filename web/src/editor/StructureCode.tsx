@@ -31,7 +31,7 @@ export function StructureCode({ view }: { view: ResultView }) {
         <span className="dc-code__label" id="dc-smiles-label">
           {strings.editor.smiles}
         </span>
-        <CopyButton value={line.copy} label={strings.editor.copySmiles} />
+        <CopyButton value={line.copy} label={strings.editor.copySmiles} variant="pill" />
       </div>
       <code className="dc-code__text" aria-labelledby="dc-smiles-label" data-stale={view.stale}>
         {line.text}
