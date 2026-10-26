@@ -1,0 +1,425 @@
+/*
+ * The working and failed screens (WorkingView.tsx, FailedView.tsx), in the world of the drop zone: what was uploaded
+ * sits in the same copper inspection frame (drawn in by the rules of `.dc-frame` in home.css), and the stages are a
+ * dimension line with a tick at every boundary. Flat surfaces, copper for measuring, garnet when it stopped.
+ */
+
+.dc-run {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(36px, 6vh, 56px);
+  padding: 24px var(--dc-gutter) 40px;
+  text-align: center;
+  /* The page guides run past the frame; they stop at the window's edge, never scroll it. */
+  overflow-x: clip;
+}
+
+/* What was uploaded: the frame is 7 px out from the pills, and the label sits 30 px above it. */
+.dc-specimen {
+  position: relative;
+  max-width: min(100%, 774px);
+  margin-top: 30px;
+  padding: 7px;
+}
+
+/* The vertical guides stop before the heading below. */
+.dc-specimen .dc-frame__guide--left {
+  top: -120px;
+  bottom: -20px;
+}
+
+.dc-specimen .dc-frame__guide--right {
+  top: -70px;
+  bottom: -30px;
+}
+
+/* Stopped: the whole frame is garnet. */
+.dc-specimen[data-stopped='true'] .dc-frame__line,
+.dc-specimen[data-stopped='true'] .dc-frame__handle,
+.dc-specimen[data-stopped='true'] .dc-frame__label {
+  background: var(--dc-garnet);
+}
+
+.dc-specimen[data-stopped='true'] .dc-frame__label {
+  color: var(--dc-egg);
+}
+
+.dc-specimen[data-stopped='true'] .dc-frame__guide {
+  background: color-mix(in srgb, var(--dc-garnet) 22%, transparent);
+}
+
+.dc-specimen__list {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Each file is a small porcelain pill, like the drop zone's. */
+.dc-specimen__item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  /* Not a percentage: that is ignored while the frame shrinks to its pills, which would leave it with room to spare. */
+  max-width: min(340px, calc(100vw - 2 * var(--dc-gutter) - 14px));
+  min-height: 72px;
+  padding: 10px 34px 10px 10px;
+  border-radius: 999px;
+  background: var(--dc-tile);
+  text-align: left;
+  box-shadow:
+    inset 2px 2px 4px rgb(255 255 255 / 0.9),
+    inset -3px -3px 8px rgb(118 41 8 / 0.07),
+    0 1px 2px rgb(30 50 38 / 0.1),
+    0 18px 40px -12px rgb(30 50 38 / 0.24);
+}
+
+/* Several files: smaller pills, so that three and the count share a line (or, where there is no room for a line,
+   a column of pills as wide as the widest, so the frame stays 7 px out). */
+.dc-specimen__list[data-many='true'] .dc-specimen__item {
+  max-width: min(224px, calc(100vw - 2 * var(--dc-gutter) - 14px));
+  min-height: 60px;
+  gap: 12px;
+  padding: 8px 24px 8px 8px;
+}
+
+.dc-specimen__list[data-many='true'] .dc-pill__icon,
+.dc-specimen__list[data-many='true'] .dc-specimen__thumb {
+  width: 44px;
+  height: 44px;
+}
+
+.dc-specimen__list[data-many='true'] .dc-specimen__name {
+  font-size: 1.0625rem;
+}
+
+.dc-specimen__item--more {
+  justify-content: center;
+  padding: 0 24px;
+  color: var(--dc-ink-2);
+  font: 400 0.875rem/1 var(--dc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-specimen__item .dc-pill__icon,
+.dc-specimen__thumb {
+  flex: none;
+  width: 52px;
+  height: 52px;
+}
+
+/* The whole picture in the circle, not its middle. */
+.dc-specimen__thumb {
+  padding: 6px;
+  border-radius: 50%;
+  object-fit: contain;
+  background: var(--dc-white);
+  box-shadow: inset 0 0 0 1px var(--dc-line);
+}
+
+.dc-specimen__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dc-specimen__name {
+  overflow: hidden;
+  font: 400 1.1875rem/1.3 var(--dc-font-display);
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dc-specimen__size {
+  color: var(--dc-muted);
+  font: 400 0.75rem/1.5 var(--dc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The heading and what it says about the stage. */
+.dc-run__live {
+  width: min(640px, 100%);
+}
+
+.dc-run__title {
+  margin: 0;
+  font: 400 clamp(1.75rem, 4.2vw, 2.5rem) / 1.15 var(--dc-font-display);
+  letter-spacing: -0.015em;
+}
+
+.dc-run__detail {
+  margin: 14px 0 0;
+  color: var(--dc-ink-2);
+  font-size: 1.0625rem;
+}
+
+.dc-run__detail--quiet {
+  margin-top: 4px;
+  color: var(--dc-muted);
+  font-size: 0.9375rem;
+}
+
+/* The dimension line, its numbers and the one quiet hint. */
+.dc-run__measure {
+  width: min(774px, 100%);
+}
+
+.dc-run__meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 28px;
+  margin: 28px 0 0;
+  color: var(--dc-ink-2);
+  font: 400 0.8125rem/1.6 var(--dc-font-mono);
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-run__note {
+  margin: 6px 0 0;
+  color: var(--dc-muted);
+  font-size: 0.9375rem;
+}
+
+/*
+ * The measuring line. Each stage is a segment between two ticks, 5 in a row. A pending one is a hairline; a done one is
+ * drawn in full; an active one is drawn from its left tick to its right one, again and again, with a handle at the
+ * end of the line being drawn (the same square as the frame's corners). Segments that are active together draw in
+ * step (WorkingView.tsx puts them on one clock). The line is scaled from its left end and the handle is translated,
+ * so both move on the compositor.
+ */
+.dc-rule {
+  --dc-rule-faint: color-mix(in srgb, var(--dc-copper) 30%, transparent);
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+/* The last tick. */
+.dc-rule::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  right: 0;
+  width: 1px;
+  height: 9px;
+  background: var(--dc-rule-faint);
+}
+
+.dc-rule__segment {
+  position: relative;
+  display: block;
+  padding-top: 22px;
+  /* The handle travels the segment's own width (`cqw`). */
+  container-type: inline-size;
+}
+
+/* The hairline, and the tick at the segment's start. */
+.dc-rule__segment::before {
+  content: '';
+  position: absolute;
+  top: 5px;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--dc-rule-faint);
+}
+
+.dc-rule__segment::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 0;
+  width: 1px;
+  height: 9px;
+  background: var(--dc-rule-faint);
+  transition: background-color 0.4s var(--dc-ease);
+}
+
+.dc-rule__segment[data-state='done']::after,
+.dc-rule__segment[data-state='active']::after {
+  background: var(--dc-copper);
+}
+
+.dc-rule__fill {
+  position: absolute;
+  top: 4px;
+  right: 0;
+  left: 0;
+  height: 2px;
+  background: var(--dc-copper);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.5s var(--dc-ease);
+}
+
+.dc-rule__segment[data-state='done'] .dc-rule__fill {
+  transform: none;
+}
+
+/* Without motion an active segment is half drawn, with its handle in the middle: not done, not waiting. */
+.dc-rule__segment[data-state='active'] .dc-rule__fill {
+  transform: scaleX(0.5);
+  animation: dc-measure 3s infinite;
+}
+
+.dc-rule__head {
+  position: absolute;
+  top: 2px;
+  left: -3px;
+  width: 7px;
+  height: 7px;
+  background: var(--dc-copper);
+  opacity: 0;
+}
+
+.dc-rule__segment[data-state='active'] .dc-rule__head {
+  opacity: 1;
+  translate: 50cqw 0;
+  animation: dc-measure-head 3s infinite;
+}
+
+.dc-rule__name {
+  display: block;
+  padding: 0 4px;
+  color: var(--dc-muted);
+  font: 400 0.8125rem/1.35 var(--dc-font-ui);
+  text-wrap: balance;
+  transition: color 0.4s var(--dc-ease);
+}
+
+.dc-rule__segment[data-state='done'] .dc-rule__name {
+  color: var(--dc-ink-2);
+}
+
+.dc-rule__segment[data-state='active'] .dc-rule__name {
+  color: var(--dc-ink);
+  font-weight: 500;
+}
+
+/* Drawn fast at first, as a tape is pulled, then settling on the tick; held; gone; again. */
+@keyframes dc-measure {
+  0% {
+    transform: scaleX(0);
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.33, 1, 0.68, 1);
+  }
+  62%,
+  88% {
+    transform: scaleX(1);
+    opacity: 1;
+    animation-timing-function: ease-in;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+
+@keyframes dc-measure-head {
+  0% {
+    translate: 0 0;
+    opacity: 1;
+    animation-timing-function: cubic-bezier(0.33, 1, 0.68, 1);
+  }
+  62%,
+  88% {
+    translate: 100cqw 0;
+    opacity: 1;
+    animation-timing-function: ease-in;
+  }
+  100% {
+    translate: 100cqw 0;
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dc-rule__fill,
+  .dc-rule__head {
+    animation: none !important;
+  }
+}
+
+/* The failed screen: the message under the heading, then the way on. */
+.dc-run .dc-callout {
+  max-width: 560px;
+  margin: 20px auto 0;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.dc-run__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+@media (max-width: 640px) {
+  .dc-run {
+    gap: 40px;
+    padding-top: 12px;
+  }
+  .dc-run__title {
+    font-size: 1.75rem;
+  }
+  .dc-rule__name {
+    padding: 0 2px;
+    font-size: 0.75rem;
+  }
+  .dc-run__meta {
+    gap: 2px 20px;
+    margin-top: 22px;
+  }
+  .dc-specimen__item {
+    min-height: 64px;
+    padding-right: 24px;
+  }
+  .dc-specimen__item .dc-pill__icon,
+  .dc-specimen__thumb {
+    width: 46px;
+    height: 46px;
+  }
+  .dc-specimen__name {
+    font-size: 1.0625rem;
+  }
+}
+
+/* No room for a row of three pills and the count: a column, every pill as wide as the widest. */
+@media (max-width: 880px) {
+  .dc-specimen__list[data-many='true'] {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+  }
+}
+
+/* A phone: the segments are as long as their names need (the longest word of each, at the active weight, plus room),
+   not all alike, so that "Recognising" fits at 390 px and at 320 px. */
+@media (max-width: 420px) {
+  .dc-rule {
+    grid-template-columns: 59fr 48fr 59fr 70fr 54fr;
+  }
+}
+
+@media (max-width: 360px) {
+  .dc-rule__name {
+    padding: 0;
+    font-size: 0.6875rem;
+    overflow-wrap: anywhere;
+  }
+}
