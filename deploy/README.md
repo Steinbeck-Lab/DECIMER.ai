@@ -459,7 +459,8 @@ How to read it:
 
 Per replica (limits are per container; resident from the READMEs): seg 3 GB / about 2 GB, ocsr 6 GB / about 3.0 GB
 (the printed DECIMER model only since decimer 2.8.1; 4.8 GB with both models, D15), cls 2.5 GB / about 1 GB, chem
-1.5 GB / about 0.4 GB. Everything in GiB, whole stack:
+1.5 GB / about 0.4 GB. seg's limit is `SEG_MEM_LIMIT` (3g; on linux/arm64 set 6g, where seg holds about 4.2 GiB
+after start-up; the tables are for the VM). Everything in GiB, whole stack:
 
 | Service | Beside legacy 2/2/2: limit / resident | After cutover 6/3/3: limit / resident |
 |---|---|---|
@@ -907,7 +908,7 @@ paths (TODO Q3). At cutover the same build serves `/`.
 | chem in the api | `compose.yaml` | Done in P3-06: the `chem-api` network and the api's `CHEM_URL`; check on the VM that the api reaches `chem:8004` and not seg, cls or ocsr |
 | reports volume | `compose.yaml` | `REPORTS_DIR` is the api's setting (P3-08, done); old reports are deleted by the api (`REPORTS_MAX_AGE_DAYS`); the backup must exclude this volume |
 | cls soak | `compose.yaml` | A few thousand requests, watch RSS, confirm 2.5 GB |
-| memory limits per replica | `compose.yaml` | seg 3 GB, ocsr 6 GB, cls 2.5 GB come from the READMEs; measure on the VM |
+| memory limits per replica | `compose.yaml` | seg 3 GB (`SEG_MEM_LIMIT`), ocsr 6 GB, cls 2.5 GB come from the READMEs; measure on the VM |
 | GlitchTip first start | `.env`, the VM | Set `GLITCHTIP_ADMIN_EMAIL` and the three secrets, start it (the init makes the account and the projects), put the two DSNs and `GLITCHTIP_WEB_PROJECT_ID` into `deploy/.env`, rebuild the edge (see "Observability"); check one test report from the api and one from a browser arrives scrubbed, and that the projects show "Scrub IP addresses" on |
 | GlitchTip alerts | compose | No alert e-mail: GlitchTip has no route out. Either look at the UI regularly, or give it a mail relay (the campus SMTP server; a network with that route for GlitchTip alone; the owner's call) |
 | SPA API client | `web.Dockerfile` | `VITE_API=http` builds, but the client is TODO: the app errors at start-up until then |
