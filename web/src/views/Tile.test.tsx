@@ -86,3 +86,34 @@ test('a crop that is not there (404) is a quiet "No picture", never a broken ima
   expect(button.querySelector('img.dc-tile__structure')).not.toBeNull();
   expect(button.querySelector('.dc-tile__number')?.textContent).toBe(String(ethanol.index + 1));
 });
+
+test('only the selected tile stands in the inspection frame, which is decoration', () => {
+  const view = viewOf(ethanol!);
+  const { container, rerender } = render(
+    <MantineProvider>
+      <ul>
+        <Tile view={view} selected={false} order={0} onSelect={vi.fn()} />
+      </ul>
+    </MantineProvider>,
+  );
+  expect(container.querySelector('.dc-frame--sel')).toBeNull();
+  rerender(
+    <MantineProvider>
+      <ul>
+        <Tile view={view} selected order={0} onSelect={vi.fn()} />
+      </ul>
+    </MantineProvider>,
+  );
+  const frame = container.querySelector('.dc-frame--sel');
+  expect(frame?.getAttribute('aria-hidden')).toBe('true');
+  expect(frame?.querySelectorAll('.dc-frame__handle')).toHaveLength(4);
+  // It is not inside the button, so the button is still named by the structure alone.
+  expect(screen.getByRole('button').contains(frame)).toBe(false);
+});
+
+test('the button is named "Structure n", the name and the status, in that order; the footer number is for the eye', () => {
+  const button = show();
+  expect(button.textContent?.startsWith(`Structure ${ethanol!.number}`)).toBe(true);
+  expect(button.querySelector('.dc-tile__id')?.getAttribute('aria-hidden')).toBe('true');
+  expect(button.querySelector('.dc-status .dc-dot')?.getAttribute('data-status')).toBe('unchecked');
+});

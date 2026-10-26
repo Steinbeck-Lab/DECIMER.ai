@@ -1,10 +1,11 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { strings } from '../strings';
 import { ACCEPT } from '../upload/files';
 import { describeProblem } from '../upload/problems';
 import type { Problem } from '../state/model';
 import { IconArrowUp, PillIcon } from '../ui/icons';
+import { useRenderedSize } from '../ui/useRenderedSize';
 
 function ProblemNotice({ problem }: { problem: Problem }) {
   const { text, detail } = describeProblem(problem);
@@ -21,27 +22,6 @@ function isMacLike(): boolean {
   if (typeof navigator === 'undefined') return false;
   const platform = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ?? navigator.platform ?? '';
   return /mac|iphone|ipad|ipod/i.test(platform || navigator.userAgent);
-}
-
-/**
- * The rendered size of an element in whole pixels, kept up to date as the window changes: the frame's label prints it.
- * The first reading comes from the observer itself, before the first paint; with no observer (an old browser, a test) there is none.
- */
-function useRenderedSize<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
-  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => {
-      const { width, height } = el.getBoundingClientRect();
-      const next = { width: Math.round(width), height: Math.round(height) };
-      setSize((old) => (old && old.width === next.width && old.height === next.height ? old : next));
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-  return [ref, size] as const;
 }
 
 interface Props {

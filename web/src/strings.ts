@@ -1,6 +1,7 @@
 // All user-facing text lives here (ROADMAP §3: English only, one module).
 import { LIMITS } from './api/contract';
 import type { ApiErrorCode, StageName } from './api/contract';
+import type { Status } from './state/model';
 
 const plural = (n: number, one: string, other: string) => (n === 1 ? one : other);
 const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
@@ -178,19 +179,28 @@ export const strings = {
 
   results: {
     title: 'Structures',
-    source: (name: string) => `Recognised from ${name}`,
-    pastedSource: 'a pasted image',
+    /** What the document tile calls an upload that has no file name (an image pasted from the clipboard). */
+    pastedSource: 'Pasted image',
     moreSources: (name: string, more: number) => `${name} and ${more} more`,
     /** A PDF has a page limit; images do not (one page each, up to the upload's file limit), so there is none to show. */
     capacity: (structures: number, pages: number, pdf: boolean) =>
       `${structures} of ${LIMITS.maxStructures} structures · ${
         pdf ? `${pages} of ${LIMITS.maxPages} pages` : `${pages} ${plural(pages, 'image', 'images')}`
       }`,
-    countReview: (n: number) => `${n} to review`,
-    countNotSure: (n: number) => `${n} not sure`,
-    countEdited: (n: number) => `${n} edited`,
-    countChecked: (n: number) => `${n} checked`,
-    countUnchecked: (n: number) => `${n} unchecked`,
+    /** The words after each status count in the forest tile ("3 to review"). */
+    countWords: {
+      review: 'to review',
+      notsure: 'not sure',
+      edited: 'edited',
+      checked: 'checked',
+      unchecked: 'unchecked',
+    } satisfies Record<Status, string>,
+    pagesLabel: 'Structures per page',
+    /** One page of the strip, for assistive technology (the strip itself shows the page number and the count). */
+    pageStructures: (page: number, n: number) =>
+      n === 0 ? `Page ${page}: no structures` : `Page ${page}: ${n} ${plural(n, 'structure', 'structures')}`,
+    /** The selected result's inspection frame: its number and the real size of its tile on screen. */
+    frameLabel: (number: number, width: number, height: number) => `Result ${number} · ${width} × ${height} px`,
     countsLabel: 'Status of the structures',
     filterLabel: 'Show structures',
     filterAll: 'All',
@@ -289,6 +299,8 @@ export const strings = {
     },
     loadFailed: 'This structure could not be loaded into the editor. You can still check it against the original and mark it, or report it.',
     position: (n: number, total: number) => `${n} of ${total}`,
+    /** The panel's heading, as the tile's frame says it: "Result 4". */
+    result: (n: number) => `Result ${n}`,
     editing: 'Editing',
     close: 'Close',
     previous: 'Previous structure',
@@ -317,6 +329,7 @@ export const strings = {
     smiles: 'SMILES',
     noSmiles: 'No valid SMILES',
     molfile: 'Molfile',
+    copy: 'Copy',
     copied: 'Copied',
     copySmiles: 'Copy SMILES',
     copyName: 'Copy name',

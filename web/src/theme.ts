@@ -55,8 +55,6 @@ export const palette = {
   checked: '#DDE6D3',
   checkedInk: '#1E3226',
   checkedDot: '#1E3226',
-  checkedButton: '#C9D8C0',
-  checkedButtonInk: '#1E3226',
   /** Needs review (mustard). */
   review: '#F3E4AD',
   reviewInk: '#5E490C',
@@ -129,8 +127,6 @@ const CSS_NAMES: Record<keyof typeof palette, string> = {
   checked: 'checked',
   checkedInk: 'checked-ink',
   checkedDot: 'checked-dot',
-  checkedButton: 'checked-button',
-  checkedButtonInk: 'checked-button-ink',
   review: 'review',
   reviewInk: 'review-ink',
   reviewDot: 'review-dot',

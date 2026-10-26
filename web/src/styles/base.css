@@ -265,23 +265,6 @@ h3 {
   box-shadow: var(--dc-porcelain-egg-pressed);
 }
 
-/* "Mark as checked": the checked tone; pressed means it is checked. */
-.dc-pill--check {
-  background: var(--dc-checked-button);
-  color: var(--dc-checked-button-ink);
-  box-shadow: var(--dc-porcelain-egg);
-}
-
-.dc-pill--check:hover:not(:disabled, [aria-disabled='true']) {
-  color: var(--dc-checked-button-ink);
-  box-shadow: var(--dc-porcelain-egg-raised);
-}
-
-.dc-pill--check[aria-pressed='true'] {
-  background: var(--dc-checked);
-  box-shadow: var(--dc-porcelain-egg-pressed);
-}
-
 /* The round copper end of a pill: an arrow or a glyph drawn in SVG. */
 .dc-pill__icon {
   display: inline-grid;

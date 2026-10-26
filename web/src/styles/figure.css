@@ -1,9 +1,13 @@
-/* Results: the figure. A borderless scheme of structures, each above its bold number. */
+/*
+ * Results: a bento of flat tiles on the egg-nog page. Elevation is declared once: a 1px hairline, no shadow (the
+ * porcelain pills are the only things with volume). The counts tile is velvet forest, the document tile and the
+ * structure tiles are the lightest cream, the selected structure stands in the copper inspection frame.
+ */
 
 .dc-body[data-split='true'] {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(380px, 1fr);
-  gap: 32px;
+  grid-template-columns: minmax(0, 1fr) minmax(400px, 1fr);
+  gap: 20px;
   align-items: start;
   padding: 8px var(--dc-gutter) 48px;
 }
@@ -22,126 +26,90 @@
   max-width: 100%;
 }
 
-.dc-figure__head {
+/* A bento tile. */
+.dc-slab,
+.dc-doc__tile {
+  min-width: 0;
+  border: 1px solid var(--dc-line);
+  border-radius: 26px;
+  background: var(--dc-tile);
+}
+
+/* The top of the bento: the counts and the document, side by side while there is room for both. */
+.dc-top {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+}
+
+/* Counts: velvet forest, the number as the one big thing, the breakdown as dot and word lines. */
+.dc-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 22px 26px 24px;
+  border-color: var(--dc-forest);
+  background: var(--dc-forest);
+  color: var(--dc-egg);
+}
+
+.dc-stats__title {
+  margin: 0;
+  font: 500 1rem/1.2 var(--dc-font-ui);
+  letter-spacing: 0;
+}
+
+.dc-stats__body {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px 16px;
-  padding-bottom: 14px;
-  border-bottom: 2px solid var(--dc-ink);
+  align-items: flex-end;
+  gap: 12px 26px;
+  margin-top: auto;
 }
 
-.dc-figure__title {
+.dc-stats__total {
   margin: 0;
-  font: 500 1.625rem/1.2 var(--dc-font-display);
-  letter-spacing: -0.01em;
-}
-
-.dc-figure__source {
-  flex: 1 1 12ch;
-  margin: 0;
-  min-width: 0;
-  overflow: hidden;
-  color: var(--dc-muted);
-  font-size: 0.9375rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font: 400 4.75rem/0.8 var(--dc-font-display);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
 }
 
 .dc-counts {
-  display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 0 0 0 auto;
+  display: grid;
+  gap: 7px;
+  margin: 0;
   padding: 0;
   list-style: none;
+  color: rgb(251 237 195 / 0.78);
   font-size: 0.8125rem;
-  font-weight: 600;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 640px) {
-  .dc-counts {
-    margin-left: 0;
-    width: 100%;
-  }
-  .dc-figure__source {
-    flex-basis: 100%;
-    white-space: normal;
-    overflow-wrap: anywhere;
-  }
-}
-
-/* Status: the same fills for the counts, the dots and the status words. */
-.dc-count,
-.dc-status {
-  border-radius: 10px;
+.dc-count {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   white-space: nowrap;
 }
 
-.dc-count {
-  padding: 3px 10px;
+.dc-count__n {
+  min-width: 2ch;
+  color: var(--dc-egg);
+  font-weight: 600;
+  text-align: right;
 }
 
-.dc-count[data-status='checked'],
-.dc-status[data-status='checked'] {
-  background: var(--dc-checked);
-  color: var(--dc-checked-ink);
-}
-
-.dc-count[data-status='review'],
-.dc-status[data-status='review'] {
-  background: var(--dc-review);
-  color: var(--dc-review-ink);
-}
-
-.dc-count[data-status='edited'],
-.dc-status[data-status='edited'] {
-  background: var(--dc-edited);
-  color: var(--dc-edited-ink);
-}
-
-.dc-count[data-status='notsure'],
-.dc-status[data-status='notsure'] {
-  background: var(--dc-not-sure);
-  color: var(--dc-not-sure-ink);
-}
-
-.dc-count[data-status='unchecked'] {
-  background: var(--dc-egg);
-  color: var(--dc-muted);
-}
-
-/* The server says the current structure is not valid: shown on the tile whatever the status. */
-.dc-status.dc-status--invalid {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--dc-not-sure);
-  color: var(--dc-not-sure-ink);
-}
-
-/* An edit the server has not answered yet: the depiction is from before it, so it is dimmed (a picture, not
-   text). The name says "Updating…" in the muted italic, which keeps its contrast. */
-.dc-tile__button[data-stale='true'] .dc-tile__structure {
-  opacity: 0.4;
-}
-
-/* Nobody has looked yet: no fill, so the flagged and decided tiles are the ones that stand out. */
-.dc-status[data-status='unchecked'] {
-  padding-inline: 0;
-  background: none;
-  color: var(--dc-muted);
-  font-weight: 500;
-}
-
+/* The status dots. Each state keeps its colour and its shape wherever a dot stands: a filled dot, and for "unchecked"
+   (nobody has looked) a ring. */
 .dc-dot {
   flex: none;
-  width: 10px;
-  height: 10px;
+  box-sizing: border-box;
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid transparent;
   border-radius: 50%;
-  background: var(--dc-line);
+  background: var(--dc-muted);
 }
 
 .dc-dot[data-status='checked'] {
@@ -160,44 +128,250 @@
   background: var(--dc-not-sure-dot);
 }
 
+.dc-dot[data-status='unchecked'] {
+  border-color: var(--dc-muted);
+  background: transparent;
+}
+
+/* On forest the dark dots would vanish: checked is egg nog, "not sure" keeps its garnet inside a peach ring. */
+.dc-stats .dc-dot[data-status='checked'] {
+  background: var(--dc-egg);
+}
+
+.dc-stats .dc-dot[data-status='notsure'] {
+  border-color: var(--dc-not-sure);
+}
+
+.dc-stats .dc-dot[data-status='unchecked'] {
+  border-color: rgb(251 237 195 / 0.7);
+}
+
+/* Document: the file name, the structures on each page, and (for a PDF) the toggle that shows the pages. */
+.dc-doc__tile {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 22px 26px 24px;
+}
+
+.dc-doc__name {
+  margin: 0;
+  overflow: hidden;
+  font: 400 0.8125rem/1.3 var(--dc-font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dc-pages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dc-pages__page {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 18px;
+  /* Few pages: the chips stay chips, they do not stretch across the tile. */
+  max-width: 56px;
+  height: 50px;
+  padding: 6px 0 0 5px;
+  border: 1px solid var(--dc-line);
+  border-radius: 7px;
+  color: var(--dc-muted);
+  font: 400 0.6875rem/1 var(--dc-font-mono);
+  font-variant-numeric: tabular-nums;
+  transition:
+    flex-grow 0.3s var(--dc-ease),
+    background-color 0.2s ease;
+}
+
+/* A page with structures is egg nog; one without is a muted outline. */
+.dc-pages__page[data-empty='false'] {
+  border-color: color-mix(in srgb, var(--dc-mustard) 60%, transparent);
+  background: var(--dc-egg);
+  color: var(--dc-ink-2);
+}
+
+/* The page of the structure that is open takes the room. */
+.dc-pages__page[data-current='true'] {
+  flex-grow: 3.6;
+  max-width: 140px;
+  border-color: var(--dc-mustard);
+  background: var(--dc-mustard);
+  color: var(--dc-ink);
+}
+
+.dc-pages__n {
+  position: absolute;
+  bottom: 6px;
+  left: 4px;
+  color: var(--dc-ink);
+  font: 500 0.8125rem/1 var(--dc-font-display);
+  font-variant-numeric: tabular-nums;
+  transition: font-size 0.3s var(--dc-ease);
+}
+
+.dc-pages__page[data-current='true'] .dc-pages__n {
+  left: 9px;
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+}
+
+.dc-doc__toggle {
+  align-self: flex-start;
+  margin-top: auto;
+}
+
+.dc-doc__chevron {
+  display: grid;
+  transition: transform 0.2s var(--dc-ease);
+}
+
+.dc-doc__toggle[aria-expanded='true'] .dc-doc__chevron {
+  transform: rotate(90deg);
+}
+
+/* "Display uploaded document": the pages side by side in a strip that scrolls inside its own box (never the page).
+   In the bento it is a tile of its own under the top row; alone (the "no structures" screen) it sits under the toggle. */
+.dc-doc {
+  --dc-doc-h: min(52vh, 460px);
+  min-width: 0;
+  margin-top: 16px;
+}
+
+.dc-doc[data-tile='true'] {
+  display: contents;
+}
+
+.dc-doc__strip {
+  max-width: 100%;
+  min-width: 0;
+  margin-top: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  border-radius: 20px;
+  background: var(--dc-egg);
+  scrollbar-color: var(--dc-line-strong) transparent;
+}
+
+.dc-doc[data-tile='true'] .dc-doc__strip {
+  grid-column: 1 / -1;
+  margin-top: 0;
+  border: 1px solid var(--dc-line);
+  border-radius: 26px;
+  background: var(--dc-tile);
+}
+
+.dc-doc__strip[hidden] {
+  display: none;
+}
+
+.dc-doc__pages {
+  display: flex;
+  gap: 12px;
+  width: max-content;
+  margin: 0;
+  padding: 14px;
+  list-style: none;
+}
+
+/* A page keeps its place (a portrait page's width) before its image arrives, so lazy loading does not shift the strip. */
+.dc-doc__page {
+  flex: none;
+  height: var(--dc-doc-h);
+  min-width: calc(var(--dc-doc-h) * 0.707);
+}
+
+.dc-doc__page img {
+  display: block;
+  width: auto;
+  height: 100%;
+  border: 1px solid var(--dc-line);
+  border-radius: 6px;
+  background: var(--dc-white);
+}
+
+.dc-doc__missing {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  margin: 0;
+  padding: 12px;
+  border: 1px dashed var(--dc-line-strong);
+  border-radius: 6px;
+  color: var(--dc-muted);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+@media (max-width: 560px) {
+  .dc-doc {
+    --dc-doc-h: min(50vh, 400px);
+  }
+}
+
+/* The no-structures screen is centred and narrow: the toggle sits on its own line there. */
+.dc-working .dc-doc {
+  margin-top: 18px;
+}
+
+/* The job's warnings, between the top row and the filters. */
 .dc-figure > .dc-callout {
   margin-top: 16px;
 }
 
-/* Filters */
+/* Filters: the chosen one is forest porcelain; the others are plain words that lift to egg-nog porcelain on hover. */
 .dc-filters {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  padding-top: 16px;
+  margin-top: 20px;
 }
 
 .dc-filter {
-  min-height: 40px;
-  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 18px;
   border: 0;
-  border-radius: 20px;
-  background: var(--dc-egg);
-  color: var(--dc-ink);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dc-ink-2);
   font-size: 0.9375rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition:
+    box-shadow 0.2s var(--dc-ease),
+    background-color 0.15s ease,
+    color 0.15s ease;
 }
 
-.dc-filter:hover {
-  background: var(--dc-egg-deep);
+.dc-filter:hover:not([aria-pressed='true']) {
+  background: var(--dc-egg);
+  color: var(--dc-ink);
+  box-shadow: var(--dc-porcelain-egg);
 }
 
 .dc-filter[aria-pressed='true'] {
-  background: var(--dc-ink);
-  color: var(--dc-tile);
+  background: var(--dc-forest);
+  color: var(--dc-egg);
+  box-shadow: var(--dc-porcelain-forest);
 }
 
 .dc-filter__count {
-  margin-left: 4px;
+  margin-left: 2px;
+  font: 400 0.75rem/1 var(--dc-font-mono);
   font-variant-numeric: tabular-nums;
-  opacity: 0.75;
+}
+
+.dc-filter[aria-pressed='true'] .dc-filter__count {
+  color: var(--dc-mustard);
 }
 
 .dc-figure__empty {
@@ -205,44 +379,49 @@
   color: var(--dc-muted);
 }
 
-/* The grid of tiles */
+/* The grid of tiles. The first row starts 36 px below the filters and the rows are 36 px apart: the selected tile's
+   frame and its label stand in that room. */
 .dc-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 176px), 1fr));
+  gap: 36px 16px;
   margin: 0;
-  padding: 14px 0 0;
+  padding: 36px 0 0;
   list-style: none;
 }
 
 @media (max-width: 560px) {
   .dc-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 36px 12px;
   }
 }
 
 .dc-tile {
+  position: relative;
   min-width: 0;
 }
 
 .dc-tile__button {
   display: flex;
   flex-direction: column;
-  align-items: center;
   width: 100%;
   height: 100%;
-  padding: 14px 12px;
-  border: 0;
-  border-radius: 14px;
-  background: transparent;
+  padding: 14px 16px;
+  border: 1px solid var(--dc-line);
+  border-radius: 22px;
+  background: var(--dc-tile);
   color: var(--dc-ink);
-  text-align: center;
+  text-align: left;
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
 }
 
+/* Hover is garnet, as on the drop zone. */
 .dc-tile__button:hover {
-  background: var(--dc-tile);
+  border-color: var(--dc-garnet);
 }
 
 .dc-tile__button[aria-current='true'] {
@@ -252,7 +431,7 @@
 .dc-tile__figure {
   position: relative;
   align-self: stretch;
-  height: 150px;
+  height: 112px;
 }
 
 .dc-tile__structure {
@@ -270,12 +449,16 @@
   font-style: italic;
 }
 
+/* An edit the server has not answered yet: the depiction is from before it, so it is dimmed (a picture, not
+   text). The name says "Updating…" in the muted italic, which keeps its contrast. */
+.dc-tile__button[data-stale='true'] .dc-tile__structure {
+  opacity: 0.4;
+}
+
 .dc-tile__crop {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 64px;
-  height: 48px;
+  flex: none;
+  width: 48px;
+  height: 34px;
   object-fit: contain;
   background: var(--dc-white);
   border: 1px solid var(--dc-line);
@@ -293,29 +476,15 @@
   font-style: italic;
 }
 
-.dc-tile__id {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding-top: 6px;
-}
-
-.dc-tile__number {
-  font: 500 1.625rem/1.2 var(--dc-font-display);
-  font-variant-numeric: tabular-nums;
-}
-
 .dc-tile__name {
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  min-height: calc(2 * 1.35em);
-  margin-top: 2px;
-  color: var(--dc-ink-2);
+  margin: 12px 0;
+  color: var(--dc-ink);
   font-size: 0.8125rem;
-  line-height: 1.35;
+  line-height: 1.42;
   overflow-wrap: anywhere;
 }
 
@@ -324,31 +493,87 @@
   font-style: italic;
 }
 
-.dc-tile__flags {
+.dc-tile__foot {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  gap: 4px;
-  margin-top: 6px;
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid var(--dc-line);
 }
 
+.dc-tile__id {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--dc-muted);
+  font: 400 0.6875rem/1 var(--dc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.dc-tile__number {
+  color: var(--dc-ink);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  transition: color 0.15s ease;
+}
+
+.dc-tile__button:hover .dc-tile__number {
+  color: var(--dc-garnet);
+}
+
+.dc-tile__flags {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px 8px;
+}
+
+/* Status as a dot and a word. */
 .dc-status {
-  display: inline-block;
-  padding: 2px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--dc-ink);
   font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.dc-status[data-status='unchecked'] {
+  color: var(--dc-muted);
+}
+
+.dc-status[data-status='notsure'] {
+  color: var(--dc-not-sure-ink);
+}
+
+/* The server says the current structure is not valid: shown on the tile whatever the status. */
+.dc-status.dc-status--invalid {
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--dc-not-sure);
+  color: var(--dc-not-sure-ink);
   font-weight: 600;
 }
 
 @media (max-width: 560px) {
+  .dc-filter {
+    padding: 0 12px;
+  }
   .dc-tile__button {
-    padding: 10px 6px;
+    padding: 10px 12px;
   }
   .dc-tile__figure {
-    height: 112px;
+    height: 100px;
   }
   .dc-tile__crop {
-    width: 48px;
-    height: 36px;
+    width: 44px;
+    height: 32px;
   }
 }
 
@@ -365,6 +590,122 @@
   }
   to {
     opacity: 1;
+    transform: none;
+  }
+}
+
+/*
+ * The selected result's inspection frame is the drop zone's: the markup and the base rules are `.dc-frame` in home.css
+ * (edges, handles, label, guides, the draw-in and the reduced-motion rule). This modifier changes what differs on a
+ * tile: it stands 8 px out (the inline `inset` of SelectionFrame), is drawn in about a quarter of a second instead of
+ * a second, its label sits on the top edge, its guides stop 10 to 26 px past the frame (the gutter and the gap to the
+ * editor take that), and the garnet tint comes with the pointer or keyboard focus on the tile.
+ */
+.dc-frame--sel {
+  z-index: 2;
+}
+
+.dc-frame--sel .dc-frame__line--top,
+.dc-frame--sel .dc-frame__line--bottom {
+  animation-duration: 0.22s;
+}
+
+.dc-frame--sel .dc-frame__line--left,
+.dc-frame--sel .dc-frame__line--right {
+  animation-duration: 0.2s;
+  animation-delay: 0.06s;
+}
+
+.dc-frame--sel .dc-frame__handle {
+  animation-duration: 0.18s;
+}
+
+.dc-frame--sel .dc-frame__handle--tl {
+  animation-delay: 0.12s;
+}
+
+.dc-frame--sel .dc-frame__handle--tr {
+  animation-delay: 0.14s;
+}
+
+.dc-frame--sel .dc-frame__handle--bl {
+  animation-delay: 0.16s;
+}
+
+.dc-frame--sel .dc-frame__handle--br {
+  animation-delay: 0.18s;
+}
+
+/* The label stands on the frame's top edge, joined to it. It is revealed by a clip, not faded, and its tint swaps at
+   once: text that is half transparent, or between copper and garnet, is below the contrast floor for a moment. */
+.dc-frame--sel .dc-frame__label {
+  top: auto;
+  bottom: 100%;
+  left: -1px;
+  border-radius: 3px 3px 0 0;
+  transition: none;
+  animation: dc-reveal 0.2s cubic-bezier(0.23, 1, 0.32, 1) 0.08s both;
+}
+
+.dc-frame--sel .dc-frame__guide {
+  animation-duration: 0.4s;
+  animation-delay: 0.1s;
+  background: color-mix(in srgb, var(--dc-copper) 26%, transparent);
+}
+
+.dc-frame--sel .dc-frame__guide--top {
+  top: 0;
+  right: -10px;
+  left: -26px;
+}
+
+.dc-frame--sel .dc-frame__guide--bottom {
+  right: -20px;
+  bottom: 0;
+  left: -14px;
+}
+
+.dc-frame--sel .dc-frame__guide--left {
+  top: -26px;
+  bottom: -12px;
+  left: 0;
+}
+
+.dc-frame--sel .dc-frame__guide--right {
+  top: -10px;
+  right: 0;
+  bottom: -26px;
+}
+
+/* The drop zone drops its side guides on narrower windows; a tile keeps them down to a phone, where all guides go. */
+@media (min-width: 641px) {
+  .dc-frame--sel .dc-frame__guide--left,
+  .dc-frame--sel .dc-frame__guide--right {
+    display: block;
+  }
+}
+
+.dc-tile:hover .dc-frame--sel .dc-frame__line,
+.dc-tile:hover .dc-frame--sel .dc-frame__handle,
+.dc-tile:hover .dc-frame--sel .dc-frame__label,
+.dc-tile:has(> .dc-tile__button:focus-visible) .dc-frame--sel .dc-frame__line,
+.dc-tile:has(> .dc-tile__button:focus-visible) .dc-frame--sel .dc-frame__handle,
+.dc-tile:has(> .dc-tile__button:focus-visible) .dc-frame--sel .dc-frame__label {
+  background: var(--dc-garnet);
+}
+
+.dc-tile:hover .dc-frame--sel .dc-frame__label,
+.dc-tile:has(> .dc-tile__button:focus-visible) .dc-frame--sel .dc-frame__label {
+  color: var(--dc-egg);
+}
+
+@keyframes dc-reveal {
+  from {
+    clip-path: inset(0 100% 0 0);
+    transform: translateY(4px);
+  }
+  to {
+    clip-path: inset(0);
     transform: none;
   }
 }
@@ -387,112 +728,13 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 16px;
-  margin-top: 28px;
-  padding-top: 16px;
-  border-top: 2px solid var(--dc-ink);
+  gap: 10px 20px;
+  margin-top: 36px;
+  padding: 14px 22px 14px 14px;
 }
 
 .dc-figure__foot p {
   margin: 0;
   color: var(--dc-muted);
   font-size: 0.9375rem;
-}
-
-/* "Display uploaded document": a quiet toggle, and a strip of the pages that scrolls inside its own box (never the page). */
-.dc-doc {
-  --dc-doc-h: min(62vh, 560px);
-  min-width: 0;
-  margin-top: 16px;
-}
-
-.dc-doc__toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 40px;
-  padding: 0 16px 0 12px;
-  border: 0;
-  border-radius: 20px;
-  background: var(--dc-egg);
-  color: var(--dc-ink);
-  font-size: 0.9375rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-
-.dc-doc__toggle:hover {
-  background: var(--dc-egg-deep);
-}
-
-.dc-doc__chevron {
-  transition: transform 0.15s ease;
-}
-
-.dc-doc__toggle[aria-expanded='true'] .dc-doc__chevron {
-  transform: rotate(90deg);
-}
-
-.dc-doc__strip {
-  max-width: 100%;
-  margin-top: 10px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  overscroll-behavior-x: contain;
-  border-radius: 14px;
-  background: var(--dc-egg);
-}
-
-.dc-doc__strip[hidden] {
-  display: none;
-}
-
-.dc-doc__pages {
-  display: flex;
-  gap: 12px;
-  width: max-content;
-  margin: 0;
-  padding: 12px;
-  list-style: none;
-}
-
-/* A page keeps its place (a portrait page's width) before its image arrives, so lazy loading does not shift the strip. */
-.dc-doc__page {
-  flex: none;
-  height: var(--dc-doc-h);
-  min-width: calc(var(--dc-doc-h) * 0.707);
-}
-
-.dc-doc__page img {
-  display: block;
-  width: auto;
-  height: 100%;
-  border: 1px solid var(--dc-line);
-  border-radius: 4px;
-  background: var(--dc-white);
-}
-
-.dc-doc__missing {
-  display: grid;
-  place-items: center;
-  height: 100%;
-  margin: 0;
-  padding: 12px;
-  border: 1px dashed var(--dc-line);
-  border-radius: 4px;
-  color: var(--dc-muted);
-  font-size: 0.875rem;
-  text-align: center;
-}
-
-@media (max-width: 560px) {
-  .dc-doc {
-    --dc-doc-h: min(56vh, 420px);
-  }
-}
-
-/* The no-structures screen is centred and narrow: the toggle sits on its own line there. */
-.dc-working .dc-doc {
-  margin-top: 18px;
 }

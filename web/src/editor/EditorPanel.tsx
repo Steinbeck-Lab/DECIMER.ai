@@ -6,7 +6,7 @@ import type { Status } from '../state/model';
 import { useAppState, useController, useResultViews } from '../state/react';
 import { pageNumber, stepList, type ResultView } from '../state/selectors';
 import { CropImage } from '../ui/CropImage';
-import { IconCheck, IconChevronLeft, IconChevronRight, IconFlag, IconReset, IconX } from '../ui/icons';
+import { IconCheck, IconChevronLeft, IconChevronRight, IconFlag, IconX, PillIcon } from '../ui/icons';
 import { nameHover, staleLabel, statusLabel } from '../ui/format';
 import { KetcherPanel } from './KetcherPanel';
 import { blockKeysWhileBusy } from './busyKeys';
@@ -250,8 +250,12 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
       {view && (
         <header className="dc-editor__head">
           <h2 className="dc-editor__number" tabIndex={-1} data-autofocus aria-label={failedToLoad ? strings.editor.loadFailedHeading(view.number) : `${strings.editor.editing} ${view.number}`}>
-            {view.number}
+            {strings.editor.result(view.number)}
           </h2>
+          <span className="dc-status" data-status={view.status}>
+            <span className="dc-dot" data-status={view.status} aria-hidden="true" />
+            {statusLabel(view.status)}
+          </span>
           <span className="dc-editor__editing" aria-hidden="true" data-failed={failedToLoad}>
             {failedToLoad ? strings.editor.loadFailedShort : strings.editor.editing}
           </span>
@@ -277,9 +281,14 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
             >
               <IconChevronRight size={18} />
             </button>
-            <button type="button" className="dc-pill dc-pill--small dc-pill--quiet" onClick={close}>
-              <IconX size={16} />
-              {strings.editor.close}
+            <button
+              type="button"
+              className="dc-icon-button"
+              aria-label={strings.editor.close}
+              title={strings.editor.close}
+              onClick={close}
+            >
+              <IconX size={18} />
             </button>
           </div>
         </header>
@@ -315,7 +324,7 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
               <figcaption>{strings.editor.original(pageNumber(view))}</figcaption>
             </figure>
             <dl className="dc-fact dc-fact--text">
-              <dt>{strings.editor.name}</dt>
+              <dt className="dc-sr">{strings.editor.name}</dt>
               <dd>
                 {view.stale ? (
                   <span className="dc-fact__value" data-empty="true">
@@ -336,7 +345,7 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
                   </>
                 )}
               </dd>
-              <dt>{strings.editor.change}</dt>
+              <dt className="dc-sr">{strings.editor.change}</dt>
               <dd>
                 <span className="dc-fact__value">
                   {view.modified ? strings.editor.changeEdited : strings.editor.changeNone}
@@ -354,12 +363,14 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
           <div className="dc-actions">
             <button
               type="button"
-              className="dc-pill dc-pill--check"
+              className="dc-pill dc-pill--ink dc-editor__check"
               aria-pressed={view.checked}
               onClick={() => controller.setChecked(view.index, !view.checked)}
             >
-              <IconCheck size={18} />
               {view.checked ? strings.editor.undoChecked : strings.editor.markChecked}
+              <PillIcon>
+                <IconCheck size={17} strokeWidth={2.2} />
+              </PillIcon>
             </button>
             <button
               type="button"
@@ -368,7 +379,6 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
               disabled={!view.modified}
               title={strings.editor.resetHint}
             >
-              <IconReset size={18} />
               {strings.editor.reset}
             </button>
           </div>
