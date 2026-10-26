@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { STAGE_ORDER, type Job, type StageName } from '../api/contract';
 import { strings } from '../strings';
 import { useAppState } from '../state/react';
-import type { SourceFile } from '../state/model';
 import { isPdfUpload, pagesToProcess, stageProgress } from '../state/selectors';
-import { IconFile } from '../ui/icons';
+import { Specimen } from './Specimen';
 
 function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -23,34 +22,32 @@ function useElapsed(startedAt: number | null): number {
   return startedAt === null ? 0 : now - startedAt;
 }
 
-function SourceStrip({ sources }: { sources: SourceFile[] }) {
-  const shown = sources.slice(0, 3);
-  const more = sources.length - shown.length;
-  return (
-    <ul className="dc-sources">
-      {shown.map((s) => (
-        <li key={`${s.name}-${s.size}`} className="dc-source">
-          {s.previewUrl ? (
-            <img className="dc-source__thumb" src={s.previewUrl} alt={strings.working.sourcePreview(s.name)} />
-          ) : (
-            <span className="dc-source__thumb dc-source__thumb--file">
-              <IconFile size={18} />
-            </span>
-          )}
-          <span className="dc-source__name">{s.name}</span>
-        </li>
-      ))}
-      {more > 0 && <li className="dc-source dc-source--more">+{more}</li>}
-    </ul>
-  );
-}
-
-/** Five segments, one per stage, each in its own state: done ink, active ink and breathing (several can be, the stages overlap), pending pale. */
+/**
+ * The stages as a dimension line, like the drop zone's: a copper rule with a tick at every boundary and one segment
+ * per stage. A done segment is drawn in full, a pending one is a hairline, an active one is being measured (several
+ * can be, the stages overlap, and they are drawn in step). The names under it repeat what the heading and the line
+ * below it say, so they are hidden from assistive technology; the bar's own value and text say how far it is.
+ */
 function ProgressRule({ job }: { job: Job | null }) {
-  const { states, current, doneCount } = stageProgress(job);
-  const queued = job?.status === 'queued';
+  const { states, doneCount } = stageProgress(job);
+  const stateOf = (name: StageName, i: number) => (job ? states[name] : i === 0 ? 'active' : 'pending');
+  const ref = useRef<HTMLDivElement>(null);
+
+  // A segment that turns active later would start its drawing out of phase with the others: put every drawing on the
+  // document's clock, so they all start over at the same moment. (Not needed, and not there, without motion.)
+  const key = STAGE_ORDER.map(stateOf).join();
+  useLayoutEffect(() => {
+    const drawn = ref.current?.querySelectorAll('[data-state="active"] > :is(.dc-rule__fill, .dc-rule__head)') ?? [];
+    for (const el of drawn) {
+      // Absent in jsdom.
+      if (typeof el.getAnimations !== 'function') continue;
+      for (const animation of el.getAnimations()) animation.startTime = 0;
+    }
+  }, [key]);
+
   return (
     <div
+      ref={ref}
       className="dc-rule"
       role="progressbar"
       aria-label={strings.working.progressLabel}
@@ -59,10 +56,15 @@ function ProgressRule({ job }: { job: Job | null }) {
       aria-valuenow={doneCount}
       aria-valuetext={strings.working.stepsDone(doneCount, STAGE_ORDER.length)}
     >
-      {STAGE_ORDER.map((name, i) => {
-        const state = queued ? 'pending' : job ? states[name] : i === 0 ? 'active' : 'pending';
-        return <span key={name} className="dc-rule__segment" data-state={state} data-index={i} data-current={i === current} />;
-      })}
+      {STAGE_ORDER.map((name, i) => (
+        <span key={name} className="dc-rule__segment" data-state={stateOf(name, i)} data-index={i}>
+          <span className="dc-rule__fill" />
+          <span className="dc-rule__head" />
+          <span className="dc-rule__name" aria-hidden="true">
+            {strings.working.stageShort[name]}
+          </span>
+        </span>
+      ))}
     </div>
   );
 }
@@ -94,23 +96,25 @@ export function WorkingView() {
   const expectedPages = jobPages || (pdf ? 0 : state.sources.length) || null;
 
   return (
-    <main id="main" tabIndex={-1} className="dc-working">
-      <SourceStrip sources={state.sources} />
+    <main id="main" tabIndex={-1} className="dc-run">
+      <Specimen sources={state.sources} label={queued ? strings.working.queuedLabel : strings.working.stageShort[stage]} />
       {/* Only this region is announced; the ticking clock below is not. */}
-      <div className="dc-working__live" role="status" aria-live="polite" aria-atomic="true">
-        <h1 className="dc-working__title">{heading}</h1>
-        <p className="dc-working__detail">{detail}</p>
-        {together && <p className="dc-working__detail">{together}</p>}
-        {queued && <p className="dc-working__detail">{strings.working.queueNote}</p>}
+      <div className="dc-run__live" role="status" aria-live="polite" aria-atomic="true">
+        <h1 className="dc-run__title">{heading}</h1>
+        <p className="dc-run__detail">{detail}</p>
+        {together && <p className="dc-run__detail dc-run__detail--quiet">{together}</p>}
+        {queued && <p className="dc-run__detail dc-run__detail--quiet">{strings.working.queueNote}</p>}
       </div>
-      <ProgressRule job={job} />
-      <p className="dc-working__meta">
-        <span>{strings.working.elapsed(formatElapsed(elapsed))}</span>
-        {rendering && <span>{strings.working.pages(job.pagesProcessed, pagesToProcess(job, pdf))}</span>}
-        {/* The results themselves arrive with the finished job; until then a poll only carries this count. */}
-        {job && job.structuresFound > 0 && <span>{strings.working.found(job.structuresFound)}</span>}
-      </p>
-      <p className="dc-working__note">{strings.working.slowNote(expectedPages, pdf)}</p>
+      <div className="dc-run__measure">
+        <ProgressRule job={job} />
+        <p className="dc-run__meta">
+          <span>{strings.working.elapsed(formatElapsed(elapsed))}</span>
+          {rendering && <span>{strings.working.pages(job.pagesProcessed, pagesToProcess(job, pdf))}</span>}
+          {/* The results themselves arrive with the finished job; until then a poll only carries this count. */}
+          {job && job.structuresFound > 0 && <span>{strings.working.found(job.structuresFound)}</span>}
+        </p>
+        <p className="dc-run__note">{strings.working.slowNote(expectedPages, pdf)}</p>
+      </div>
     </main>
   );
 }

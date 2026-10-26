@@ -72,3 +72,13 @@ test('an expired job says so and offers only "Start over"', () => {
   expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Start over' })).toBeTruthy();
 });
+
+test('the frame around the file turns garnet and says "Stopped"; the frame itself is for the eye only', () => {
+  mountFailed({ type: 'jobExpired' });
+  expect(screen.getByText('paper.pdf')).toBeTruthy();
+  const frame = document.querySelector('.dc-specimen');
+  expect(frame?.getAttribute('data-stopped')).toBe('true');
+  const label = frame?.querySelector('.dc-frame__label');
+  expect(label?.textContent).toBe('Stopped');
+  expect(label?.closest('[aria-hidden="true"]')).not.toBeNull();
+});

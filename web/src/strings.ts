@@ -16,6 +16,15 @@ const STAGE_LABELS = {
   check: 'Checking the results',
 } satisfies Record<StageName, string>;
 
+/** The same stages in two or three words: the frame's label and the names under the measuring line's ticks. */
+const STAGE_SHORT = {
+  upload: 'Uploading',
+  render: 'Reading pages',
+  segment: 'Finding structures',
+  recognise: 'Recognising',
+  check: 'Checking',
+} satisfies Record<StageName, string>;
+
 export const strings = {
   appName: 'DECIMER.ai',
   /** Brand tagline, exact wording (PRODUCT.md, Brand Commitments). */
@@ -153,7 +162,12 @@ export const strings = {
     },
     progressLabel: 'Progress',
     stage: STAGE_LABELS,
+    stageShort: STAGE_SHORT,
+    /** The frame's label while the job waits, and after it stopped. */
+    queuedLabel: 'In queue',
+    stoppedLabel: 'Stopped',
     sourcePreview: (name: string) => `Preview of ${name}`,
+    moreFiles: (n: number) => `${n} more ${plural(n, 'file', 'files')}`,
     failedHeading: 'The job did not finish',
     failedGeneric: 'Something went wrong while processing your file. Please try again.',
     failedConnection:

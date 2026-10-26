@@ -143,7 +143,7 @@ test('the page count is shown as long as the render stage is not done, also besi
 });
 
 // The hint says what to expect for this upload, not "a 10-page PDF" for everything.
-const note = () => document.querySelector('.dc-working__note')?.textContent;
+const note = () => document.querySelector('.dc-run__note')?.textContent;
 
 test('the hint for a single pasted image is short, and says nothing of PDFs', () => {
   const c = mountWorking([{ name: 'pasted-image.png', size: 1, kind: 'image' }]);
@@ -186,4 +186,43 @@ test('images are not capped at the PDF page limit: 12 images are 12, in the hint
   act(() => c.store.dispatch({ type: 'jobUpdated', job: { ...overlapped('active', 'active'), pages: 12, pagesProcessed: 12 } }));
   expect(note()).toBe('12 images can take a minute or more.');
   expect(screen.getByText('Page 12 of 12')).toBeTruthy();
+});
+
+// What was uploaded sits in the inspection frame, whose label says the stage (decoration: the heading says it in words).
+const frameLabel = () => document.querySelector('.dc-frame__label');
+
+test('the frame names the file and labels the stage, "In queue" while the job waits; the frame is hidden from assistive technology', () => {
+  const c = mountWorking([{ name: 'paper.pdf', size: 2_400_000, kind: 'pdf' }]);
+  expect(screen.getByText('paper.pdf')).toBeTruthy();
+  expect(screen.getByText('2.3 MB')).toBeTruthy();
+  expect(frameLabel()?.textContent).toBe('Uploading');
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: overlapped('done', 'active') }));
+  expect(frameLabel()?.textContent).toBe('Finding structures');
+  expect(frameLabel()?.closest('[aria-hidden="true"]')).not.toBeNull();
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: { ...overlapped('active'), status: 'queued', queuePosition: 2 } }));
+  expect(frameLabel()?.textContent).toBe('In queue');
+  expect(document.querySelector('.dc-specimen')?.getAttribute('data-stopped')).toBe('false');
+});
+
+test('three files are named and the rest are counted, in words for a screen reader', () => {
+  const files = Array.from({ length: 5 }, (_, i): SourceFile => ({ name: `${i}.png`, size: 1, kind: 'image' }));
+  mountWorking(files);
+  expect(document.querySelectorAll('.dc-specimen__item:not(.dc-specimen__item--more)')).toHaveLength(3);
+  expect(screen.getByText('+2').getAttribute('aria-hidden')).toBe('true');
+  expect(screen.getByText('2 more files')).toBeTruthy();
+});
+
+test('the stage names under the measuring line are for the eye: the progress bar and the heading say the same in words', () => {
+  const c = mountWorking();
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: overlapped('done', 'active') }));
+  const names = [...document.querySelectorAll('.dc-rule__name')];
+  expect(names.map((el) => el.textContent)).toEqual(['Uploading', 'Reading pages', 'Finding structures', 'Recognising', 'Checking']);
+  expect(names.every((el) => el.getAttribute('aria-hidden') === 'true')).toBe(true);
+});
+
+test('a queued job shows what the API says of its stages (the upload is done, the rest wait), and the bar says the same', () => {
+  const c = mountWorking();
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: { ...overlapped(), status: 'queued', queuePosition: 2 } }));
+  expect(segments()).toEqual(['done', 'pending', 'pending', 'pending', 'pending']);
+  expect(screen.getByRole('progressbar', { name: 'Progress' }).getAttribute('aria-valuenow')).toBe('1');
 });
