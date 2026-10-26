@@ -1,4 +1,5 @@
 import { strings } from '../strings';
+import { InspectionFrame } from '../ui/InspectionFrame';
 import { hrefFor } from './router';
 
 /**
@@ -33,36 +34,51 @@ function CoffeeCup() {
   );
 }
 
-export function Footer() {
+/**
+ * The footer, drawn as a piece of the measured sheet: a copper measuring line with ticks across the top, and under it
+ * the credit and the copyright inside a copper inspection frame whose guides rise to meet that line (shell.css; the
+ * frame is the drop zone's, home.css). Then, on one line, the legal pages, GitHub and who develops the site. About is
+ * not here: it is in the header. `compact` is the same design with shorter guides and less air, for the empty screen,
+ * whose first screen must fit a laptop window without scrolling.
+ */
+export function Footer({ compact = false }: { compact?: boolean }) {
   const c = strings.shell.credit;
   return (
-    <footer className="dc-footer">
-      <div className="dc-footer__row">
-        <p className="dc-footer__coffee">
-          {strings.shell.builtWith} <CoffeeCup />
-          <span className="dc-sr">{strings.shell.builtWithIcon}</span> {strings.shell.builtBy}
-        </p>
-        <nav className="dc-footer__nav" aria-label={strings.shell.footerNav}>
-          <a href={hrefFor('/about')}>{strings.shell.about}</a>
-          <a href={hrefFor('/privacy')}>{strings.shell.privacy}</a>
-          <a href={hrefFor('/impressum')} lang="de">
-            {strings.shell.impressum}
-          </a>
-          <a href={strings.shell.githubUrl} target="_blank" rel="noreferrer">
-            {strings.shell.github}
-          </a>
-        </nav>
-      </div>
-      <div className="dc-footer__small">
-        <p className="dc-footer__credit">
-          {c.before}
-          <a href={c.groupUrl}>{c.group}</a>
-          {c.at}
-          <a href={c.universityUrl}>{c.university}</a>
-          {c.after} <a href={strings.shell.contactUrl}>{strings.shell.contact}</a>{' '}
-          <a href={strings.shell.issuesUrl}>{strings.shell.reportIssue}</a>.
-        </p>
-        <p className="dc-footer__legal">{strings.shell.copyright(new Date().getFullYear())}</p>
+    <footer className="dc-footer" data-compact={compact}>
+      <div className="dc-footer__inner">
+        <span className="dc-measure dc-measure--major" aria-hidden="true" />
+        <div className="dc-footer__made">
+          <InspectionFrame className="dc-frame--credit" guides={['top', 'bottom']}>
+            <span className="dc-frame__rise dc-frame__rise--left" />
+            <span className="dc-frame__rise dc-frame__rise--right" />
+            <span className="dc-frame__rise-head dc-frame__rise-head--left" />
+            <span className="dc-frame__rise-head dc-frame__rise-head--right" />
+          </InspectionFrame>
+          <p className="dc-footer__coffee">
+            {strings.shell.builtWith} <CoffeeCup />
+            <span className="dc-sr">{strings.shell.builtWithIcon}</span> {strings.shell.builtBy}
+          </p>
+          <p className="dc-footer__legal">{strings.shell.copyright(new Date().getFullYear())}</p>
+        </div>
+        <div className="dc-footer__line">
+          <nav className="dc-footer__nav" aria-label={strings.shell.footerNav}>
+            <a href={hrefFor('/privacy')}>{strings.shell.privacy}</a>
+            <a href={hrefFor('/impressum')} lang="de">
+              {strings.shell.impressum}
+            </a>
+            <a href={strings.shell.githubUrl} target="_blank" rel="noreferrer">
+              {strings.shell.github}
+            </a>
+          </nav>
+          <p className="dc-footer__dev">
+            {c.before}
+            <a href={c.groupUrl}>{c.group}</a>
+            {c.at}
+            <a href={c.universityUrl}>{c.university}</a>
+            {c.after} <a href={strings.shell.contactUrl}>{strings.shell.contact}</a>{' '}
+            <a href={strings.shell.issuesUrl}>{strings.shell.reportIssue}</a>.
+          </p>
+        </div>
       </div>
     </footer>
   );

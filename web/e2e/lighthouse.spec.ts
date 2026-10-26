@@ -110,8 +110,9 @@ test('Lighthouse accessibility: the results page, with and without Ketcher loade
     baseURL: 'http://127.0.0.1:4173/',
   });
   try {
-    // A returning visitor (a persistent context takes no storageState): no first-visit animation.
-    await context.addInitScript(() => localStorage.setItem('decimer.visited', '1'));
+    // A tab that has shown the animation already (the flag is in session storage, which a persistent context takes no
+    // storageState for): no first-visit animation.
+    await context.addInitScript(() => sessionStorage.setItem('decimer.visited', '1'));
     const port = await debuggingPort(userDataDir);
     const page = await context.newPage();
 

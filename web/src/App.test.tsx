@@ -1,5 +1,5 @@
 import { MantineProvider } from '@mantine/core';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { App } from './App';
 import { MockApiClient } from './mocks/MockApiClient';
@@ -40,6 +40,33 @@ test('the footer carries the lab credit, the GitHub link and the coffee credit',
   expect(footer.textContent).toContain(`${strings.shell.builtWith}`);
   expect(footer.textContent).toContain(strings.shell.builtBy);
   expect(footer.querySelector('svg')).toBeTruthy();
+});
+
+test('the footer links Privacy, Impressum and GitHub, and not About, which is in the header', () => {
+  renderApp();
+  const footer = screen.getByRole('contentinfo');
+  const nav = within(footer).getByRole('navigation', { name: strings.shell.footerNav });
+  expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual([
+    strings.shell.privacy,
+    strings.shell.impressum,
+    strings.shell.github,
+  ]);
+  expect(within(footer).queryByRole('link', { name: strings.shell.about })).toBeNull();
+  // The credit and the legal pages share one line of the footer.
+  const line = nav.parentElement!;
+  expect(line.textContent).toContain(strings.shell.credit.before.trim());
+  expect(within(line).getByRole('link', { name: strings.shell.contact })).toBeTruthy();
+  expect(within(line).getByRole('link', { name: strings.shell.reportIssue })).toBeTruthy();
+});
+
+test('the footer is the compact one on the empty screen only', async () => {
+  renderApp();
+  expect(screen.getByRole('contentinfo').getAttribute('data-compact')).toBe('true');
+  cleanup();
+  window.location.hash = '#/privacy';
+  renderApp();
+  await act(async () => {});
+  expect(screen.getByRole('contentinfo').getAttribute('data-compact')).toBe('false');
 });
 
 test("the footer carries legacy's copyright line, with the current year", () => {

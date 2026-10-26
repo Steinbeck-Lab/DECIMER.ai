@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test, type BrowserContext, type Download, type Page, type Response } from '@playwright/test';
 import { editorPanel, headerDownload, layoutOnCanvas, waitForEditor, watchProblems } from '../helpers';
+import { markReturningTab } from '../returning';
 import { parseCsv, readZip } from './zip';
 
 // The thin slice against the real stack (TODO, and the VM half of P4-08): the production build under the edge's
@@ -145,8 +146,9 @@ async function readDownload(download: Download): Promise<Buffer> {
 }
 
 test.beforeAll(async ({ browser }) => {
-  const { baseURL, storageState, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = test.info().project.use;
-  context = await browser.newContext({ baseURL, storageState, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch });
+  const { baseURL, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = test.info().project.use;
+  context = await browser.newContext({ baseURL, viewport, userAgent, deviceScaleFactor, isMobile, hasTouch });
+  await markReturningTab(context); // the animation's flag is per tab (session storage): this one has shown it already
   await context.tracing.start({ screenshots: true, snapshots: true });
   page = await context.newPage();
   problems = watchProblems(page);

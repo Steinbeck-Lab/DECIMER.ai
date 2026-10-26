@@ -2,6 +2,7 @@ import { cleanup, render } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { Footer } from '../shell/Footer';
+import { LIMITS } from '../api/contract';
 import { strings } from '../strings';
 import { About } from './About';
 import { Impressum } from './Impressum';
@@ -162,32 +163,106 @@ describe('About', () => {
       ['https://doi.org/10.1186/s13321-021-00538-8', 'DECIMER 1.0: deep learning for chemical image recognition using transformers', 'Rajan, K., Zielesny, A., Steinbeck, C.', 'J Cheminform', '13', ', 61 (2021).'],
     ] as const;
     render(<About />);
-    const items = [...document.querySelectorAll('.dc-page__citations li')];
+    const items = [...document.querySelectorAll('.dc-cite')];
     expect(items).toHaveLength(legacy.length + 1); // plus the Orthonym preprint
     legacy.forEach(([doi, title, authors, journal, volume, rest], i) => {
       const item = items[i]!;
+      // A card: the title as its heading, the authors, the journal in italics with the volume in bold, and the DOI as
+      // the link to the paper (the title was the link in the legacy list; the destination is the same).
+      expect(item.querySelector('h3')?.textContent).toBe(title);
       const link = item.querySelector('a')!;
       expect(link.getAttribute('href')).toBe(doi);
-      expect(link.textContent).toBe(`${title} ${strings.editor.external}`);
-      const text = item.querySelector('span:not(.dc-sr)')!;
-      expect(text.querySelector('em')?.textContent).toBe(journal);
-      expect(text.querySelector('strong')?.textContent).toBe(volume);
-      expect(text.textContent).toBe(`${authors} ${journal}, ${volume}${rest}`);
+      expect(link.textContent).toBe(`${doi.replace('https://doi.org/', '')} ${strings.editor.external}`);
+      expect(item.querySelectorAll('a')).toHaveLength(1);
+      expect(item.querySelector('.dc-cite__authors')?.textContent).toBe(authors);
+      const where = item.querySelector('.dc-cite__where')!;
+      expect(where.querySelector('em')?.textContent).toBe(journal);
+      expect(where.querySelector('strong')?.textContent).toBe(volume);
+      expect(where.textContent).toBe(`${journal}, ${volume}${rest}`);
     });
   });
 
   test('cites the Orthonym preprint in place of STOUT, and links its repository as a component', () => {
     render(<About />);
-    const last = [...document.querySelectorAll('.dc-page__citations li')].at(-1)!;
+    const last = [...document.querySelectorAll('.dc-cite')].at(-1)!;
     // As Crossref records it (10.26434/chemrxiv.15009769/v1, posted 2026-10-02).
-    expect(last.querySelector('a')?.textContent).toBe(`Orthonym: verified IUPAC names for chemical structures in the wild ${strings.editor.external}`);
+    expect(last.querySelector('h3')?.textContent).toBe('Orthonym: verified IUPAC names for chemical structures in the wild');
+    expect(last.querySelector('a')?.textContent).toBe(`10.26434/chemrxiv.15009769/v1 ${strings.editor.external}`);
     expect(last.querySelector('a')?.getAttribute('href')).toBe('https://doi.org/10.26434/chemrxiv.15009769/v1');
     expect(last.textContent).toContain('Rajan, K., Zielesny, A., Steinbeck, C.');
     expect(last.textContent).toContain('ChemRxiv (2026), preprint.');
     expect(last.textContent).not.toMatch(/1\.0\.8|in preparation|zenodo/i);
     expect(document.querySelector('a[href="https://github.com/Steinbeck-Lab/Orthonym"]')).toBeTruthy();
     expect(document.querySelector('a[href*="s13321-021-00512-4"]')).toBeNull(); // the STOUT paper
-    expect(document.querySelectorAll('.dc-page__citations li')).toHaveLength(6); // OPSIN has no entry of its own
+    expect(document.querySelectorAll('.dc-cite')).toHaveLength(6); // OPSIN has no entry of its own
+  });
+
+  test('shows the limits as big figures from the limits the upload checks, and says them in words once', () => {
+    render(<About />);
+    const figures = [...document.querySelectorAll('.dc-about__figures > div')].map((d) => [d.querySelector('dt')?.textContent, d.querySelector('dd')?.textContent]);
+    expect(figures).toEqual([
+      ['PDF pages', String(LIMITS.maxPages)],
+      ['structures', String(LIMITS.maxStructures)],
+      ['MB', String(LIMITS.maxUploadBytes / 1024 / 1024)],
+    ]);
+    // The figures are for the eye: the sentence under them is what a screen reader reads.
+    expect(document.querySelector('.dc-about__figures')?.getAttribute('aria-hidden')).toBe('true');
+    const sentence = `Up to ${LIMITS.maxPages} PDF pages and ${LIMITS.maxStructures} structures per upload, and ${LIMITS.maxUploadBytes / 1024 / 1024} MB per upload.`;
+    expect(document.querySelector('.dc-about__limits')?.textContent).toContain(sentence);
+  });
+
+  test('lays the five components on a measuring line from what goes in to what comes out, Orthonym and Ketcher apart', () => {
+    render(<About />);
+    expect(document.querySelector('.dc-pipe__io--in')?.textContent).toBe('PDF · image');
+    expect(document.querySelector('.dc-pipe__io--out')?.textContent).toBe('ZIP · SDF · CSV');
+    const stages = [...document.querySelectorAll('.dc-stage')];
+    expect(stages.map((s) => s.querySelector('h3')?.textContent?.replace(strings.editor.external, '').trim())).toEqual([
+      'DECIMER Segmentation',
+      'DECIMER Image Classifier',
+      'DECIMER Image Transformer',
+      'Orthonym',
+      'Ketcher',
+    ]);
+    expect(stages.map((s) => s.getAttribute('data-ext'))).toEqual(['false', 'false', 'false', 'true', 'true']);
+    expect(stages[3]?.textContent).toContain('IUPAC names, each checked by an OPSIN round trip');
+    expect(stages[3]?.textContent).toContain('MIT licence');
+    // A stage is one link, to the project.
+    expect(stages.map((s) => s.querySelectorAll('a').length)).toEqual([1, 1, 1, 1, 1]);
+  });
+
+  test('each DOI link is described by the title of its card, and the line-end labels are for the eye only', () => {
+    render(<About />);
+    for (const card of document.querySelectorAll('.dc-cite')) {
+      const title = card.querySelector('h3')!;
+      expect(title.id).not.toBe('');
+      expect(card.querySelector('a')?.getAttribute('aria-describedby')).toBe(title.id);
+    }
+    const ids = [...document.querySelectorAll('.dc-cite h3')].map((h) => h.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const label of document.querySelectorAll('.dc-pipe__io')) expect(label.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  test('the link to the research is the porcelain pill, an external link like the others', () => {
+    render(<About />);
+    const pill = document.querySelector<HTMLAnchorElement>('a.dc-pill')!;
+    expect(pill.getAttribute('href')).toBe('https://cheminf.uni-jena.de/research/deep-learning/');
+    expect(pill.target).toBe('_blank');
+    expect(pill.rel).toContain('noreferrer');
+    expect(pill.textContent).toBe(`Learn more about our research ${strings.editor.external}`);
+    expect(pill.querySelector('.dc-pill__icon')?.getAttribute('aria-hidden')).toBe('true');
+  });
+
+  test('keeps its heading order: the title, a heading for each part, and the components and citations under theirs', () => {
+    render(<About />);
+    const shown = headings(document.body);
+    expect(shown.filter((h) => h.level === 2).map((h) => h.text)).toEqual([
+      'How to use the DECIMER web app',
+      'Limits',
+      'About DECIMER',
+      'Project components',
+      'Cite us',
+    ]);
+    expect(shown.filter((h) => h.level === 3)).toHaveLength(5 + 6);
   });
 
   test('says a name is worked out again after an edit, with nothing left to confirm', () => {
@@ -260,6 +335,18 @@ describe('Privacy', () => {
     expect(text).not.toMatch(/cookieless|in a way that sets no cookies|This site sets no cookies/i);
     expect(text).toContain('This site itself sets no cookies');
     expect(text).toContain('decimer.visited');
+  });
+
+  test('cookies and your browser: the animated logo\'s note is in session storage, gone with the tab', () => {
+    const { text, open } = privacySection('Cookies and your browser');
+    expect(open).toEqual([]);
+    expect(text).toContain('session storage');
+    expect(text).toContain('"decimer.visited"');
+    expect(text).toContain('only the first time you open the site in a browser tab');
+    expect(text).toContain('it is gone when you close the tab');
+    // The note is no longer in local storage: only the editor's own settings are said to be there.
+    expect(text).not.toContain('only on your first visit');
+    expect(text).toContain('own settings in the local storage of your browser');
   });
 
   test('uploads and edits: the server does not keep an edit, and the legal basis is given', () => {
@@ -384,6 +471,5 @@ describe('Impressum', () => {
   test('the footer link to it is marked as German', () => {
     render(<Footer />);
     expect(document.querySelector('footer a[href="#/impressum"]')?.getAttribute('lang')).toBe('de');
-    expect(document.querySelector('footer a[href="#/about"]')?.getAttribute('lang')).toBeNull();
   });
 });

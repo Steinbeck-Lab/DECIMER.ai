@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './returning';
 import { editorPanel, fixtureImage, layoutOnCanvas, tile, waitForCanvas, waitForEditor, watchProblems } from './helpers';
 
 // Indigo (11.8 MB of WASM, and its worker) can take long to arrive on a slow link. Ketcher keeps the promise of its

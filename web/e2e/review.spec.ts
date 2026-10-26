@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { test } from './returning';
 import {
   clearCanvas,
   editorPanel,
@@ -267,9 +268,8 @@ test('Previous and Next step through "Needs review" even after the open result h
 
 test('the editor code is fetched when the pointer first reaches the results, or keyboard focus first lands on a tile, not before', async ({ browser }) => {
   for (const how of ['hover', 'focus'] as const) {
-    const context = await browser.newContext({
-      storageState: { cookies: [], origins: [{ origin: 'http://127.0.0.1:4173', localStorage: [{ name: 'decimer.visited', value: '1' }] }] },
-    });
+    const context = await browser.newContext();
+    await context.addInitScript(() => window.sessionStorage.setItem('decimer.visited', '1')); // this tab has shown the animation
     const page = await context.newPage();
     const editorRequests: string[] = [];
     page.on('request', (r) => {

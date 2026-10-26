@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import introGif from '../assets/decimer-intro.gif';
 import { strings } from '../strings';
-import { isFirstVisit, markVisited } from './firstVisit';
+import { forgetOldFlags, isFirstVisit, markVisited } from './firstVisit';
 import { Wordmark } from './Wordmark';
 
 /** Reduced motion: no animation, and the visit is not used up. */
@@ -10,15 +10,15 @@ function prefersReducedMotion(): boolean {
 }
 
 /**
- * The logo animation of a browser's first visit (PRODUCT.md, Brand Commitments;
- * `DECIMER.gif` of the legacy site, 1.9 MB, plays once for about 8 s).
+ * The logo animation of a browser tab's first load of the site (PRODUCT.md, Brand Commitments; `DECIMER.gif` of the
+ * legacy site, 1.9 MB, plays once for about 8 s). The visit is remembered in the tab's session storage
+ * (firstVisit.ts): a new tab plays it again, a return to the home page or a reload in the same tab does not.
  *
- * - The file is only requested when it is shown: a returning visitor, a visitor
- *   who prefers reduced motion and every page other than the empty screen never
- *   fetch it, and nothing preloads it.
- * - The visit is remembered only once the animation has loaded and is on screen
- *   in a visible tab. A first visit that is cut short (the tab is closed before
- *   the file arrives) shows it again next time.
+ * - The file is only requested when it is shown: a tab that has shown it, a visitor who prefers reduced motion and
+ *   every page other than the empty screen never fetch it, and nothing preloads it.
+ * - The visit is remembered only once the animation has loaded and is on screen in a visible tab. One that is cut
+ *   short (the page is reloaded or left before the file arrives, or the file does not load) shows it again at the next
+ *   load of the tab.
  */
 function Intro() {
   const [loaded, setLoaded] = useState(false);
@@ -51,8 +51,12 @@ function Intro() {
   );
 }
 
-/** Is this visit to start with the animation? Reads the flag without using it up. */
+/**
+ * Is this load of the site, in this tab, to start with the animation? Reads the flag without using it up, and forgets
+ * the flags that older versions (and the legacy site) kept in local storage.
+ */
 export function shouldPlayIntro(): boolean {
+  forgetOldFlags();
   return isFirstVisit() && !prefersReducedMotion();
 }
 

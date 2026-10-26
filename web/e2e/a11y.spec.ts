@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { test } from './returning';
 import { fixtureImage, layoutOnCanvas, waitForEditor } from './helpers';
 
 // WCAG 2.x A and AA rules (the Lighthouse accessibility score is built on the same axe-core rules).

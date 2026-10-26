@@ -16,7 +16,7 @@ export interface Section {
   readonly sections?: readonly Section[];
 }
 
-function BlockView({ block }: { block: Block }) {
+export function BlockView({ block }: { block: Block }) {
   if (typeof block === 'string' || Array.isArray(block)) {
     return (
       <p>

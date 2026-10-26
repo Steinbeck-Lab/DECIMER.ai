@@ -28,6 +28,7 @@ import './styles/run.css';
 import './styles/figure.css';
 import './styles/editor.css';
 import './styles/pages.css';
+import './styles/about.css';
 import { MantineProvider } from '@mantine/core';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

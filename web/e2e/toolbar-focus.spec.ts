@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { test } from './returning';
 import { fixtureImage, tile, waitForEditor } from './helpers';
 
 // P4-14: keyboard focus inside Ketcher 3.18.0's toolbars (text for EPAM in docs/ketcher-a11y-upstream.md, items 4 and 5;

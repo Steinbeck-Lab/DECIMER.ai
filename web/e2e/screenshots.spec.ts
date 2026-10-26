@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { test } from './returning';
 import { clearCanvas, editorPanel, fixtureImage, fixturePdf, headerDownload, layoutOnCanvas, tile, waitForEditor } from './helpers';
 
 // Review screenshots (impeccable finish review). They land in test-results/screens/ and the
@@ -151,7 +152,7 @@ test.describe('screenshots', () => {
 });
 
 test.describe('first visit', () => {
-  test.use({ storageState: { cookies: [], origins: [] } });
+  test.use({ returningTab: false });
 
   test('the animated logo, desktop and phone', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });

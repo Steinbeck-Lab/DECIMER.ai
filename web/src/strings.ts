@@ -401,13 +401,26 @@ export const strings = {
           ],
         },
       ],
+      /** The inspection frame round the wordmark: its chip, and the size it prints under its width dimension line. */
+      frameLabel: 'DECIMER',
+      frameSize: (width: number, height: number) => `${width} × ${height}`,
+      /** The big numbers of the Limits tile, from the same limits the upload checks; the sentence below them says the same in words. */
+      limitFigures: [
+        { value: LIMITS.maxPages, unit: 'PDF pages' },
+        { value: LIMITS.maxStructures, unit: 'structures' },
+        { value: LIMITS.maxUploadBytes / 1024 / 1024, unit: 'MB' },
+      ],
       componentsTitle: 'Project components',
+      /** What goes into the first component and what comes out of the last, at the two ends of the measuring line. */
+      componentsIn: 'PDF · image',
+      componentsOut: 'ZIP · SDF · CSV',
+      /** `ext`: not one of the three DECIMER engines (the tile is tinted egg nog). */
       components: [
         { name: 'DECIMER Segmentation', what: 'Chemical structure detection and extraction', url: 'https://github.com/Kohulan/DECIMER-Image-Segmentation' },
         { name: 'DECIMER Image Classifier', what: 'Chemical structure classification', url: 'https://github.com/Steinbeck-Lab/DECIMER-Image-Classifier' },
         { name: 'DECIMER Image Transformer', what: 'Optical chemical structure recognition', url: 'https://github.com/Kohulan/DECIMER-Image_Transformer' },
-        { name: 'Orthonym', what: 'IUPAC names, each checked by an OPSIN round trip (MIT licence)', url: 'https://github.com/Steinbeck-Lab/Orthonym' },
-        { name: 'Ketcher', what: 'The chemical structure editor, by EPAM', url: 'https://lifescience.opensource.epam.com/ketcher/' },
+        { name: 'Orthonym', what: 'IUPAC names, each checked by an OPSIN round trip', licence: 'MIT licence', ext: true, url: 'https://github.com/Steinbeck-Lab/Orthonym' },
+        { name: 'Ketcher', what: 'The chemical structure editor, by EPAM', ext: true, url: 'https://lifescience.opensource.epam.com/ketcher/' },
       ],
       citeTitle: 'Cite us',
       citeLead: 'If our toolkit helped your work, please cite our publications.',
@@ -568,7 +581,7 @@ export const strings = {
             {
               title: 'Cookies and your browser',
               content: [
-                'This site itself sets no cookies. Your browser keeps one small note in its local storage, "decimer.visited", so that the animated logo plays only on your first visit. The structure editor (Ketcher) may also keep its own settings there. You can delete these in your browser settings. The visit counter described next does set cookies of its own.',
+                'This site itself sets no cookies. Your browser keeps one small note in its session storage, "decimer.visited", so that the animated logo plays only the first time you open the site in a browser tab; it is gone when you close the tab. The structure editor (Ketcher) may also keep its own settings in the local storage of your browser. You can delete these in your browser settings. The visit counter described next does set cookies of its own.',
               ],
             },
             {

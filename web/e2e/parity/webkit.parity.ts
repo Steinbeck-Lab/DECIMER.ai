@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { expect, test, type Page, type Response } from '@playwright/test';
+import { expect, type Page, type Response } from '@playwright/test';
 import { editorPanel, headerDownload, layoutOnCanvas, waitForEditor, watchProblems } from '../helpers';
 import { readZip } from '../live/zip';
+import { test } from '../returning';
 import { CROP, dir, Facts, fileFrom, pasteFile, shot } from './shared';
 
 // ROADMAP §6 item 17, the Safari warning: "re-test with Ketcher 3.18 and drop it if it is no longer needed".

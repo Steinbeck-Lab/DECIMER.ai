@@ -304,6 +304,11 @@
   width: 1px;
 }
 
+/* The drop zone's right guide stops well above the footer's measuring line (about 170 px below the zone at 1440 by 900). */
+.dc-drop .dc-frame__guide--right {
+  bottom: -170px;
+}
+
 /* Dimension lines: the width with the accepted formats, the height with the size limit. */
 .dc-frame__dim {
   background: var(--dc-copper);

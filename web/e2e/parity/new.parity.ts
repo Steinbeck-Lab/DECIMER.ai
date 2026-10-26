@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { expect, test, type BrowserContext, type Page, type Response } from '@playwright/test';
 import { editorPanel, headerDownload, layoutOnCanvas, waitForEditor, watchProblems } from '../helpers';
 import { parseCsv, readZip } from '../live/zip';
+import { markReturningTab } from '../returning';
 import { blankImage, blankPdf, CROP, dir, dragEvents, duplicateIds, Facts, fileFrom, NEGATIVES, overflowX, pasteFile, shot, textImage, type FileSpec } from './shared';
 
 // The new stack's half of the parity sign-off (TODO, ROADMAP §6): each item exercised against the running stack
@@ -148,8 +149,9 @@ async function finished(expected: 'results' | 'none'): Promise<WireJob> {
 }
 
 test.beforeAll(async ({ browser }) => {
-  const { baseURL, storageState } = test.info().project.use;
-  context = await browser.newContext({ baseURL, storageState, viewport: { width: 1280, height: 800 } });
+  const { baseURL } = test.info().project.use;
+  context = await browser.newContext({ baseURL, viewport: { width: 1280, height: 800 } });
+  await markReturningTab(context); // the animation's flag is per tab (session storage): this one has shown it already
   page = await context.newPage();
   problems = watchProblems(page);
   trackJobs();
@@ -183,19 +185,19 @@ test.afterAll(async ({}, testInfo) => {
 
 // ---------------------------------------------------------------------------------------------------------------
 test('the empty screen: 16 first visit, 1 picker and keyboard, 2 drag highlight, 4 format and mix errors, 390 px', async ({ browser, baseURL }) => {
-  // 16: a first visit (empty storage) gets the animation, and it is remembered once shown.
-  const first = await browser.newContext({ baseURL, viewport: { width: 1280, height: 800 }, storageState: { cookies: [], origins: [] } });
+  // 16: a new tab (empty session storage) gets the animation, and the tab remembers it once shown.
+  const first = await browser.newContext({ baseURL, viewport: { width: 1280, height: 800 } }); // nothing stored: a new tab
   const firstPage = await first.newPage();
   const firstProblems = watchProblems(firstPage);
   await firstPage.goto('./');
   await expect(firstPage.locator('img.dc-intro')).toBeVisible();
   await firstPage.waitForTimeout(1200);
   await shot(firstPage, 'new', 'n01-empty-first-visit');
-  await expect.poll(() => firstPage.evaluate(() => localStorage.getItem('decimer.visited')), { timeout: 15_000 }).toBe('1');
+  await expect.poll(() => firstPage.evaluate(() => sessionStorage.getItem('decimer.visited')), { timeout: 15_000 }).toBe('1');
   facts.set('16.first visit', {
     animation: await firstPage.locator('img.dc-intro').getAttribute('src'),
     alt: await firstPage.locator('img.dc-intro').getAttribute('alt'),
-    visitedKeyAfter: await firstPage.evaluate(() => localStorage.getItem('decimer.visited')),
+    visitedKeyAfter: await firstPage.evaluate(() => sessionStorage.getItem('decimer.visited')),
     taglineIsTextForAssistiveTechnology: await firstPage.getByText('Extract chemical structures from PDFs and images').getAttribute('class'),
     consoleProblems: firstProblems,
   });

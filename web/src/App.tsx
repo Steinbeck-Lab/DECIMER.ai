@@ -91,7 +91,7 @@ export function App() {
         {(split || state.editorMounted) && <EditorPanel visible={split} sheet={sheet} />}
       </div>
       <div className="dc-contents" inert={sheetOpen}>
-        <Footer />
+        <Footer compact={route === '/' && state.phase === 'empty'} />
       </div>
       <NoticeRegion />
     </div>
