@@ -1,4 +1,4 @@
-/* The empty screen (logo, one drop pill inside the inspection frame), then the working, failed and "no structures" screens. */
+/* The empty screen (logo, one drop pill inside the inspection frame), then the "no structures" screen. */
 
 .dc-body {
   position: relative;
@@ -547,57 +547,12 @@
   }
 }
 
-/* Working */
+/* The "no structures" screen (the working and failed screens are in run.css) */
 .dc-working {
   flex: 1;
   width: min(720px, 100%);
   margin-inline: auto;
   padding: clamp(16px, 6vh, 64px) var(--dc-gutter) 56px;
-}
-
-.dc-sources {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 0 0 28px;
-  padding: 0;
-  list-style: none;
-}
-
-.dc-source {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  max-width: 100%;
-  padding: 4px 14px 4px 4px;
-  border-radius: 22px;
-  background: var(--dc-egg);
-  font-size: 0.875rem;
-}
-
-.dc-source--more {
-  padding: 4px 14px;
-}
-
-.dc-source__thumb {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  object-fit: cover;
-  background: var(--dc-white);
-}
-
-.dc-source__thumb--file {
-  display: inline-grid;
-  place-items: center;
-  color: var(--dc-ink);
-}
-
-.dc-source__name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .dc-working__title {
@@ -612,60 +567,7 @@
   font-size: 1.0625rem;
 }
 
-.dc-rule {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 6px;
-  margin: 28px 0 14px;
-}
-
-.dc-rule__segment {
-  height: 8px;
-  border-radius: 4px;
-  background: var(--dc-line);
-  transition: background-color 0.4s var(--dc-ease);
-}
-
-.dc-rule__segment[data-state='done'] {
-  background: var(--dc-ink);
-}
-
-.dc-rule__segment[data-state='active'] {
-  background: var(--dc-copper);
-  animation: dc-breathe 1.6s ease-in-out infinite;
-}
-
-@keyframes dc-breathe {
-  50% {
-    opacity: 0.35;
-  }
-}
-
-.dc-working__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
-  margin: 0;
-  color: var(--dc-muted);
-  font-size: 0.9375rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.dc-working__note {
-  margin: 20px 0 0;
-  color: var(--dc-muted);
-  font-size: 0.9375rem;
-}
-
 .dc-working__again {
-  margin-top: 24px;
-}
-
-/* "Try again" and "Start over" on the failed screen. */
-.dc-working__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
   margin-top: 24px;
 }
 

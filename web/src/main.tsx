@@ -24,6 +24,7 @@ import '@mantine/core/styles/CloseButton.css';
 import './styles/base.css';
 import './styles/shell.css';
 import './styles/home.css';
+import './styles/run.css';
 import './styles/figure.css';
 import './styles/editor.css';
 import './styles/pages.css';
