@@ -5,7 +5,8 @@
   z-index: 1;
   width: min(820px, 100%);
   margin-inline: auto;
-  padding: 24px var(--dc-gutter) 72px;
+  /* The footer brings its own air above it. */
+  padding: 24px var(--dc-gutter) 8px;
 }
 
 .dc-page__head {

@@ -103,8 +103,8 @@ test('Lighthouse accessibility on the running stack: empty, results, results wit
   });
   let jobId = '';
   try {
-    // A returning visitor (a persistent context takes no storageState): no first-visit animation.
-    await context.addInitScript(() => localStorage.setItem('decimer.visited', '1'));
+    // A tab that has shown the animation (the flag is in session storage; a persistent context takes no storageState).
+    await context.addInitScript(() => sessionStorage.setItem('decimer.visited', '1'));
     const port = await debuggingPort(userDataDir);
     const page = await context.newPage();
     const problems = watchProblems(page);

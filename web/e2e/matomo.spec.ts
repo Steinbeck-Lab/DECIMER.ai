@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './returning';
 import { watchProblems } from './helpers';
 
 // The visit counter (src/analytics/matomo.ts) starts only on a real host, never on this machine. The first describe
@@ -16,12 +17,12 @@ const queue = (page: import('@playwright/test').Page) => page.evaluate(() => (wi
 test.use({ launchOptions: { args: ['--host-resolver-rules=MAP decimer.test 127.0.0.1'] } });
 
 test.describe('on a real host', () => {
-  test.use({ baseURL: 'http://decimer.test:4173/', storageState: { cookies: [], origins: [] } });
+  // The returning-tab fixture (./returning) keeps the 1.9 MB animation from playing on this host too.
+  test.use({ baseURL: 'http://decimer.test:4173/' });
 
   test('the counter is loaded once, counts each page, and the CSP lets its script, beacon and image through', async ({ page }) => {
     const problems = watchProblems(page); // console errors, including every CSP violation
     const requests: string[] = [];
-    await page.addInitScript(() => localStorage.setItem('decimer.visited', '1')); // no 1.9 MB animation
     await page.route(`${MATOMO}/**`, (route) => {
       const url = route.request().url();
       requests.push(url);
@@ -67,7 +68,6 @@ test.describe('on a real host', () => {
 
   test('a script from any other host is still blocked', async ({ page }) => {
     const violations: string[] = [];
-    await page.addInitScript(() => localStorage.setItem('decimer.visited', '1'));
     await page.route('https://example.test/**', (route) => route.fulfill({ contentType: 'application/javascript', body: 'window.__other = true;' }));
     await page.goto('./');
     page.on('console', (m) => m.type() === 'error' && violations.push(m.text()));

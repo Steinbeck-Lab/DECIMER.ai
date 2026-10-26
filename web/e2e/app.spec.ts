@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { test } from './returning';
 import {
   chooseLargeFile,
   editorPanel,
@@ -317,10 +318,12 @@ test('About, Privacy and Impressum are pages of the same site, and the footer li
   await expect(footer.getByRole('link', { name: 'Steinbeck group' })).toBeVisible();
   await expect(footer.getByRole('navigation', { name: 'Footer' }).getByRole('link', { name: 'GitHub' })).toHaveAttribute('href', 'https://github.com/Steinbeck-Lab/DECIMER.ai');
 
-  await footer.getByRole('link', { name: 'About' }).click();
+  // The footer has no About link: it is in the header (on the empty screen, the copper ribbon).
+  await expect(footer.getByRole('link', { name: 'About' })).toHaveCount(0);
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'About' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'About DECIMER.ai' })).toBeFocused();
   await expect(page.getByRole('heading', { level: 2, name: 'Cite us' })).toBeVisible();
-  const references = page.locator('.dc-page__citations li');
+  const references = page.locator('.dc-cite');
   await expect(references).toHaveCount(6);
   await expect(references.nth(5)).toContainText('Orthonym'); // in the place of the STOUT paper
   await expect(page.getByRole('link', { name: 'Orthonym' }).first()).toHaveAttribute('href', 'https://github.com/Steinbeck-Lab/Orthonym');

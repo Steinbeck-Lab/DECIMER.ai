@@ -1,6 +1,7 @@
 import { strings } from '../strings';
 import type { SourceFile } from '../state/model';
 import { IconFile, PillIcon } from '../ui/icons';
+import { InspectionFrame } from '../ui/InspectionFrame';
 
 /** Sources shown by name; the rest are counted. */
 const MAX_SHOWN = 3;
@@ -23,7 +24,7 @@ interface Props {
 /**
  * What was uploaded, framed like the drop zone was: a copper inspection frame 7 px out, four corner handles, a label
  * in mono and page guides that stop where they like. The frame is decoration (hidden from assistive technology; the
- * view's heading says the same in words) and is drawn in once, by the rules of the drop zone's frame in home.css.
+ * view's heading says the same in words) and is drawn in once, by the rules of the drop zone's frame in home.css (InspectionFrame).
  */
 export function Specimen({ sources, label, stopped = false }: Props) {
   if (sources.length === 0) return null;
@@ -31,21 +32,7 @@ export function Specimen({ sources, label, stopped = false }: Props) {
   const more = sources.length - shown.length;
   return (
     <div className="dc-specimen" data-stopped={stopped}>
-      <div className="dc-frame" aria-hidden="true">
-        <span className="dc-frame__guide dc-frame__guide--top" />
-        <span className="dc-frame__guide dc-frame__guide--bottom" />
-        <span className="dc-frame__guide dc-frame__guide--left" />
-        <span className="dc-frame__guide dc-frame__guide--right" />
-        <span className="dc-frame__line dc-frame__line--top" />
-        <span className="dc-frame__line dc-frame__line--bottom" />
-        <span className="dc-frame__line dc-frame__line--left" />
-        <span className="dc-frame__line dc-frame__line--right" />
-        <span className="dc-frame__handle dc-frame__handle--tl" />
-        <span className="dc-frame__handle dc-frame__handle--tr" />
-        <span className="dc-frame__handle dc-frame__handle--bl" />
-        <span className="dc-frame__handle dc-frame__handle--br" />
-        <span className="dc-frame__label">{label}</span>
-      </div>
+      <InspectionFrame guides={['top', 'bottom', 'left', 'right']} label={label} />
       <ul className="dc-specimen__list" data-many={sources.length > 1}>
         {shown.map((s, i) => (
           <li key={`${i}-${s.name}-${s.size}`} className="dc-specimen__item">

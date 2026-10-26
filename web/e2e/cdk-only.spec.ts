@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+import { test } from './returning';
 import { HTTP_API_PORT } from '../playwright.config';
 import { fakeApi, JOB_ID, wireJob, wireResult } from './fakeApi';
 import { atomCount, editorPanel, fixtureImage, layoutOnCanvas, tile, waitForCanvas, waitForEditor, watchProblems } from './helpers';

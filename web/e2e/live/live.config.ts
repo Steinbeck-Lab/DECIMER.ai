@@ -25,8 +25,7 @@ export default defineConfig({
   use: {
     ...devices['Desktop Chrome'],
     baseURL: `${origin}/`,
-    // A returning visitor, so the first-visit animation does not play.
-    storageState: { cookies: [], origins: [{ origin, localStorage: [{ name: 'decimer.visited', value: '1' }] }] },
+    // The first-visit animation (once per tab) is stopped by the spec itself: markReturningTab in live.spec.ts.
   },
   projects: [{ name: 'live' }],
 });

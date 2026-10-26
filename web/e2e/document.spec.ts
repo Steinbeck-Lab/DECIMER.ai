@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
+import { test } from './returning';
 import { HTTP_API_PORT } from '../playwright.config';
 import { apiError, fakeApi, JOB_ID, wireJob } from './fakeApi';
 import { fixtureImage, fixturePdf, horizontalOverflow, watchProblems } from './helpers';

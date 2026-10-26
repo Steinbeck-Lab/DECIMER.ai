@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { strings } from '../strings';
 import { hrefFor } from '../shell/router';
 import type { Route } from '../shell/router';
@@ -37,19 +38,30 @@ function Text({ children }: { children: string }) {
   );
 }
 
+interface LinkProps {
+  text: string;
+  href: string;
+  lang?: string;
+  className?: string;
+  /** The id of the element that says what the link is about (a link whose text is only a DOI, say, is described by the title). */
+  describedBy?: string;
+  /** What follows the text of an external link instead of the small "opens in a new tab" icon (the round icon of a pill). */
+  trail?: ReactNode;
+}
+
 /** A link. One that leaves the site opens in a new tab, and says so with an icon and, to a screen reader, in words. */
-export function Link({ text, href, lang }: { text: string; href: string; lang?: string }) {
+export function Link({ text, href, lang, className, describedBy, trail }: LinkProps) {
   if (!/^https?:/.test(href)) {
     return (
-      <a href={href} lang={lang}>
+      <a href={href} lang={lang} className={className} aria-describedby={describedBy}>
         {text}
       </a>
     );
   }
   return (
-    <a href={href} lang={lang} target="_blank" rel="noreferrer">
+    <a href={href} lang={lang} className={className} aria-describedby={describedBy} target="_blank" rel="noreferrer">
       {text}
-      <IconExternal size={14} />
+      {trail ?? <IconExternal size={14} />}
       <span className="dc-sr"> {strings.editor.external}</span>
     </a>
   );

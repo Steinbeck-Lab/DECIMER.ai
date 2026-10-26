@@ -222,32 +222,160 @@
   }
 }
 
-/* Footer */
+/* A measuring line: a copper rule with ticks, the way the sheet is measured (the footer's top, the About page's component
+   pipeline and its limits). The ticks are SVG files used as a mask over a copper fill, so the colour is the theme's and
+   no gradient draws them. Decorative: use it on an aria-hidden element. */
+.dc-measure {
+  display: block;
+  width: 100%;
+  height: 12px;
+  background: var(--dc-copper);
+  -webkit-mask: url('../assets/measure-pipe.svg') repeat-x left top / 16px 12px;
+  mask: url('../assets/measure-pipe.svg') repeat-x left top / 16px 12px;
+}
+
+/* Tall ticks every 64 px between the small ones: the footer's. */
+.dc-measure--major {
+  height: 14px;
+  -webkit-mask: url('../assets/measure-footer.svg') repeat-x left top / 64px 14px;
+  mask: url('../assets/measure-footer.svg') repeat-x left top / 64px 14px;
+}
+
+/* A hairline with a tick at each end and one at each third: the limits' (the solid is one pixel, stretched). */
+.dc-measure--thirds {
+  -webkit-mask:
+    url('../assets/measure-solid.svg') 0 1px / 1px 9px no-repeat,
+    url('../assets/measure-solid.svg') 33.333% 1px / 1px 9px no-repeat,
+    url('../assets/measure-solid.svg') 66.666% 1px / 1px 9px no-repeat,
+    url('../assets/measure-solid.svg') 100% 1px / 1px 9px no-repeat,
+    url('../assets/measure-solid.svg') 0 5px / 100% 1px no-repeat;
+  mask:
+    url('../assets/measure-solid.svg') 0 1px / 1px 9px no-repeat,
+    url('../assets/measure-solid.svg') 33.333% 1px / 1px 9px no-repeat,
+    url('../assets/measure-solid.svg') 66.666% 1px / 1px 9px no-repeat,
+    url('../assets/measure-solid.svg') 100% 1px / 1px 9px no-repeat,
+    url('../assets/measure-solid.svg') 0 5px / 100% 1px no-repeat;
+}
+
+/*
+ * Footer: a measuring line with ticks across the top, the credit and the copyright inside a copper inspection frame
+ * (the drop zone's frame, home.css) whose guides rise to meet that line, then one line of links and of who develops the
+ * site. `--rise` is how far the guides climb; the compact footer of the empty screen climbs less and takes less air.
+ */
 .dc-footer {
+  --rise: 62px;
   position: relative;
   z-index: 1;
   margin-top: auto;
-  padding: 16px var(--dc-gutter) 20px;
+  padding: 120px 0 36px;
   color: var(--dc-ink-2);
   font-size: 0.875rem;
+  text-align: center;
+  /* The frame's page guides run past the content; they stop at the window's edge, never scroll it. */
+  overflow-x: clip;
+}
+
+.dc-footer[data-compact='true'] {
+  --rise: 16px;
+  padding: 0 0 10px;
 }
 
 .dc-footer p {
   margin: 0;
 }
 
-.dc-footer__row {
-  display: flex;
-  flex-wrap: wrap;
+.dc-footer__inner {
+  width: min(1360px, 100%);
+  margin-inline: auto;
+  padding-inline: var(--dc-gutter);
+}
+
+.dc-footer__made {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  gap: 4px 24px;
+  gap: 6px;
+  /* The rule is 14 px tall; the guides climb from the frame's top edge to it. */
+  margin-top: calc(var(--rise) + 14px);
+  padding: 14px 26px;
 }
 
 .dc-footer__coffee {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  color: var(--dc-ink);
+  font: 500 1.0625rem/1.3 var(--dc-font-ui);
+}
+
+.dc-footer__legal {
+  color: var(--dc-muted);
+  font-size: 0.84375rem;
+}
+
+/* The frame: 7 px out from the credit; its guides stop where they like, and two more rise to the measuring line. */
+/* (Two classes: home.css, which sets `inset: 0` on `.dc-frame`, is loaded after this file.) */
+.dc-frame.dc-frame--credit {
+  inset: -7px;
+}
+
+.dc-frame--credit .dc-frame__guide--top {
+  right: -150px;
+  left: -210px;
+}
+
+.dc-frame--credit .dc-frame__guide--bottom {
+  right: -260px;
+  left: -120px;
+}
+
+.dc-frame__rise {
+  top: calc(-1 * var(--rise) - 7px);
+  width: 1px;
+  height: var(--rise);
+  background: color-mix(in srgb, var(--dc-copper) 45%, transparent);
+  transform-origin: bottom;
+  animation: dc-draw-y 0.6s cubic-bezier(0.23, 1, 0.32, 1) 0.2s both;
+}
+
+.dc-frame__rise--left {
+  left: 0;
+}
+
+.dc-frame__rise--right {
+  right: 0;
+}
+
+.dc-frame__rise-head {
+  top: calc(-1 * var(--rise) - 13px);
+  width: 7px;
+  height: 7px;
+  background: var(--dc-copper);
+  animation: dc-pop 0.35s cubic-bezier(0.23, 1, 0.32, 1) 0.6s both;
+}
+
+.dc-frame__rise-head--left {
+  left: -3px;
+}
+
+.dc-frame__rise-head--right {
+  right: -3px;
+}
+
+/* The phone keeps the guides that rise and the frame's own two (home.css drops the drop zone's on a phone). */
+@media (max-width: 640px) {
+  .dc-frame--credit .dc-frame__guide {
+    display: block;
+  }
+  .dc-frame--credit .dc-frame__guide--top {
+    right: -60px;
+    left: -60px;
+  }
+  .dc-frame--credit .dc-frame__guide--bottom {
+    right: -60px;
+    left: -60px;
+  }
 }
 
 .dc-cup {
@@ -298,42 +426,88 @@
   }
 }
 
+/* One line: the legal pages and GitHub, then who develops the site. Dividers are hairlines in copper. */
+.dc-footer__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 0;
+  margin-top: 40px;
+}
+
+.dc-footer[data-compact='true'] .dc-footer__line {
+  margin-top: 16px;
+}
+
+.dc-footer[data-compact='true'] .dc-footer__made {
+  padding-block: 12px;
+}
+
 .dc-footer__nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 28px;
+  justify-content: center;
+}
+
+.dc-footer__nav a,
+.dc-footer__dev {
+  position: relative;
 }
 
 .dc-footer__nav a {
   display: inline-flex;
   align-items: center;
   min-height: 32px;
+  padding: 0 16px;
   color: var(--dc-ink);
-  text-decoration: none;
+  font-weight: 500;
 }
 
-.dc-footer__nav a:hover {
-  color: var(--dc-garnet);
-  text-decoration: underline;
-  text-decoration-color: var(--dc-garnet);
-  text-underline-offset: 0.25em;
+.dc-footer__nav a + a::before,
+.dc-footer__dev::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 1px;
+  height: 9px;
+  margin-top: -4px;
+  background: color-mix(in srgb, var(--dc-copper) 55%, transparent);
 }
 
-.dc-footer__small {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 2px 24px;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--dc-line);
-  color: var(--dc-muted);
-  font-size: 0.75rem;
-  line-height: 1.6;
+.dc-footer__dev {
+  padding: 0 16px;
 }
 
-.dc-footer__small a {
-  color: var(--dc-ink-2);
+.dc-footer__dev a {
+  color: var(--dc-ink);
+}
+
+/* Where the two do not fit on one line, the developer credit takes the next one, without a divider. */
+@media (max-width: 1100px) {
+  .dc-footer__dev {
+    flex-basis: 100%;
+    padding: 6px 0 0;
+  }
+  .dc-footer__dev::before {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .dc-footer {
+    padding-top: 96px;
+  }
+  .dc-footer[data-compact='true'] {
+    padding-top: 0;
+  }
+  .dc-footer__nav a {
+    padding: 0 12px;
+  }
+  .dc-footer__made {
+    padding: 12px 16px;
+  }
 }
 
 /* One polite message at a time, above everything */
@@ -429,4 +603,11 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 12px;
+}
+
+@media (forced-colors: active) {
+  .dc-measure {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
 }

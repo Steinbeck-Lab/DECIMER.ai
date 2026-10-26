@@ -1,4 +1,5 @@
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
+import { test } from './returning';
 import { HTTP_API_PORT } from '../playwright.config';
 import { apiError, fakeApi, JOB_ID, wireJob } from './fakeApi';
 import { fixtureImage, watchProblems } from './helpers';

@@ -597,11 +597,12 @@
 /*
  * The selected result's inspection frame is the drop zone's: the markup and the base rules are `.dc-frame` in home.css
  * (edges, handles, label, guides, the draw-in and the reduced-motion rule). This modifier changes what differs on a
- * tile: it stands 8 px out (the inline `inset` of SelectionFrame), is drawn in about a quarter of a second instead of
+ * tile: it stands 8 px out (`inset`; SelectionFrame's OUTSET says the same), is drawn in about a quarter of a second instead of
  * a second, its label sits on the top edge, its guides stop 10 to 26 px past the frame (the gutter and the gap to the
  * editor take that), and the garnet tint comes with the pointer or keyboard focus on the tile.
  */
-.dc-frame--sel {
+.dc-frame.dc-frame--sel {
+  inset: -8px;
   z-index: 2;
 }
 

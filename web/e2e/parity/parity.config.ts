@@ -10,29 +10,26 @@ import { defineConfig, devices, type PlaywrightTestConfig } from '@playwright/te
 //   PARITY_LEGACY_URL  the legacy site (no default, so that a run never touches production by accident):
 //                      project `legacy`; https://decimer.ai, not :8080 (Laravel builds https URLs)
 //
+// The first-visit animation plays once per browser tab (its flag is in session storage, which a storageState cannot
+// hold): the specs mark their own tabs as returning (e2e/returning.ts), so it does not play in every test.
+//
 // Run one project at a time, from web/, in the Playwright image (see REPORT.md for the full command):
 //   npx playwright test --config e2e/parity/parity.config.ts --project new
 const newUrl = new URL(process.env.PARITY_NEW_URL ?? 'http://127.0.0.1:8090');
 const legacy = process.env.PARITY_LEGACY_URL ? new URL(process.env.PARITY_LEGACY_URL) : null;
 const out = resolve(import.meta.dirname, '../../test-results/parity');
 
-/** A returning visitor on the new stack, so the first-visit animation does not play in every test. */
-const returning = (origin: string) => ({
-  cookies: [],
-  origins: [{ origin, localStorage: [{ name: 'decimer.visited', value: '1' }] }],
-});
-
 const projects: NonNullable<PlaywrightTestConfig['projects']> = [
   {
     name: 'new',
     testMatch: 'new.parity.ts',
-    use: { ...devices['Desktop Chrome'], baseURL: `${newUrl.origin}/`, storageState: returning(newUrl.origin) },
+    use: { ...devices['Desktop Chrome'], baseURL: `${newUrl.origin}/` },
   },
   {
     // Playwright's WebKit is the Safari engine: ROADMAP §6 item 17 (the Safari warning) is re-tested in it.
     name: 'webkit',
     testMatch: 'webkit.parity.ts',
-    use: { ...devices['Desktop Safari'], baseURL: `${newUrl.origin}/`, storageState: returning(newUrl.origin) },
+    use: { ...devices['Desktop Safari'], baseURL: `${newUrl.origin}/` },
   },
   {
     name: 'lighthouse',

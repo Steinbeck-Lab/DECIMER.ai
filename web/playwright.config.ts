@@ -16,15 +16,9 @@ export default defineConfig({
   use: {
     baseURL: `${origin(PORT)}/`,
     trace: 'retain-on-failure',
-    // A returning visitor by default, so the 1.9 MB first-visit animation does not play in every test.
-    // The tests of the animation start from an empty storage.
-    storageState: {
-      cookies: [],
-      origins: [PORT, SLOW_DEBOUNCE_PORT, HTTP_API_PORT].map((port) => ({
-        origin: origin(port),
-        localStorage: [{ name: 'decimer.visited', value: '1' }],
-      })),
-    },
+    // The 1.9 MB first-visit animation plays once per browser tab. The flag that stops it is in session storage, which
+    // `storageState` cannot hold: the specs import `test` from ./e2e/returning.ts, which sets it in every context before
+    // the page runs. The tests of the animation (intro.spec.ts) use the plain `test` and start from an empty tab.
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [

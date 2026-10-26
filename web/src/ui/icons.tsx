@@ -41,6 +41,13 @@ export const IconArrowDown = icon(
   </>,
 );
 
+export const IconArrowRight = icon(
+  <>
+    <line x1="5" y1="12" x2="19" y2="12" />
+    <polyline points="12 5 19 12 12 19" />
+  </>,
+);
+
 export const IconInfo = icon(
   <>
     <circle cx="12" cy="12" r="10" />

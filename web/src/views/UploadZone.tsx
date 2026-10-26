@@ -5,6 +5,7 @@ import { ACCEPT } from '../upload/files';
 import { describeProblem } from '../upload/problems';
 import type { Problem } from '../state/model';
 import { IconArrowUp, PillIcon } from '../ui/icons';
+import { InspectionFrame } from '../ui/InspectionFrame';
 import { useRenderedSize } from '../ui/useRenderedSize';
 
 function ProblemNotice({ problem }: { problem: Problem }) {
@@ -59,25 +60,15 @@ export function UploadZone({ onFiles, problem }: Props) {
     <div className="dc-upload">
       <div {...getRootProps({ className: 'dc-drop', 'data-active': isDragActive ? 'true' : 'false' })}>
         <input {...getInputProps({ 'aria-hidden': true })} />
-        <div className="dc-frame" ref={frameRef} aria-hidden="true">
-          <span className="dc-frame__guide dc-frame__guide--top" />
-          <span className="dc-frame__guide dc-frame__guide--bottom" />
-          <span className="dc-frame__guide dc-frame__guide--left" />
-          <span className="dc-frame__guide dc-frame__guide--right" />
-          <span className="dc-frame__dim dc-frame__dim--width" />
-          <span className="dc-frame__dim dc-frame__dim--height" />
-          <span className="dc-frame__caption dc-frame__caption--width">{strings.upload.formatsLine}</span>
-          <span className="dc-frame__caption dc-frame__caption--height">{strings.upload.sizeLimitLine}</span>
-          <span className="dc-frame__line dc-frame__line--top" />
-          <span className="dc-frame__line dc-frame__line--bottom" />
-          <span className="dc-frame__line dc-frame__line--left" />
-          <span className="dc-frame__line dc-frame__line--right" />
-          <span className="dc-frame__handle dc-frame__handle--tl" />
-          <span className="dc-frame__handle dc-frame__handle--tr" />
-          <span className="dc-frame__handle dc-frame__handle--bl" />
-          <span className="dc-frame__handle dc-frame__handle--br" />
-          {size && <span className="dc-frame__label">{strings.upload.zoneLabel(size.width, size.height)}</span>}
-        </div>
+        <InspectionFrame
+          frameRef={frameRef}
+          guides={['top', 'bottom', 'left', 'right']}
+          dimWidth
+          dimHeight
+          captionWidth={strings.upload.formatsLine}
+          captionHeight={strings.upload.sizeLimitLine}
+          label={size && strings.upload.zoneLabel(size.width, size.height)}
+        />
         <div className="dc-drop__pill">
           <div className="dc-drop__text">
             <p className="dc-drop__title">{isDragActive ? strings.upload.dropActive : strings.upload.title}</p>
