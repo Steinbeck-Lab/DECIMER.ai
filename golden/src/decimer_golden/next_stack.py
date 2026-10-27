@@ -81,6 +81,7 @@ class ApiResult:
     name_tier: str | None
     name_verified: str | None
     crop_url: str
+    incomplete: bool = False  # the model stopped at its token limit: `smiles` is cut off
 
 
 @dataclass(frozen=True)
@@ -176,6 +177,7 @@ def parse_result(raw: object) -> ApiResult:
         name_tier=_field(d, "nameTier", (str, NONE), None),
         name_verified=_field(d, "nameVerified", (str, NONE), None),
         crop_url=_field(d, "cropUrl", (str,)),
+        incomplete=_field(d, "incomplete", (bool,), False),
     )
 
 
@@ -493,6 +495,7 @@ def to_predictions(job: JobSnapshot) -> list[Prediction]:
             confidence=result.confidence,
             name=result.name or "",
             name_tier=result.name_tier or "",
+            incomplete=result.incomplete,
         )
         for position, result in enumerate(job.results)
     ]

@@ -104,6 +104,14 @@ class Result(ApiModel):
         "Null when the classifier gave no answer (the worker could not reach it)."
     )
     confidence: float = Field(ge=0, le=1, description="Recognition confidence.")
+    incomplete: bool = Field(
+        default=False,
+        description="The model stopped at its token limit without finishing: `smiles` is the "
+        "cut-off text it had written so far, so it is probably not the structure in the image "
+        ". It still went through RDKit and CDK, so `valid` and `validBy` mean what they "
+        "always mean, but no name is looked up for it. False for every other result, and for a "
+        "record stored before the field existed.",
+    )
     name: str | None = Field(default=None, description="IUPAC name that passed the round trip.")
     name_tier: str | None = Field(default=None, description="Tier of `name`, e.g. pin_verified.")
     name_verified: str | None = Field(

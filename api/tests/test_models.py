@@ -194,3 +194,33 @@ def test_valid_by_accepts_nothing_but_rdkit_and_cdk() -> None:
 
     with pytest.raises(ValidationError):
         Result.model_validate({**RESULT, "validBy": "indigo"})
+
+
+def test_a_record_from_before_incomplete_existed_is_complete() -> None:
+    """The records live an hour, so a deploy can meet one the old worker wrote."""
+    assert Result.model_validate(RESULT).incomplete is False
+
+
+def test_incomplete_as_stored_is_kept_and_is_camel_case_through_the_store_round_trip() -> None:
+    result = Result.model_validate({**RESULT, "incomplete": True})
+    assert result.incomplete is True
+    text = result.model_dump_json(by_alias=True)
+    assert json.loads(text)["incomplete"] is True
+    assert Result.model_validate_json(text).incomplete is True
+
+
+def test_incomplete_is_in_every_stored_and_returned_result_even_when_false() -> None:
+    result = Result.model_validate(RESULT)
+    assert json.loads(result.model_dump_json(by_alias=True))["incomplete"] is False
+
+
+def test_the_job_view_carries_incomplete_to_the_client() -> None:
+    job = Job.create(
+        job_id=new_job_id(), client_ip_hash="h" * 32, pages=1, pages_processed=1, now=NOW
+    )
+    job.results = [
+        Result.model_validate({**RESULT, "incomplete": True}),
+        Result.model_validate({**RESULT, "index": 1}),
+    ]
+    view = json.loads(JobView.from_job(job).model_dump_json(by_alias=True))
+    assert [r["incomplete"] for r in view["results"]] == [True, False]

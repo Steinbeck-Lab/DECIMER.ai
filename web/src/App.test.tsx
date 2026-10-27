@@ -32,31 +32,63 @@ test('the first screen is one target: the wordmark, the tagline and a way to cho
   expect(screen.queryByRole('button', { name: strings.shell.newUpload })).toBeNull();
 });
 
-test('the footer carries the lab credit, the GitHub link and the coffee credit', () => {
-  renderApp();
-  expect(screen.getByRole('link', { name: strings.shell.credit.group })).toBeTruthy();
-  expect(screen.getByRole('link', { name: strings.shell.credit.university })).toBeTruthy();
+const footerRow = () => {
   const footer = screen.getByRole('contentinfo');
-  expect(footer.textContent).toContain(`${strings.shell.builtWith}`);
-  expect(footer.textContent).toContain(strings.shell.builtBy);
-  expect(footer.querySelector('svg')).toBeTruthy();
+  return {
+    footer,
+    row: footer.querySelector<HTMLElement>('.dc-footer__line')!,
+    legal: footer.querySelector<HTMLElement>('.dc-footer__legal')!,
+    made: footer.querySelector<HTMLElement>('.dc-footer__made')!,
+    nav: within(footer).getByRole('navigation', { name: strings.shell.footerNav }),
+  };
+};
+const follows = (a: Element, b: Element) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+test('the footer is one row: the copyright on the left, the coffee credit in the middle, the links on the right', () => {
+  renderApp();
+  const { row, legal, made, nav, footer } = footerRow();
+  expect([legal.parentElement, made.parentElement, nav.parentElement]).toEqual([row, row, row]);
+  expect(follows(legal, made) && follows(made, nav)).toBe(true);
+  expect(legal.textContent).toBe(strings.shell.copyright(new Date().getFullYear()));
+  // Nothing of the old sentence is left.
+  expect(footer.textContent).not.toMatch(/Developed by|open an issue|Contact us/);
 });
 
-test('the footer links Privacy, Impressum and GitHub, and not About, which is in the header', () => {
+test('the footer links are Contact, Privacy and Impressum, and not About or GitHub, which are in the header', () => {
   renderApp();
-  const footer = screen.getByRole('contentinfo');
-  const nav = within(footer).getByRole('navigation', { name: strings.shell.footerNav });
-  expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual([
-    strings.shell.privacy,
-    strings.shell.impressum,
-    strings.shell.github,
-  ]);
+  const { footer, nav } = footerRow();
+  const links = within(nav).getAllByRole('link');
+  expect(links.map((a) => a.textContent)).toEqual([strings.shell.contact, strings.shell.privacy, strings.shell.impressum]);
+  expect(links[0]?.getAttribute('href')).toBe(strings.shell.contactUrl);
   expect(within(footer).queryByRole('link', { name: strings.shell.about })).toBeNull();
-  // The credit and the legal pages share one line of the footer.
-  const line = nav.parentElement!;
-  expect(line.textContent).toContain(strings.shell.credit.before.trim());
-  expect(within(line).getByRole('link', { name: strings.shell.contact })).toBeTruthy();
-  expect(within(line).getByRole('link', { name: strings.shell.reportIssue })).toBeTruthy();
+  expect(within(footer).queryByRole('link', { name: /GitHub/ })).toBeNull();
+});
+
+test('the credit in the middle: built with a cup by Kohulan.R at the Steinbeck Lab, Friedrich Schiller University Jena, each name a link', () => {
+  renderApp();
+  const { made, footer } = footerRow();
+  const c = strings.shell.credit;
+  // As read (the cup says "coffee" to a screen reader, each link says it opens in a new tab):
+  const spoken = made.textContent!.replaceAll(` ${strings.editor.external}`, '');
+  expect(spoken).toBe(
+    `${strings.shell.builtWith} ${strings.shell.builtWithIcon} ${strings.shell.builtBy} ${strings.shell.builtByName} ${c.at} ${c.group}, ${c.university}`,
+  );
+  // The three names leave the site: a new tab, the referrer kept to itself, announced as such to a screen reader.
+  const links = within(made).getAllByRole('link') as HTMLAnchorElement[];
+  expect(links.map((a) => a.getAttribute('href'))).toEqual(['https://kohulanr.com', c.groupUrl, c.universityUrl]);
+  expect(links.map((a) => a.textContent?.replace(` ${strings.editor.external}`, ''))).toEqual([strings.shell.builtByName, c.group, c.university]);
+  for (const a of links) {
+    expect(a.target, a.href).toBe('_blank');
+    expect(a.rel, a.href).toContain('noreferrer');
+    expect(a.textContent, a.href).toContain(strings.editor.external);
+  }
+  // The word "coffee" is there for a screen reader, beside the cup that only decorates.
+  expect(made.querySelector(':scope > .dc-sr')?.textContent).toBe(strings.shell.builtWithIcon);
+  expect(made.querySelector('.dc-cup')?.getAttribute('aria-hidden')).toBe('true');
+  expect(made.querySelector('svg')).toBeTruthy();
+  // The footer has its measuring line on top and nothing else drawn: no inspection frame, handles or guides.
+  expect(footer.querySelector('.dc-frame')).toBeNull();
+  expect(footer.querySelectorAll('.dc-measure')).toHaveLength(1);
 });
 
 test('the footer is the compact one on the empty screen only', async () => {

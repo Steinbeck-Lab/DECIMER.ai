@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test, type BrowserContext, type Download, type Page, type Response } from '@playwright/test';
-import { editorPanel, headerDownload, layoutOnCanvas, waitForEditor, watchProblems } from '../helpers';
+import { editorPanel, downloadButton, layoutOnCanvas, waitForEditor, watchProblems } from '../helpers';
 import { markReturningTab } from '../returning';
 import { parseCsv, readZip } from './zip';
 
@@ -127,7 +127,7 @@ async function expectGone(id: string) {
 /** The header's Download menu, one format; returns what the page asked the API for and what it was given. */
 async function exportAs(format: 'zip' | 'sdf' | 'csv', item: RegExp) {
   const answered = page.waitForResponse((r) => isApi(r, 'POST', `/api/jobs/${jobId}/export`), { timeout: 120_000 });
-  await headerDownload(page).click();
+  await downloadButton(page).click();
   const [download] = await Promise.all([
     page.waitForEvent('download', { timeout: 120_000 }),
     // `noWaitAfter`: the download starts after the API has answered, not at the click.
@@ -366,9 +366,9 @@ test('3. export ZIP, SDF and CSV through the Download menu: the edit is in all t
   expect(csv.request.format).toBe('csv');
   expect(Object.keys(csv.request.molfiles)).toEqual(['0']);
   const text = csv.body.toString('utf8');
-  expect(text.split(/\r?\n/)[0]).toBe('number,smiles,inchikey,valid,name,edited');
+  expect(text.split(/\r?\n/)[0]).toBe('number,smiles,inchikey,valid,name,edited,incomplete');
   const rows = parseCsv(text);
-  expect(rows[0]).toEqual(['number', 'smiles', 'inchikey', 'valid', 'name', 'edited']);
+  expect(rows[0]).toEqual(['number', 'smiles', 'inchikey', 'valid', 'name', 'edited', 'incomplete']);
   expect(rows.slice(1)).toHaveLength(count);
   const row1 = rows[1] ?? [];
   expect(row1.slice(0, 4)).toEqual(['1', validated.smiles, validated.inchikey, 'true']);

@@ -266,8 +266,9 @@
   font: 400 11px/1.5 var(--dc-font-mono);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  transition: background-color 0.2s ease;
-  animation: dc-slide 0.4s cubic-bezier(0.23, 1, 0.32, 1) 0.5s both;
+  /* No transition and no fade: the label is revealed by a clip and its tint swaps at once, so its text is never paler than
+     its colour, nor between copper and garnet, for a moment (a reading taken then is below the contrast floor). */
+  animation: dc-reveal 0.4s cubic-bezier(0.23, 1, 0.32, 1) 0.5s both;
 }
 
 /* Page guides along the four edges, each stopping where it likes. */
@@ -373,7 +374,8 @@
   color: var(--dc-copper-ink);
   font: 400 10px/1.5 var(--dc-font-mono);
   white-space: nowrap;
-  animation: dc-fade 0.5s ease 0.7s both;
+  /* Wiped in, not faded: text is never paler than its colour. */
+  animation: dc-wipe 0.5s cubic-bezier(0.23, 1, 0.32, 1) 0.7s both;
 }
 
 .dc-frame__caption--width {
@@ -455,13 +457,24 @@
   }
 }
 
-@keyframes dc-slide {
+/* A caption is wiped in from its left edge, in place (its own transform positions it). */
+@keyframes dc-wipe {
   from {
-    opacity: 0;
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0);
+  }
+}
+
+/* A label is revealed by a clip from its left edge, rising a few pixels as it opens (never faded: see `.dc-frame__label`). */
+@keyframes dc-reveal {
+  from {
+    clip-path: inset(0 100% 0 0);
     transform: translateY(6px);
   }
   to {
-    opacity: 1;
+    clip-path: inset(0);
     transform: none;
   }
 }

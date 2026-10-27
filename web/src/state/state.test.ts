@@ -152,6 +152,45 @@ test('CDK-only does not make an RDKit-valid result review', () => {
   });
 });
 
+// ---- a structure the model cut off at its token limit (decision D25) ----------------------------------------------
+
+const incomplete = (over: Partial<Result> = {}): Result => {
+  const base = results[0];
+  if (!base) throw new Error('no result');
+  return { ...base, incomplete: true, name: null, nameTier: null, nameVerified: null, ...over };
+};
+
+test('an incomplete result is always "Needs review", however well RDKit and the model rate the cut-off text', () => {
+  // Valid, a structure, confident: nothing else would flag it.
+  const view = viewOf(incomplete());
+  expect(view).toMatchObject({ valid: true, validBy: 'rdkit', status: 'review' });
+  expect(view.reasons).toEqual(['incomplete']);
+  expect(viewOf(incomplete({ incomplete: false }))).toMatchObject({ status: 'unchecked', reasons: [] });
+  // It is a reason beside the others, and the first one.
+  expect(viewOf(incomplete({ confidence: 0.5 })).reasons).toEqual(['incomplete', 'lowConfidence']);
+  expect(viewOf(incomplete({ valid: false, validBy: 'cdk' })).reasons).toEqual(['incomplete', 'cdkOnly']);
+  expect(viewOf(incomplete({ valid: false, validBy: null })).reasons).toEqual(['incomplete', 'invalid']);
+  // The classifier's doubt still decides the status, as for any other reason.
+  expect(viewOf(incomplete({ isStructure: false })).status).toBe('notsure');
+  expect(reasonsFor({ isStructure: true, valid: true, confidence: 0.9, smiles: 'CC', incomplete: true })).toEqual(['incomplete']);
+  expect(reasonsFor({ isStructure: true, valid: true, confidence: 0.9, smiles: 'CC' })).toEqual([]);
+});
+
+test('an incomplete result is listed under the review filter, and an edit or a check takes it out of review', () => {
+  const cutOff = incomplete({ index: 0 });
+  const start: State = { ...initialState, phase: 'results', jobId: job.id, job: { ...job, results: [cutOff, ...results.slice(1)] } };
+  expect(filterViews(viewsOf(start), 'review').map((v) => v.index)).toContain(0);
+  const edited = [{ type: 'edit', index: 0, molfile: molfileOf('x') } as Action].reduce(reducer, start);
+  expect(viewsOf(edited)[0]?.status).toBe('edited');
+  expect(filterViews(viewsOf(edited), 'review').map((v) => v.index)).not.toContain(0);
+  const checked = [{ type: 'check', index: 0, checked: true } as Action].reduce(reducer, start);
+  expect(viewsOf(checked)[0]?.status).toBe('checked');
+});
+
+test('the editor has wording for an incomplete result', () => {
+  expect(strings.editor.reasons.incomplete).toBe('Incomplete: the model stopped at its length limit; the structure is cut off.');
+});
+
 test('after an edit the server answers for RDKit alone: valid is RDKit, an invalid answer is nobody', () => {
   const edited = molfileOf('a');
   const start: State = { ...initialState, phase: 'results', jobId: job.id, job: { ...job, results: [cdkOnly()] } };
@@ -465,4 +504,36 @@ test('the capacity line counts a PDF against its page limit and an image upload 
   expect(strings.results.capacity(8, 10, true)).toBe('8 of 20 structures · 10 of 10 pages');
   expect(strings.results.capacity(8, 1, false)).toBe('8 of 20 structures · 1 image');
   expect(strings.results.capacity(8, 12, false)).toBe('8 of 20 structures · 12 images');
+});
+
+// The page filter: a page and a status together; "All" lets go of the page.
+test('a page filter narrows to one page and a status filter to a status: both must hold, and the counts follow the page', () => {
+  const onPages = results.map((r, i) => ({ ...r, pageIndex: i < 5 ? 0 : 2 })); // indexes 0..4 on page 1, 5..7 on page 3
+  const views = onPages.map((r) => viewOf(r));
+  expect(filterViews(views, 'all', 2).map((v) => v.index)).toEqual([5, 6, 7]);
+  expect(filterViews(views, 'all', null)).toHaveLength(8);
+  // "Needs review": #6 (index 4, page 1) and #12 (index 7, page 3).
+  expect(filterViews(views, 'review', 0).map((v) => v.index)).toEqual([4]);
+  expect(filterViews(views, 'review', 2).map((v) => v.index)).toEqual([7]);
+  expect(filterCounts(views, 2)).toEqual({ all: 3, review: 1, edited: 0 });
+  expect(filterCounts(views)).toEqual({ all: 8, review: 2, edited: 0 });
+  // Previous and Next stay on the page, and keep the open result where it sits.
+  expect(stepList(views, 'all', 6, 2).map((v) => v.index)).toEqual([5, 6, 7]);
+  expect(stepList(views, 'all', 0, 2).map((v) => v.index)).toEqual([0, 5, 6, 7]);
+});
+
+test('the reducer keeps the page with the status filter, lets go of it for "All", and starts afresh with a new job', () => {
+  let state: State = { ...initialState, phase: 'results', job };
+  state = reducer(state, { type: 'pageFilter', page: 2 });
+  expect(state.pageFilter).toBe(2);
+  state = reducer(state, { type: 'filter', filter: 'review' });
+  expect(state).toMatchObject({ filter: 'review', pageFilter: 2 }); // both hold
+  state = reducer(state, { type: 'filter', filter: 'all' });
+  expect(state).toMatchObject({ filter: 'all', pageFilter: null }); // All is everything
+  // Choosing a page, then "All" while the status filter is already all, still lets go of the page.
+  state = reducer(state, { type: 'pageFilter', page: 1 });
+  expect(reducer(state, { type: 'filter', filter: 'all' }).pageFilter).toBeNull();
+  // The same page again is no change at all (the store notifies no one).
+  expect(reducer(state, { type: 'pageFilter', page: 1 })).toBe(state);
+  expect(reducer(state, { type: 'startOver' }).pageFilter).toBeNull();
 });

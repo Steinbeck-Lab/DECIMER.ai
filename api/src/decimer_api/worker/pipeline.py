@@ -64,6 +64,11 @@ What goes wrong, and what the user gets:
   `segmentation_failed`;
 * ocsr refuses, crashes or times out on one crop: that result is invalid, warning
   `recognition_failed`;
+* ocsr stopped at the model's token limit on one crop: the cut-off
+  SMILES is kept, as legacy kept it, and goes through the same checks as any other (RDKit, then CDK,
+  so `valid` and `validBy` mean what they always mean) with `incomplete=true` on the result. No name
+  is looked up for it (a checked name would read as "this is the structure in the image"); the log
+  says so, with the structure's number and no SMILES. No warning: the flag is the result's own;
 * cls refuses or crashes on one crop: `isStructure` is null, warning `classification_failed`;
   cls unreachable or timing out: no more calls to it in this job, null for the crops it did not
   answer, one warning `classifier_unavailable`;
@@ -238,6 +243,7 @@ class Recognition:
     smiles: str | None  # None: ocsr gave no answer for this crop
     confidence: float
     is_structure: bool | None  # None: cls gave no answer
+    incomplete: bool = False  # ocsr stopped at its token limit: the SMILES is cut off
 
 
 @dataclass
@@ -786,10 +792,18 @@ class _Run:
             )
         if ocsr is None:
             return Recognition(smiles=None, confidence=0.0, is_structure=is_structure)
+        if ocsr.incomplete:
+            # No SMILES in the log (the line is about the model, not about what it wrote).
+            log.info(
+                "job %s: structure %d: the prediction stopped at the token limit (incomplete)",
+                self.job.id,
+                number,
+            )
         return Recognition(
             smiles=self._without_extra_fragments(number, ocsr.smiles),
             confidence=ocsr.confidence,
             is_structure=is_structure,
+            incomplete=ocsr.incomplete,
         )
 
     def _without_extra_fragments(self, number: int, smiles: str) -> str:
@@ -877,7 +891,9 @@ class _Run:
         for position, accepted in (await self._cdk(chemistry)).items():
             chemistry[position] = accepted
             valid_by[position] = "cdk"
-        names = await self._names(chemistry)
+        names = await self._names(
+            chemistry, [self.recognitions[crop.index].incomplete for crop in crops]
+        )
         self.job.results = [
             Result(
                 index=crop.index,
@@ -889,6 +905,7 @@ class _Run:
                 valid_by=by,
                 is_structure=self.recognitions[crop.index].is_structure,
                 confidence=self.recognitions[crop.index].confidence,
+                incomplete=self.recognitions[crop.index].incomplete,
                 name=name,
                 name_tier=tier,
                 name_verified=verified,
@@ -963,16 +980,20 @@ class _Run:
             self.cdk_warned = True
             self.warn(StageName.CHECK, "cdk_unavailable", message)
 
-    async def _names(self, chemistry: list[Chemistry]) -> list[Name]:
+    async def _names(self, chemistry: list[Chemistry], incomplete: list[bool]) -> list[Name]:
         """IUPAC names from chem, one batch per `chem_batch_size` structures (a job has 20, so
         one request). A structure that is invalid, has a dummy atom (an R group) or is too long
-        for chem is not asked about. Any failure, and a structure chem ran out of time on, leaves
-        the names empty and gives one warning; the job is never failed by it."""
+        for chem is not asked about, nor is an incomplete one: a checked name would read as
+        "this is the structure in the image", and the SMILES is a cut-off the model gave up on.
+        Any failure, and a structure chem ran out of time on, leaves the names empty and gives
+        one warning; the job is never failed by it."""
         names: list[Name] = [NO_NAME] * len(chemistry)
         if not self.services.chem_enabled:
             return names
         asked = [
-            index for index, chem in enumerate(chemistry) if chem.valid and nameable(chem.smiles)
+            index
+            for index, chem in enumerate(chemistry)
+            if chem.valid and nameable(chem.smiles) and not incomplete[index]
         ]
         if asked and self.chem_hung:
             # The CDK call timed out or could not reach chem: the names would meet the same.

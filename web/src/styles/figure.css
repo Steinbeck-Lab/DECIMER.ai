@@ -12,6 +12,13 @@
   padding: 8px var(--dc-gutter) 48px;
 }
 
+/* A structure is open: the results keep to about four tiles across, and what is left of the width is the editor's, so the
+   original and Ketcher sit side by side (EditorPanel, editor.css). Where the window is not wide for four tiles the
+   results take under half, and the editor the rest. */
+.dc-body[data-split='true'][data-editing='true'] {
+  grid-template-columns: minmax(0, min(46%, 752px)) minmax(0, 1fr);
+}
+
 @media (max-width: 899px) {
   .dc-body[data-split='true'] {
     display: flex;
@@ -42,15 +49,30 @@
   gap: 16px;
 }
 
-/* Counts: velvet forest, the number as the one big thing, the breakdown as dot and word lines. */
+/* The left of the top row: the counts and, when the job has warnings, a second tile under them, together as tall as the document tile. */
+.dc-top__left {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* Counts: velvet forest, the number as the one big thing, the breakdown as dot and word lines, side by side, no room to spare. */
 .dc-stats {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-  padding: 22px 26px 24px;
+  gap: 12px;
+  padding: 18px 24px 20px;
   border-color: var(--dc-forest);
   background: var(--dc-forest);
   color: var(--dc-egg);
+}
+
+/* Alone (no warnings) it is the whole height of the row, the number at its foot. */
+.dc-top__left > .dc-stats:only-child {
+  flex: 1;
+  gap: 18px;
+  padding: 22px 26px 24px;
 }
 
 .dc-stats__title {
@@ -64,12 +86,15 @@
   flex-wrap: wrap;
   align-items: flex-end;
   gap: 12px 26px;
+}
+
+.dc-top__left > .dc-stats:only-child .dc-stats__body {
   margin-top: auto;
 }
 
 .dc-stats__total {
   margin: 0;
-  font: 400 4.75rem/0.8 var(--dc-font-display);
+  font: 400 3.75rem/0.8 var(--dc-font-display);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.03em;
 }
@@ -162,10 +187,24 @@
   white-space: nowrap;
 }
 
+/* The structures per page: a small heading, then equal chips, each "p. 2" over its count ("none" muted for an empty page). A
+   chip with structures is a button that narrows the results to its page; the page of the open structure has a copper
+   outline and an "open" tag, the page the results are narrowed to is forest. */
+.dc-pages__title {
+  margin: 0;
+  color: var(--dc-muted);
+  font: 400 0.6875rem/1.2 var(--dc-font-mono);
+  letter-spacing: 0.02em;
+}
+
+.dc-pages__title + .dc-pages {
+  margin-top: -4px;
+}
+
 .dc-pages {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 8px 6px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -173,20 +212,15 @@
 
 .dc-pages__page {
   position: relative;
-  flex: 1 1 0;
-  min-width: 18px;
-  /* Few pages: the chips stay chips, they do not stretch across the tile. */
-  max-width: 56px;
-  height: 50px;
-  padding: 6px 0 0 5px;
+  display: flex;
+  flex-direction: column;
+  width: 52px;
+  height: 58px;
+  padding: 7px 0 0 7px;
   border: 1px solid var(--dc-line);
-  border-radius: 7px;
+  border-radius: 10px;
   color: var(--dc-muted);
-  font: 400 0.6875rem/1 var(--dc-font-mono);
   font-variant-numeric: tabular-nums;
-  transition:
-    flex-grow 0.3s var(--dc-ease),
-    background-color 0.2s ease;
 }
 
 /* A page with structures is egg nog; one without is a muted outline. */
@@ -196,29 +230,88 @@
   color: var(--dc-ink-2);
 }
 
-/* The page of the structure that is open takes the room. */
-.dc-pages__page[data-current='true'] {
-  flex-grow: 3.6;
-  max-width: 140px;
-  border-color: var(--dc-mustard);
-  background: var(--dc-mustard);
-  color: var(--dc-ink);
+.dc-pages__button {
+  position: absolute;
+  inset: -1px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 7px 0 0 7px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.dc-pages__button:hover:not([aria-pressed='true']) {
+  background: color-mix(in srgb, var(--dc-mustard) 28%, transparent);
+}
+
+.dc-pages__button[aria-pressed='true'] {
+  background: var(--dc-forest);
+  color: var(--dc-egg);
+}
+
+.dc-pages__no {
+  font: 400 0.6875rem/1 var(--dc-font-mono);
 }
 
 .dc-pages__n {
-  position: absolute;
-  bottom: 6px;
-  left: 4px;
+  margin-top: 5px;
   color: var(--dc-ink);
-  font: 500 0.8125rem/1 var(--dc-font-display);
-  font-variant-numeric: tabular-nums;
-  transition: font-size 0.3s var(--dc-ease);
+  font: 500 1.25rem/1 var(--dc-font-display);
+  letter-spacing: -0.01em;
 }
 
-.dc-pages__page[data-current='true'] .dc-pages__n {
-  left: 9px;
-  font-size: 1.5rem;
-  letter-spacing: -0.02em;
+.dc-pages__button[aria-pressed='true'] .dc-pages__n {
+  color: var(--dc-mustard);
+}
+
+/* An empty page says "none", quietly. */
+.dc-pages__page[data-empty='true'] .dc-pages__n {
+  color: var(--dc-muted);
+  font: 400 0.6875rem/1 var(--dc-font-mono);
+}
+
+/* The page of the structure open in the editor: a copper outline and a tiny tag, the chip as wide as the others. */
+.dc-pages__page[data-current='true'] {
+  border-color: var(--dc-copper);
+  box-shadow: 0 0 0 1px var(--dc-copper);
+}
+
+.dc-pages__page[data-current='true'] .dc-pages__button::after {
+  /* The tag is for the eye: the empty alternative keeps it out of the button's name (the sr text says "open in the editor"). */
+  content: 'open';
+  content: 'open' / '';
+  position: absolute;
+  bottom: 5px;
+  left: 0;
+  width: 100%;
+  color: var(--dc-copper-ink);
+  font: 500 0.5625rem/1 var(--dc-font-mono);
+  letter-spacing: 0.04em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.dc-pages__page[data-current='true'] .dc-pages__button[aria-pressed='true']::after {
+  color: var(--dc-egg);
+}
+
+.dc-pages__button:focus-visible {
+  outline: 3px solid var(--dc-forest);
+  outline-offset: 2px;
+}
+
+/* The pill in the filter row that says the results are narrowed to a page, and lets go of it. */
+.dc-filter__clear {
+  margin-left: 2px;
+  font: 400 1rem/1 var(--dc-font-mono);
 }
 
 .dc-doc__toggle {
@@ -320,9 +413,62 @@
   margin-top: 18px;
 }
 
-/* The job's warnings, between the top row and the filters. */
-.dc-figure > .dc-callout {
-  margin-top: 16px;
+/* The job's warnings and limits: the second half of the green box, a Velvet Forest tile under the counts with egg-nog
+   text and a mustard dot to a line. */
+.dc-top .dc-callout.dc-notices[data-kind='warning'] {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  padding: 14px 22px;
+  border: 1px solid var(--dc-forest);
+  border-radius: 26px;
+  background: var(--dc-forest);
+  color: var(--dc-egg);
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.dc-notices p {
+  position: relative;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.dc-notices p::before {
+  content: '';
+  position: absolute;
+  top: 0.55em;
+  left: 3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dc-mustard);
+}
+
+/* The filter row: the filters, and the one Download of the screen right-aligned at its end (a line of its own on a phone). */
+.dc-filterbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  margin-top: 20px;
+}
+
+.dc-filterbar__download {
+  margin-left: auto;
+}
+
+@media (max-width: 560px) {
+  .dc-filterbar__download {
+    flex-basis: 100%;
+  }
+  .dc-filterbar__download .dc-download {
+    width: 100%;
+  }
 }
 
 /* Filters: the chosen one is forest porcelain; the others are plain words that lift to egg-nog porcelain on hover. */
@@ -330,7 +476,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 20px;
 }
 
 .dc-filter {
@@ -388,6 +533,13 @@
   margin: 0;
   padding: 36px 0 0;
   list-style: none;
+}
+
+/* With the editor open: four tiles across at the most, however wide the column. */
+@media (min-width: 900px) {
+  .dc-grid[data-editing='true'] {
+    grid-template-columns: repeat(auto-fill, minmax(max(176px, calc((100% - 48px) / 4)), 1fr));
+  }
 }
 
 @media (max-width: 560px) {
@@ -700,17 +852,6 @@
   color: var(--dc-egg);
 }
 
-@keyframes dc-reveal {
-  from {
-    clip-path: inset(0 100% 0 0);
-    transform: translateY(4px);
-  }
-  to {
-    clip-path: inset(0);
-    transform: none;
-  }
-}
-
 /* Mantine tooltip in the palette; the name hover has one line for the kind of name and one for how it was checked. */
 .mantine-Tooltip-tooltip {
   font-size: 0.8125rem;
@@ -725,17 +866,3 @@
   color: var(--dc-mustard);
 }
 
-.dc-figure__foot {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 20px;
-  margin-top: 36px;
-  padding: 14px 22px 14px 14px;
-}
-
-.dc-figure__foot p {
-  margin: 0;
-  color: var(--dc-muted);
-  font-size: 0.9375rem;
-}

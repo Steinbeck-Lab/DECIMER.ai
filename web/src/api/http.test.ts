@@ -136,6 +136,18 @@ describe('getJob', () => {
     expect(result?.valid).toBe(over.valid);
   });
 
+  // Cut off at the model's token limit (decision D25): the server's word, false when an older API says nothing.
+  test.each([
+    [{ incomplete: true }, true],
+    [{ incomplete: false }, false],
+    [{}, false],
+  ])('incomplete of %j reaches the UI as %j', async (over, expected) => {
+    const results = [wireResult(0, over)] as unknown as JobView['results'];
+    const { api } = clientWith(() => json(wireJob({ status: 'done', results })));
+    const [result] = (await api.getJob(JOB_ID)).results;
+    expect(result?.incomplete).toBe(expected);
+  });
+
   test('a job still running has structuresFound and no results yet', async () => {
     const { api } = clientWith(() => json(wireJob({ status: 'running', structuresFound: 12, queuePosition: null })));
     const job = await api.getJob(JOB_ID);

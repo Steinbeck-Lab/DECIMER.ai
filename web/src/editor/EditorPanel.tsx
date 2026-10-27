@@ -73,6 +73,19 @@ function Idle() {
 }
 
 /**
+ * A structure the model cut off at its length limit says so right under its name (above the SMILES, which is the
+ * cut-off text), as long as it is the model's: once the user has edited it, it is theirs and the note goes.
+ */
+export function IncompleteNote({ view }: { view: ResultView }) {
+  if (!view.result.incomplete || view.modified) return null;
+  return (
+    <p className="dc-callout dc-incomplete" data-kind="problem" role="note">
+      {strings.editor.reasons.incomplete}
+    </p>
+  );
+}
+
+/**
  * Why the result needs a look. The reasons about the recognition (low confidence, the classifier's
  * doubt) go once the user has acted on the result. The ones about the structure as it is now stay:
  * an invalid SMILES must be visible after an edit, and after "checked" too. While the server has not
@@ -81,6 +94,8 @@ function Idle() {
 function Reasons({ view }: { view: ResultView }) {
   const unresolved = view.status === 'review' || view.status === 'notsure';
   const shown = view.reasons.filter((reason) => {
+    // The cut-off note is under the name (`IncompleteNote`), not in this list.
+    if (reason === 'incomplete') return false;
     if (reason === 'invalid' || reason === 'rgroup' || reason === 'cdkOnly') return !view.stale;
     return unresolved;
   });
@@ -175,7 +190,7 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
   // its own overlay (and an empty canvas).
   const swapping = session !== null && view !== undefined && shownIndex !== view.index && !failedToLoad;
 
-  const list = stepList(views, state.filter, selectedIndex);
+  const list = stepList(views, state.filter, selectedIndex, state.pageFilter);
   const position = view ? list.findIndex((v) => v.index === view.index) : -1;
   const previous = position > 0 ? list[position - 1] : undefined;
   const next = position >= 0 ? list[position + 1] : undefined;
@@ -245,118 +260,129 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
         if (inCanvas(event.target)) canvasChosen.current = true;
       }}
     >
-      {!view && <Idle />}
+      {/* Everything above the actions scrolls in its own box if the window is too short for it; the actions below it do not. */}
+      <div className="dc-editor__main">
+        {!view && <Idle />}
 
-      {view && (
-        <header className="dc-editor__head">
-          <h2 className="dc-editor__number" tabIndex={-1} data-autofocus aria-label={failedToLoad ? strings.editor.loadFailedHeading(view.number) : `${strings.editor.editing} ${view.number}`}>
-            {strings.editor.result(view.number)}
-          </h2>
-          <span className="dc-status" data-status={view.status}>
-            <span className="dc-dot" data-status={view.status} aria-hidden="true" />
-            {statusLabel(view.status)}
-          </span>
-          <span className="dc-editor__editing" aria-hidden="true" data-failed={failedToLoad}>
-            {failedToLoad ? strings.editor.loadFailedShort : strings.editor.editing}
-          </span>
-          <span className="dc-editor__position">{strings.editor.position(position + 1, list.length)}</span>
-          <div className="dc-editor__nav">
-            <button
-              type="button"
-              className="dc-icon-button"
-              aria-label={strings.editor.previous}
-              title={strings.editor.previous}
-              disabled={!previous}
-              onClick={() => previous && controller.select(previous.index)}
-            >
-              <IconChevronLeft size={18} />
-            </button>
-            <button
-              type="button"
-              className="dc-icon-button"
-              aria-label={strings.editor.next}
-              title={strings.editor.next}
-              disabled={!next}
-              onClick={() => next && controller.select(next.index)}
-            >
-              <IconChevronRight size={18} />
-            </button>
-            <button
-              type="button"
-              className="dc-icon-button"
-              aria-label={strings.editor.close}
-              title={strings.editor.close}
-              onClick={close}
-            >
-              <IconX size={18} />
-            </button>
-          </div>
-        </header>
-      )}
-
-      <div
-        ref={canvasHost}
-        className="dc-editor__canvas"
-        data-active={open}
-        role="group"
-        aria-label={strings.editor.canvasLabel}
-        aria-busy={swapping}
-        onKeyDownCapture={onCanvasKeyDownCapture}
-      >
-        {state.editorMounted && <KetcherPanel onReady={onReady} />}
-        {view && failedToLoad && (
-          <div className="dc-editor__load-error" role="alert">
-            <p>{strings.editor.loadFailed}</p>
-            <button type="button" className="dc-pill dc-pill--small dc-pill--ink" onClick={() => loadResult(view.index)}>
-              {strings.editor.retryLoad}
-            </button>
-          </div>
+        {view && (
+          <header className="dc-editor__head">
+            <h2 className="dc-editor__number" tabIndex={-1} data-autofocus aria-label={failedToLoad ? strings.editor.loadFailedHeading(view.number) : `${strings.editor.editing} ${view.number}`}>
+              {strings.editor.result(view.number)}
+            </h2>
+            <span className="dc-status" data-status={view.status}>
+              <span className="dc-dot" data-status={view.status} aria-hidden="true" />
+              {statusLabel(view.status)}
+            </span>
+            <span className="dc-editor__editing" aria-hidden="true" data-failed={failedToLoad}>
+              {failedToLoad ? strings.editor.loadFailedShort : strings.editor.editing}
+            </span>
+            <span className="dc-editor__position">{strings.editor.position(position + 1, list.length)}</span>
+            <div className="dc-editor__nav">
+              <button
+                type="button"
+                className="dc-icon-button"
+                aria-label={strings.editor.previous}
+                title={strings.editor.previous}
+                disabled={!previous}
+                onClick={() => previous && controller.select(previous.index)}
+              >
+                <IconChevronLeft size={18} />
+              </button>
+              <button
+                type="button"
+                className="dc-icon-button"
+                aria-label={strings.editor.next}
+                title={strings.editor.next}
+                disabled={!next}
+                onClick={() => next && controller.select(next.index)}
+              >
+                <IconChevronRight size={18} />
+              </button>
+              <button
+                type="button"
+                className="dc-icon-button"
+                aria-label={strings.editor.close}
+                title={strings.editor.close}
+                onClick={close}
+              >
+                <IconX size={18} />
+              </button>
+            </div>
+          </header>
         )}
-      </div>
 
-      {view && (
-        <div className="dc-editor__body">
-          <Reasons view={view} />
-
-          <div className="dc-facts">
-            <figure className="dc-fact dc-fact--crop">
-              <CropImage src={view.result.cropUrl} alt={strings.tile.cropAlt(view.number)} />
+        {/* The comparison row: the original crop on the left, Ketcher on the right at the same height (the crop above it where
+            the panel is narrow). The canvas keeps its place in the tree whatever the crop does, so Ketcher is never remounted. */}
+        <div className="dc-editor__compare" data-active={view !== undefined}>
+          {view && (
+            <figure className="dc-compare__crop">
+              <CropImage className="dc-compare__img" src={view.result.cropUrl} alt={strings.tile.cropAlt(view.number)} />
               <figcaption>{strings.editor.original(pageNumber(view))}</figcaption>
             </figure>
-            <dl className="dc-fact dc-fact--text">
-              <dt className="dc-sr">{strings.editor.name}</dt>
-              <dd>
-                {view.stale ? (
-                  <span className="dc-fact__value" data-empty="true">
-                    {staleLabel(view.validating)}
-                  </span>
-                ) : (
-                  <>
-                    <span className="dc-fact__value" data-empty={view.name === null}>
-                      {view.name ?? strings.tile.noName}
-                    </span>
-                    {view.name &&
-                      nameHover(view.name, view.nameTier, view.nameVerified).map((line) => (
-                        <span key={line} className="dc-fact__tier">
-                          {line}
-                        </span>
-                      ))}
-                    {view.name && <CopyButton value={view.name} label={strings.editor.copyName} />}
-                  </>
-                )}
-              </dd>
-              <dt className="dc-sr">{strings.editor.change}</dt>
-              <dd>
-                <span className="dc-fact__value">
-                  {view.modified ? strings.editor.changeEdited : strings.editor.changeNone}
-                </span>
-              </dd>
-            </dl>
+          )}
+          <div
+            ref={canvasHost}
+            className="dc-editor__canvas"
+            data-active={open}
+            role="group"
+            aria-label={strings.editor.canvasLabel}
+            aria-busy={swapping}
+            onKeyDownCapture={onCanvasKeyDownCapture}
+          >
+            {state.editorMounted && <KetcherPanel onReady={onReady} />}
+            {view && failedToLoad && (
+              <div className="dc-editor__load-error" role="alert">
+                <p>{strings.editor.loadFailed}</p>
+                <button type="button" className="dc-pill dc-pill--small dc-pill--ink" onClick={() => loadResult(view.index)}>
+                  {strings.editor.retryLoad}
+                </button>
+              </div>
+            )}
           </div>
-
-          <StructureCode view={view} />
         </div>
-      )}
+
+        {view && (
+          <div className="dc-editor__body">
+            <Reasons view={view} />
+
+            <div className="dc-facts">
+              <dl className="dc-fact dc-fact--text">
+                <dt className="dc-sr">{strings.editor.name}</dt>
+                <dd>
+                  {view.stale ? (
+                    <span className="dc-fact__value" data-empty="true">
+                      {staleLabel(view.validating)}
+                    </span>
+                  ) : (
+                    <>
+                      <span className="dc-fact__value" data-empty={view.name === null}>
+                        {view.name ?? strings.tile.noName}
+                      </span>
+                      {view.name &&
+                        nameHover(view.name, view.nameTier, view.nameVerified).map((line) => (
+                          <span key={line} className="dc-fact__tier">
+                            {line}
+                          </span>
+                        ))}
+                      {view.name && <CopyButton value={view.name} label={strings.editor.copyName} />}
+                    </>
+                  )}
+                </dd>
+                <dt className="dc-sr">{strings.editor.change}</dt>
+                <dd>
+                  <span className="dc-fact__value">
+                    {view.modified ? strings.editor.changeEdited : strings.editor.changeNone}
+                  </span>
+                </dd>
+              </dl>
+            </div>
+
+            <IncompleteNote view={view} />
+            <StructureCode view={view} />
+          </div>
+        )}
+
+      </div>
 
       {view && (
         <div className="dc-editor__foot">

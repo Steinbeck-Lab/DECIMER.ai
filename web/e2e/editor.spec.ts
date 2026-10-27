@@ -6,7 +6,7 @@ import {
   atomCount,
   editorPanel,
   fixtureImage,
-  headerDownload,
+  downloadButton,
   layoutOnCanvas,
   tile,
   waitForCanvas,
@@ -124,7 +124,7 @@ test('Reset puts the recognised structure back on the canvas and in the store', 
 });
 
 async function readDownload(page: Page, format: RegExp) {
-  await headerDownload(page).click();
+  await downloadButton(page).click();
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('menuitem', { name: format }).click()]);
   const stream = await download.createReadStream();
   const chunks: Buffer[] = [];

@@ -41,6 +41,10 @@ export const STAGE_ORDER = ['upload', 'render', 'segment', 'recognise', 'check']
  * `valid` is RDKit's word. `validBy` says who accepted the SMILES: `rdkit` (then `valid` is true), `cdk` (RDKit refused
  * it, CDK 2.8 read it, decision D4: `valid` is false, `molfile` is CDK's and `svg` RDKit's drawing of it, `inchikey`
  * and `name` are empty) or null (neither).
+ *
+ * `incomplete` is true when the model stopped at its token limit without finishing (decision D25): `smiles` is then the
+ * cut-off text, kept as legacy kept it, so it is probably not the structure in the image. It still went through RDKit
+ * and CDK, so `valid` and `validBy` mean what they always mean, but it has no name. The UI does not show it yet.
  */
 export type Result = Required<Schemas['ResultView']>;
 

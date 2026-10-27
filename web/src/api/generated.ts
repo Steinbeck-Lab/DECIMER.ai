@@ -361,6 +361,12 @@ export interface components {
              */
             inchikey: string;
             /**
+             * Incomplete
+             * @description The model stopped at its token limit without finishing: `smiles` is the cut-off text it had written so far, so it is probably not the structure in the image. It still went through RDKit and CDK, so `valid` and `validBy` mean what they always mean, but no name is looked up for it. False for every other result, and for a record stored before the field existed.
+             * @default false
+             */
+            incomplete: boolean;
+            /**
              * Index
              * @description 0-based position in the job; edits and exports use it.
              */

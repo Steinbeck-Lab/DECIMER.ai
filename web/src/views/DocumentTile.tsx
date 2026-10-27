@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useId, useMemo } from 'react';
 import { strings } from '../strings';
 import type { ResultView } from '../state/selectors';
 import { UploadedDocument } from './UploadedDocument';
@@ -14,6 +14,9 @@ interface Props {
   selectedPage: number | null;
   /** A PDF has a document to show; an image is its own picture, and the tile shows its crop. */
   pdf: boolean;
+  /** The page (0-based) the results are narrowed to, and what a chip does to it: choose its page, or let go of it (null). */
+  pageFilter?: number | null;
+  onPageFilter?: (page: number | null) => void;
 }
 
 function fileLabel(names: readonly string[]): string {
@@ -31,38 +34,61 @@ function structuresPerPage(views: readonly ResultView[], pages: number): number[
 }
 
 /**
- * The document tile of the results bento: what was uploaded and where its structures are, page by page. Pages
- * with none are muted; the page of the open structure takes the room. For a PDF it also holds the "Display uploaded
- * document" toggle.
+ * The document tile of the results bento: what was uploaded and where its structures are, page by page, as labelled
+ * chips ("p. 2" and the count; "none" for a page without). A chip with structures is a button that narrows the results to
+ * its page (and back); the page of the open structure carries a copper outline and an "open" tag. For a PDF the tile
+ * also holds the "Display uploaded document" toggle.
  */
-export function DocumentTile({ names, pages, pageUrls, views, selectedPage, pdf }: Props) {
+export function DocumentTile({ names, pages, pageUrls, views, selectedPage, pdf, pageFilter = null, onPageFilter }: Props) {
   const counts = useMemo(() => structuresPerPage(views, pages), [views, pages]);
+  const titleId = useId();
   const head = (
     <>
       <p className="dc-doc__name" title={fileLabel(names)}>
         {fileLabel(names)}
       </p>
       {counts.length > 1 && (
-        <ol className="dc-pages" aria-label={strings.results.pagesLabel}>
-          {counts.map((n, page) => (
-            <li
-              key={page}
-              className="dc-pages__page"
-              data-empty={n === 0}
-              data-current={selectedPage === page}
-            >
-              <span className="dc-pages__no" aria-hidden="true">
-                {page + 1}
-              </span>
-              {n > 0 && (
-                <b className="dc-pages__n" aria-hidden="true">
-                  {n}
-                </b>
-              )}
-              <span className="dc-sr">{strings.results.pageStructures(page + 1, n)}</span>
-            </li>
-          ))}
-        </ol>
+        <>
+          <p className="dc-pages__title" id={titleId}>
+            {pdf ? strings.results.pagesLabel : strings.results.imagesLabel}
+          </p>
+          <ol className="dc-pages" aria-labelledby={titleId}>
+            {counts.map((n, page) => {
+              const open = selectedPage === page;
+              const face = (
+                <>
+                  <span className="dc-pages__no">{strings.results.pageChip(page + 1, pdf)}</span>{' '}
+                  <b className="dc-pages__n">{n > 0 ? n : strings.results.pageNone}</b>
+                </>
+              );
+              return (
+                <li key={page} className="dc-pages__page" data-empty={n === 0} data-current={open}>
+                  {n > 0 && onPageFilter ? (
+                    // The button is named by what it shows ("p. 3", "8") and the words that complete it, so that its name
+                    // holds its visible text (WCAG 2.5.3): "p. 3 8 structures, open in the editor". The "open" tag is drawn by CSS.
+                    <button
+                      type="button"
+                      className="dc-pages__button"
+                      data-page-chip={page}
+                      aria-pressed={pageFilter === page}
+                      onClick={() => onPageFilter(pageFilter === page ? null : page)}
+                    >
+                      {face}{' '}
+                      <span className="dc-sr">{strings.results.pageStructuresWords(n, open)}</span>
+                    </button>
+                  ) : (
+                    <>
+                      <span aria-hidden="true" className="dc-pages__face">
+                        {face}
+                      </span>
+                      <span className="dc-sr">{strings.results.pageStructures(page + 1, n, pdf)}</span>
+                    </>
+                  )}
+                </li>
+              );
+            })}
+          </ol>
+        </>
       )}
     </>
   );
