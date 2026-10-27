@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { strings } from '../strings';
 import type { SourceFile } from '../state/model';
 import { IconFile, PillIcon } from '../ui/icons';
@@ -16,22 +17,26 @@ function formatSize(bytes: number): string {
 interface Props {
   sources: readonly SourceFile[];
   /** The frame's label: the stage the job is in, or why it stopped. */
-  label: string;
+  label: ReactNode;
   /** The frame turns garnet. */
   stopped?: boolean;
+  /** What sits beside the files inside the frame (the structure that draws itself while the job runs). */
+  plate?: ReactNode;
 }
 
 /**
  * What was uploaded, framed like the drop zone was: a copper inspection frame 7 px out, four corner handles, a label
  * in mono and page guides that stop where they like. The frame is decoration (hidden from assistive technology; the
  * view's heading says the same in words) and is drawn in once, by the rules of the drop zone's frame in home.css (InspectionFrame).
+ * A running job puts its `plate` beside the files (below them for several files and on a phone), the frame always 7 px
+ * out from all of it.
  */
-export function Specimen({ sources, label, stopped = false }: Props) {
+export function Specimen({ sources, label, stopped = false, plate }: Props) {
   if (sources.length === 0) return null;
   const shown = sources.slice(0, MAX_SHOWN);
   const more = sources.length - shown.length;
   return (
-    <div className="dc-specimen" data-stopped={stopped}>
+    <div className="dc-specimen" data-stopped={stopped} data-files={sources.length}>
       <InspectionFrame guides={['top', 'bottom', 'left', 'right']} label={label} />
       <ul className="dc-specimen__list" data-many={sources.length > 1}>
         {shown.map((s, i) => (
@@ -56,6 +61,7 @@ export function Specimen({ sources, label, stopped = false }: Props) {
           </li>
         )}
       </ul>
+      {plate}
     </div>
   );
 }

@@ -5,7 +5,7 @@ import {
   editorPanel,
   fixtureImage,
   fixturePdf,
-  headerDownload,
+  downloadButton,
   horizontalOverflow,
   waitForEditor,
   pasteImage,
@@ -268,7 +268,7 @@ test('Download offers ZIP, SDF and CSV and delivers each', async ({ page }) => {
   await upload(page);
   await waitForResults(page);
 
-  const read = async (label: RegExp, menu = headerDownload(page)) => {
+  const read = async (label: RegExp, menu = downloadButton(page)) => {
     await menu.click();
     const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('menuitem', { name: label }).click()]);
     const stream = await download.createReadStream();
@@ -291,11 +291,15 @@ test('Download offers ZIP, SDF and CSV and delivers each', async ({ page }) => {
   expect(csv.text.trim().split('\n')).toHaveLength(9);
   await expect(page.getByRole('status').filter({ hasText: 'Your download has started.' })).toBeVisible();
 
-  // The same menu at the end of the figure (ROADMAP §6 item 14: in the header and in the results area).
-  const atTheEnd = page.locator('.dc-figure__foot').getByRole('button', { name: /^Download/ });
-  await expect(atTheEnd).toBeVisible();
-  const again = await read(/^SDF/, atTheEnd);
-  expect(again.text.split('$$$$').length - 1).toBe(8);
+  // There is exactly one Download on the results screen: at the end of the filter row (none in the header, none at the foot),
+  // and the sentence about what it holds is its description.
+  await expect(page.getByRole('button', { name: /^Download/ })).toHaveCount(1);
+  await expect(page.getByRole('banner').getByRole('button', { name: /^Download/ })).toHaveCount(0);
+  await expect(downloadButton(page)).toBeVisible();
+  await expect(downloadButton(page)).toHaveAccessibleDescription('The download holds the structures as shown here, with your edits.');
+  const row = page.locator('.dc-filterbar');
+  await expect(row.getByRole('group', { name: 'Show structures' }).getByRole('button', { name: /^Edited/ })).toBeVisible();
+  await expect(row.getByRole('button', { name: /^Download/ })).toBeVisible();
   expect(problems).toEqual([]);
 });
 
@@ -312,11 +316,18 @@ test('About, Privacy and Impressum are pages of the same site, and the footer li
   await page.goto(FAST);
   const footer = page.getByRole('contentinfo');
   await expect(footer.getByText('Built with')).toBeVisible();
-  await expect(footer.getByText('by Kohulan')).toBeVisible();
+  await expect(footer.getByText('by Kohulan.R')).toBeVisible();
+  const author = footer.getByRole('link', { name: /^Kohulan\.R/ });
+  await expect(author).toHaveAttribute('href', 'https://kohulanr.com');
+  await expect(author).toHaveAttribute('target', '_blank');
+  await expect(author).toHaveAttribute('rel', /noreferrer/);
+  await expect(footer.getByRole('link', { name: /^Steinbeck Lab/ })).toHaveAttribute('href', 'https://cheminf.uni-jena.de/');
+  await expect(footer.getByRole('link', { name: /^Friedrich Schiller University Jena/ })).toHaveAttribute('href', 'https://www.uni-jena.de/');
   // Legacy's line, with the current year.
   await expect(footer.getByText(`© ${new Date().getFullYear()} DECIMER Project. All rights reserved.`)).toBeVisible();
-  await expect(footer.getByRole('link', { name: 'Steinbeck group' })).toBeVisible();
-  await expect(footer.getByRole('navigation', { name: 'Footer' }).getByRole('link', { name: 'GitHub' })).toHaveAttribute('href', 'https://github.com/Steinbeck-Lab/DECIMER.ai');
+  // The footer's links are Contact (the email) and the two legal pages: GitHub and About are in the header.
+  await expect(footer.getByRole('navigation', { name: 'Footer' }).getByRole('link')).toHaveText(['Contact', 'Privacy', 'Impressum']);
+  await expect(footer.getByRole('link', { name: /GitHub/ })).toHaveCount(0);
 
   // The footer has no About link: it is in the header (on the empty screen, the copper ribbon).
   await expect(footer.getByRole('link', { name: 'About' })).toHaveCount(0);

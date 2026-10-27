@@ -16,13 +16,37 @@
   top: 16px;
   /* The panel starts under the header (about 90 px), so that is what the height leaves room for: the footer is on the first screen. */
   max-height: calc(100dvh - 104px);
+  overflow: hidden;
+}
+
+/* With a structure open the tile is as tall as the window leaves room for (the comparison row below takes the height). */
+.dc-editor[data-open='true'] {
+  height: calc(100dvh - 104px);
+}
+
+/* Everything above the actions: it scrolls in its own box where the window is too short for it, so the actions stay in
+   reach and nothing of Ketcher is ever under them. The comparison row's height does not depend on what is below it,
+   so the canvas does not change size from one result to the next. */
+.dc-editor__main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
   overflow-y: auto;
+  /* A scrollbar that comes and goes with the length of a name would move the canvas by its width. */
+  scrollbar-gutter: stable;
   scrollbar-color: var(--dc-line-strong) transparent;
 }
 
-/* Nothing in the panel may shrink to fit: the panel scrolls instead (a squashed canvas hides Ketcher's toolbars). */
-.dc-editor > * {
+/* Nothing in the panel may shrink to fit: the box scrolls instead (a squashed canvas hides Ketcher's toolbars). */
+.dc-editor > *,
+.dc-editor__main > * {
   flex-shrink: 0;
+}
+
+.dc-editor > .dc-editor__main {
+  flex-shrink: 1;
 }
 
 .dc-editor__idle {
@@ -106,10 +130,79 @@
   gap: 8px;
 }
 
+/*
+ * The comparison row: the original crop and Ketcher, side by side at one height where the panel is wide enough for both
+ * (the crop a third, Ketcher two thirds: its toolbars need about 420 px), the crop above Ketcher, as wide as it, where it
+ * is not. `display: contents` while no structure is open, so the hidden canvas is a child of the panel as before.
+ */
+.dc-editor__compare {
+  display: contents;
+}
+
+.dc-editor__compare[data-active='true'] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  /* What the window leaves after the header, the actions and the name and SMILES (about 600 px) is Ketcher's, from a floor
+     up. Stacked, the crop above it is short (a floor of 80 px). */
+  --dc-crop-h: clamp(80px, 12dvh, 120px);
+  --dc-compare-h: clamp(360px, calc(100dvh - 600px), 1100px);
+  --dc-canvas-h: clamp(300px, calc(100dvh - 600px - var(--dc-crop-h) - 12px), 1100px);
+}
+
+/* The original: white ground, the whole picture (nothing cropped), its caption in mono. */
+.dc-compare__crop {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: var(--dc-crop-h);
+  min-width: 0;
+  margin: 0;
+  padding: 10px 10px 8px;
+  border: 1px solid var(--dc-line);
+  border-radius: 16px;
+  background: var(--dc-white);
+}
+
+.dc-compare__img {
+  display: block;
+  flex: 1 1 0;
+  width: 100%;
+  min-height: 0;
+  object-fit: contain;
+}
+
+.dc-compare__crop .dc-crop--none {
+  display: grid;
+  flex: 1 1 0;
+  place-items: center;
+  min-height: 0;
+  color: var(--dc-muted);
+  font-size: 0.875rem;
+}
+
+.dc-compare__crop figcaption {
+  color: var(--dc-muted);
+  font: 400 0.6875rem/1.2 var(--dc-font-mono);
+  letter-spacing: 0.02em;
+}
+
+/* Wide enough for both side by side: the panel's inner width is at least 600 px (the side panel from 1320 px of window, a sheet from 660 px). */
+@media (min-width: 1320px), (min-width: 660px) and (max-width: 899px) {
+  .dc-editor__compare[data-active='true'] {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    align-items: stretch;
+  }
+  .dc-editor__compare[data-active='true'] .dc-compare__crop,
+  .dc-editor__compare[data-active='true'] .dc-editor__canvas {
+    height: var(--dc-compare-h);
+  }
+}
+
 /* The canvas keeps its size while closed (Ketcher only measures itself on resize), so it is moved away, not collapsed. */
 .dc-editor__canvas {
   position: relative;
-  height: clamp(300px, 40dvh, 440px);
+  height: var(--dc-canvas-h, 400px);
   overflow: hidden;
   border: 1px solid var(--dc-line);
   border-radius: 16px;
@@ -173,9 +266,6 @@
    Solid cream all the way to the panel's edge, so nothing scrolls into view below it; a hairline marks its top (the
    surfaces are flat: no fade). */
 .dc-editor__foot {
-  position: sticky;
-  bottom: 0;
-  z-index: 2;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -198,45 +288,10 @@
   font-size: 0.875rem;
 }
 
-/* The original crop beside the name: the comparison the checker makes. */
-.dc-facts {
-  display: grid;
-  grid-template-columns: 132px minmax(0, 1fr);
-  gap: 8px 22px;
-  align-items: center;
-}
-
+/* The name and the change: the original is in the comparison row above (.dc-compare__crop). */
 .dc-fact {
   margin: 0;
   min-width: 0;
-}
-
-.dc-fact--crop {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 6px 6px 8px;
-  border: 1px solid var(--dc-line);
-  border-radius: 12px;
-  background: var(--dc-white);
-}
-
-.dc-fact--crop img {
-  display: block;
-  width: 100%;
-  height: 76px;
-  object-fit: contain;
-}
-
-.dc-fact--crop .dc-crop--none {
-  height: 76px;
-  font-size: 0.8125rem;
-}
-
-.dc-fact--crop figcaption {
-  padding-left: 4px;
-  color: var(--dc-muted);
-  font: 400 0.625rem/1.2 var(--dc-font-mono);
 }
 
 .dc-fact--text {
@@ -560,6 +615,7 @@
   }
 
   .dc-editor[data-open='true'] {
+    height: auto;
     visibility: visible;
     transform: none;
     transition:
@@ -572,8 +628,11 @@
     position: absolute;
   }
 
-  .dc-editor__canvas {
-    height: min(56dvh, 420px);
+  /* The sheet is the whole screen: Ketcher gets about half of it, the crop above it (or beside it from 660 px) a short strip. */
+  .dc-editor__compare[data-active='true'] {
+    --dc-crop-h: clamp(90px, 14dvh, 130px);
+    --dc-compare-h: min(56dvh, 420px);
+    --dc-canvas-h: min(52dvh, 420px);
   }
 
   .dc-editor__foot {
@@ -600,14 +659,6 @@
   .dc-editor__nav .dc-icon-button {
     width: 34px;
     height: 34px;
-  }
-  .dc-facts {
-    grid-template-columns: 104px minmax(0, 1fr);
-    gap: 8px 14px;
-  }
-  .dc-fact--crop img,
-  .dc-fact--crop .dc-crop--none {
-    height: 68px;
   }
   .dc-fact--text dd:first-of-type .dc-fact__value {
     font-size: 1rem;

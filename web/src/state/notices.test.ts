@@ -83,3 +83,58 @@ test('truncated with no reason given still says so', () => {
     'This upload was longer than the limits, so only part of it was processed.',
   ]);
 });
+
+test('the warnings about one structure or page each are one sentence for each kind, with a proper list of numbers', () => {
+  const warning = (code: string, message: string) => ({ code, message });
+  expect(
+    jobNotices({
+      ...base,
+      warnings: [1, 4, 8, 9, 10].map((n) => warning('recognition_failed', `Structure ${n} could not be recognised.`)),
+    }),
+  ).toEqual(['Structures 1, 4, 8, 9 and 10 could not be recognised.']);
+  // One is singular; two are "a and b"; they are in order and each number is there once.
+  expect(jobNotices({ ...base, warnings: [warning('recognition_failed', 'Structure 1 could not be recognised.')] })).toEqual([
+    'Structure 1 could not be recognised.',
+  ]);
+  expect(
+    jobNotices({
+      ...base,
+      warnings: [
+        warning('recognition_failed', 'Structure 9 could not be recognised.'),
+        warning('recognition_failed', 'Structure 2 could not be recognised.'),
+        warning('recognition_failed', 'Structure 9 could not be recognised.'),
+      ],
+    }),
+  ).toEqual(['Structures 2 and 9 could not be recognised.']);
+});
+
+test('different kinds stay separate lines, each where its first warning was, among warnings that are not about a structure', () => {
+  const notices = jobNotices({
+    ...base,
+    warnings: [
+      { code: 'page_render_failed', message: 'Page 3 could not be rendered and was skipped.' },
+      { code: 'recognition_failed', message: 'Structure 5 could not be recognised.' },
+      { code: 'page_render_failed', message: 'Page 7 could not be rendered and was skipped.' },
+      { code: 'classification_failed', message: 'Structure 2 could not be classified.' },
+      { code: 'recognition_failed', message: 'Structure 6 could not be recognised.' },
+      { code: 'fragments_trimmed', message: 'Structure 4: the prediction had several fragments. Only the first was kept.' },
+      { code: 'fragments_trimmed', message: 'Structure 8: the prediction had several fragments. Only the first was kept.' },
+      { code: 'classifier_unavailable', message: 'The classifier is unavailable, so the structures were not checked.' },
+      { code: 'page_segmentation_failed', message: 'Page 2 could not be searched for structures.' },
+    ],
+  });
+  expect(notices).toEqual([
+    'Pages 3 and 7 could not be rendered and were skipped.',
+    'Structures 5 and 6 could not be recognised.',
+    'Structure 2 could not be classified.',
+    'Structures 4 and 8: the predictions had several fragments. Only the first of each was kept.',
+    'The classifier is unavailable, so the structures were not checked.',
+    'Page 2 could not be searched for structures.',
+  ]);
+});
+
+test('a warning of a counted kind with no number in its text is shown as the API worded it', () => {
+  expect(jobNotices({ ...base, warnings: [{ code: 'recognition_failed', message: 'Something could not be recognised.' }] })).toEqual([
+    'Something could not be recognised.',
+  ]);
+});

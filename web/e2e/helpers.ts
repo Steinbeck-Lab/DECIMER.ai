@@ -93,9 +93,9 @@ export function atomCount(molfile: string): number | null {
   return v2000?.[1] ? Number(v2000[1]) : null;
 }
 
-/** The Download button in the header (there is a second one at the end of the figure). */
-export function headerDownload(page: Page): Locator {
-  return page.getByRole('banner').getByRole('button', { name: /^Download/ });
+/** The Download button of the results screen (the one at the end of the filter row; there is no other). */
+export function downloadButton(page: Page): Locator {
+  return page.getByRole('main').getByRole('button', { name: /^Download/ });
 }
 
 /** Waits for Ketcher's toolbar, then for Indigo to have put the molecule on the canvas. */

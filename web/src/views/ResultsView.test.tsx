@@ -102,3 +102,63 @@ test('an image job has no uploaded-document toggle (legacy shows it for PDFs onl
   expect(c.store.getState().job?.pageUrls).toHaveLength(1);
   expect(screen.queryByRole('button', { name: 'Display uploaded document' })).toBeNull();
 });
+
+test('the job notices are the second half of the green box: a note under the counts, in the top row, and nowhere else', async () => {
+  await mountResults(new File(['x'], 'truncated.pdf', { type: 'application/pdf' }));
+  const note = screen.getByRole('note');
+  expect(screen.getAllByRole('note')).toHaveLength(1); // not repeated below the grid
+  const figure = note.closest('.dc-figure')!;
+  expect(note.textContent).toContain('3 more structures were found');
+  expect(note.querySelectorAll('p').length).toBeGreaterThanOrEqual(2);
+  const left = note.parentElement!;
+  expect(left.classList.contains('dc-top__left')).toBe(true);
+  expect(left.parentElement?.classList.contains('dc-top')).toBe(true);
+  const stats = left.querySelector('.dc-stats')!;
+  const follows = (a: Element, b: Element) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(follows(stats, note)).toBe(true);
+  // The document tile is the other column of the row; the filters and the grid come after the whole row.
+  expect(follows(note, figure.querySelector('.dc-doc__tile')!)).toBe(true);
+  expect(follows(note, figure.querySelector('.dc-filters')!)).toBe(true);
+  expect(follows(figure.querySelector('.dc-grid')!, note)).toBe(false);
+  expect(note.classList.contains('dc-notices')).toBe(true);
+});
+
+test('a page chip narrows the results to its page: a pill in the filter row says so, "All" lets go of it, and the chip is pressed meanwhile', async () => {
+  const c = await mountResults(new File(['x'], 'paper.pdf', { type: 'application/pdf' }));
+  const chip = screen.getAllByRole('button', { name: /^p\. \d+ \d+ structures?/ })[0]!;
+  const all = screen.getByRole('button', { name: /^All/ });
+  expect(chip.getAttribute('aria-pressed')).toBe('false');
+  expect(all.getAttribute('aria-pressed')).toBe('true');
+  expect(screen.queryByRole('button', { name: /only\. Show every page$/ })).toBeNull();
+
+  fireEvent.click(chip);
+  expect(c.store.getState().pageFilter).not.toBeNull();
+  expect(chip.getAttribute('aria-pressed')).toBe('true');
+  expect(all.getAttribute('aria-pressed')).toBe('false');
+  const pill = screen.getByRole('button', { name: /^Page \d+ only\. Show every page$/ });
+  // A plain action (it only clears the page), so it is not a toggle either.
+  expect(pill.hasAttribute('aria-pressed')).toBe(false);
+  expect(pill.textContent).toMatch(/^Page \d+×$/);
+  // "All" counts every page, whichever is chosen; "Needs review" counts the chosen page.
+  expect(all.textContent).toMatch(/All\s*8/);
+  // The status filters combine with it: the page stays while "Needs review" is chosen.
+  fireEvent.click(screen.getByRole('button', { name: /^Needs review/ }));
+  expect(c.store.getState()).toMatchObject({ filter: 'review' });
+  expect(c.store.getState().pageFilter).not.toBeNull();
+  // The pill lets go of the page and keeps the status filter; the focus does not fall to the page: it goes to the page's chip.
+  fireEvent.click(pill);
+  expect(c.store.getState()).toMatchObject({ filter: 'review', pageFilter: null });
+  await vi.waitFor(() => expect(document.activeElement).toBe(chip));
+  fireEvent.click(chip);
+  fireEvent.click(screen.getByRole('button', { name: /^All/ }));
+  expect(c.store.getState()).toMatchObject({ filter: 'all', pageFilter: null });
+  expect(screen.queryByRole('button', { name: /only\. Show every page$/ })).toBeNull();
+});
+
+test('with no warnings there is no second tile: the counts have the whole left column', async () => {
+  await mountResults();
+  expect(screen.queryByRole('note')).toBeNull();
+  const left = document.querySelector('.dc-top__left')!;
+  expect(left.children).toHaveLength(1);
+  expect(left.firstElementChild?.classList.contains('dc-stats')).toBe(true);
+});

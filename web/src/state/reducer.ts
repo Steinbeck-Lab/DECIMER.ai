@@ -22,6 +22,7 @@ export type Action =
   | { type: 'dismissProblem' }
   | { type: 'select'; index: number | null }
   | { type: 'filter'; filter: Filter }
+  | { type: 'pageFilter'; page: number | null }
   | { type: 'edit'; index: number; molfile: string }
   | { type: 'reset'; index: number }
   | { type: 'check'; index: number; checked: boolean }
@@ -90,8 +91,14 @@ export function reducer(state: State, action: Action): State {
       if (state.selected === action.index) return state;
       return { ...state, selected: action.index, editorMounted: state.editorMounted || action.index !== null };
 
-    case 'filter':
-      return state.filter === action.filter ? state : { ...state, filter: action.filter };
+    case 'filter': {
+      // "All" shows everything: it also lets go of a page.
+      const pageFilter = action.filter === 'all' ? null : state.pageFilter;
+      return state.filter === action.filter && state.pageFilter === pageFilter ? state : { ...state, filter: action.filter, pageFilter };
+    }
+
+    case 'pageFilter':
+      return state.pageFilter === action.page ? state : { ...state, pageFilter: action.page };
 
     case 'edit': {
       const previous = state.edits[action.index];

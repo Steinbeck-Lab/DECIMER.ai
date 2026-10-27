@@ -84,7 +84,7 @@ export function App() {
         </button>
         <Header route={route} />
       </div>
-      <div className="dc-body" data-split={split}>
+      <div className="dc-body" data-split={split} data-editing={split && state.selected !== null}>
         <div className="dc-contents" inert={sheetOpen}>
           {content}
         </div>

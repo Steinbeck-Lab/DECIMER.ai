@@ -67,6 +67,8 @@ export interface State {
    */
   editorMounted: boolean;
   filter: Filter;
+  /** The page (0-based) the results are narrowed to, with the filter: null shows every page. */
+  pageFilter: number | null;
   /** Results whose problem report was sent. */
   reported: Record<number, boolean>;
   /** An export is running. Both Download menus are off until it ends. */
@@ -86,6 +88,7 @@ export const initialState: State = {
   selected: null,
   editorMounted: false,
   filter: 'all',
+  pageFilter: null,
   reported: {},
   exporting: false,
   notice: null,
