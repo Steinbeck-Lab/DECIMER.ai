@@ -297,7 +297,7 @@
   left: 0;
   width: 100%;
   color: var(--dc-copper-ink);
-  font: 500 0.5625rem/1 var(--dc-font-mono);
+  font: 400 0.5625rem/1 var(--dc-font-mono);
   letter-spacing: 0.04em;
   text-align: center;
   text-transform: uppercase;

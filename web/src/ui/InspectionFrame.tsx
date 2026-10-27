@@ -24,7 +24,7 @@ interface Props {
 /**
  * The copper inspection frame, once: four edges, four corner handles, and as many of the page guides, dimension lines,
  * captions and chip as a use asks for. The drop zone (UploadZone), the uploaded document (Specimen), the selected
- * result (SelectionFrame), the About wordmark and the footer's credit all render it. Every rule is `.dc-frame` in
+ * result (SelectionFrame) and the About wordmark all render it. Every rule is `.dc-frame` in
  * home.css (edges, handles, label, guides, the draw-in on load and the reduced-motion rule); a modifier class in the
  * stylesheet of the use says what differs. Decoration only: hidden from assistive technology and never in the way of
  * the pointer. It fills its positioned parent (`inset: 0`, or what a modifier sets).
