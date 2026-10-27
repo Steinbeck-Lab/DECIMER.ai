@@ -1,7 +1,10 @@
 /*
  * The working and failed screens (WorkingView.tsx, FailedView.tsx), in the world of the drop zone: what was uploaded
- * sits in the same copper inspection frame (drawn in by the rules of `.dc-frame` in home.css), and the stages are a
- * dimension line with a tick at every boundary. Flat surfaces, copper for measuring, garnet when it stopped.
+ * sits in the same copper inspection frame (drawn in by the rules of `.dc-frame` in home.css) beside a structure that
+ * draws itself, one fragment per stage, and the stages are a dimension line with a tick at every boundary and a
+ * calliper that opens across the stages that are running. Flat surfaces, copper for measuring, garnet when it stopped.
+ * Nothing on the screen changes size or place when a text changes (`.dc-steady`): the slots keep the size of their
+ * largest text, and the text slides and fades in place.
  */
 
 .dc-run {
@@ -11,19 +14,41 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: clamp(36px, 6vh, 56px);
-  padding: 24px var(--dc-gutter) 40px;
+  --dc-run-gap: clamp(28px, 4vh, 48px);
+  gap: var(--dc-run-gap);
+  padding: 8px var(--dc-gutter) 32px;
   text-align: center;
   /* The page guides run past the frame; they stop at the window's edge, never scroll it. */
   overflow-x: clip;
 }
 
-/* What was uploaded: the frame is 7 px out from the pills, and the label sits 30 px above it. */
+/* What was uploaded: the frame is 7 px out from the pills (and the plate), and the label sits 30 px above it. */
 .dc-specimen {
+  --dc-porcelain-tile:
+    inset 2px 2px 4px rgb(255 255 255 / 0.9), inset -3px -3px 8px rgb(118 41 8 / 0.07), 0 1px 2px rgb(30 50 38 / 0.1),
+    0 18px 40px -12px rgb(30 50 38 / 0.24);
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   max-width: min(100%, 774px);
   margin-top: 30px;
   padding: 7px;
+}
+
+/* The files and the plate side by side where they fit: one or two files from 560 px up (below 880 px the pills of two
+   files are one above the other). Three files or more (three pills, the count and the plate are wider than the line),
+   and any window narrower than 560 px, put the plate under the files. The frame hugs either way: a wrapping row would
+   be as wide as it can be, with room to spare beside whatever wrapped. */
+.dc-specimen:not([data-files='1'], [data-files='2']) {
+  flex-direction: column;
+}
+
+@media (max-width: 560px) {
+  .dc-specimen {
+    flex-direction: column;
+  }
 }
 
 /* The vertical guides stop before the heading below. */
@@ -78,11 +103,7 @@
   border-radius: 999px;
   background: var(--dc-tile);
   text-align: left;
-  box-shadow:
-    inset 2px 2px 4px rgb(255 255 255 / 0.9),
-    inset -3px -3px 8px rgb(118 41 8 / 0.07),
-    0 1px 2px rgb(30 50 38 / 0.1),
-    0 18px 40px -12px rgb(30 50 38 / 0.24);
+  box-shadow: var(--dc-porcelain-tile);
 }
 
 /* Several files: smaller pills, so that three and the count share a line (or, where there is no room for a line,
@@ -148,6 +169,186 @@
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * The structure that draws itself, beside the files: caffeine on a porcelain plate (caffeine.ts), one fragment per
+ * stage, every line drawn with stroke-dashoffset (a pathLength of 1, so one dash pattern fits every line). The
+ * fragment of the stage being run is copper and breathes slowly (its colour, copper and a paler copper, so that it
+ * settles into forest without a jump); one that is done settles in Velvet Forest; one that waits is not drawn. A fragment that is done draws just as an active one does (the same animation, so a change of
+ * state never restarts it), which is also what a stage that is over before its drawing is does.
+ */
+.dc-plate {
+  position: relative;
+  z-index: 2;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 160px;
+  height: 108px;
+  border-radius: 16px;
+  background: var(--dc-tile);
+  box-shadow: var(--dc-porcelain-tile);
+}
+
+.dc-mol {
+  display: block;
+  width: 128px;
+  height: auto;
+  overflow: visible;
+}
+
+.dc-mol__frag path {
+  fill: none;
+  stroke: var(--dc-forest);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  /* Not drawn: the dash is all of the line, pushed (a little more than) its own length out of it. */
+  stroke-dasharray: 1 3;
+  stroke-dashoffset: 1.2;
+  transition: stroke 0.9s var(--dc-ease);
+}
+
+.dc-mol__frag text {
+  fill: var(--dc-forest);
+  font: 500 14px var(--dc-font-ui);
+  text-anchor: middle;
+  opacity: 0;
+  transition: fill 0.9s var(--dc-ease);
+}
+
+.dc-mol__frag[data-state='active'] path {
+  stroke: var(--dc-copper);
+}
+
+.dc-mol__frag[data-state='active'] text {
+  fill: var(--dc-copper-ink);
+}
+
+.dc-mol__frag:not([data-state='pending']) path {
+  animation: dc-mol-draw 0.8s cubic-bezier(0.22, 1, 0.36, 1) calc(var(--i) * 0.2s) both;
+}
+
+/* A letter arrives when the lines of its fragment have been drawn. */
+.dc-mol__frag:not([data-state='pending']) text {
+  animation: dc-fade 0.5s ease calc(var(--i) * 0.2s + 0.25s) both;
+}
+
+/* Breathing, once it has been drawn: the colour only. When the stage is over the colour goes on to forest from where
+   it is (a transition starts from the animated value), so nothing jumps. */
+.dc-mol__frag[data-state='active'] path {
+  animation:
+    dc-mol-draw 0.8s cubic-bezier(0.22, 1, 0.36, 1) calc(var(--i) * 0.2s) both,
+    dc-mol-breathe 3s ease-in-out 2s infinite;
+}
+
+.dc-mol__frag[data-state='active'] text {
+  animation:
+    dc-fade 0.5s ease calc(var(--i) * 0.2s + 0.25s) both,
+    dc-mol-breathe-ink 3s ease-in-out 2s infinite;
+}
+
+@keyframes dc-mol-draw {
+  from {
+    stroke-dashoffset: 1.2;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes dc-mol-breathe {
+  50% {
+    stroke: color-mix(in srgb, var(--dc-copper) 62%, var(--dc-tile));
+  }
+}
+
+@keyframes dc-mol-breathe-ink {
+  50% {
+    fill: color-mix(in srgb, var(--dc-copper-ink) 72%, var(--dc-tile));
+  }
+}
+
+/* The tab is hidden, or the view is out of the window (WorkingView.tsx sets `data-paused`): every animation under it
+   stops where it is, also one that starts meanwhile, and goes on from there. */
+.dc-run[data-paused] *,
+.dc-run[data-paused] *::before,
+.dc-run[data-paused] *::after {
+  animation-play-state: paused !important;
+}
+
+/*
+ * Text that does not move. A slot (Steady.tsx) lays every text it can say, unseen, in one grid cell with the text
+ * itself, so the cell is as large as the largest at the current width: one line where the largest is one, two where it
+ * wraps. A new text takes the place of the old: the old rises and fades, the new rises into its place from a quarter
+ * of a line below. Opacity, transform and clip-path only.
+ */
+.dc-steady {
+  display: grid;
+}
+
+/* The frame's rules make every span in it absolute (the chip's text is in one). */
+.dc-frame .dc-steady,
+.dc-frame .dc-steady > span {
+  position: static;
+}
+
+.dc-steady > * {
+  grid-area: 1 / 1;
+  text-wrap: inherit;
+}
+
+.dc-steady[data-align='end'] > * {
+  align-self: end;
+}
+
+.dc-steady__sizer {
+  visibility: hidden;
+}
+
+.dc-steady__sizer::before,
+.dc-steady__gone::before {
+  content: attr(data-text);
+}
+
+.dc-steady__now--arriving {
+  animation: dc-steady-in 0.75s linear 0.18s both;
+}
+
+/* Gone unless it is being animated out: where animations are off (the frame's reduced-motion rule) the old text must not stay. */
+.dc-steady__gone {
+  opacity: 0;
+  animation: dc-steady-out 0.2s ease-in both;
+}
+
+/*
+ * The new text rises out of the bottom of its slot: a clip that opens upwards while the text settles a third of a line
+ * (ease-out over the first three quarters, then the clip opens out past the glyphs). A clip, not a fade: the text is
+ * never paler than its colour, so it is readable at every moment.
+ */
+@keyframes dc-steady-in {
+  0% {
+    clip-path: inset(100% 0 0 0);
+    transform: translateY(0.3em);
+    animation-timing-function: cubic-bezier(0.33, 1, 0.68, 1);
+  }
+  75% {
+    clip-path: inset(0);
+    transform: none;
+  }
+  100% {
+    clip-path: inset(-0.5em);
+  }
+}
+
+@keyframes dc-steady-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-0.2em);
+  }
+}
+
 /* The heading and what it says about the stage. */
 .dc-run__live {
   width: min(640px, 100%);
@@ -157,6 +358,7 @@
   margin: 0;
   font: 400 clamp(1.75rem, 4.2vw, 2.5rem) / 1.15 var(--dc-font-display);
   letter-spacing: -0.015em;
+  text-wrap: balance;
 }
 
 .dc-run__detail {
@@ -169,23 +371,150 @@
   margin-top: 4px;
   color: var(--dc-muted);
   font-size: 0.9375rem;
+  text-wrap: balance;
 }
 
 /* The dimension line, its numbers and the one quiet hint. */
 .dc-run__measure {
   width: min(774px, 100%);
+  /* The calliper's readout stands in the gap above the line: the gap is part of its room (and ends where the reserved
+     lines above it end, so it never lies over their text). */
+  margin-top: -40px;
 }
 
+/* The clock ends at the middle and the counts start at it: neither moves when the other changes, nor when a digit is added. */
 .dc-run__meta {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 4px 28px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 28px;
   margin: 28px 0 0;
   color: var(--dc-ink-2);
   font: 400 0.8125rem/1.6 var(--dc-font-mono);
   letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
+}
+
+.dc-run__clock {
+  justify-self: end;
+  min-width: 13ch;
+  text-align: right;
+}
+
+.dc-run__count {
+  display: flex;
+  flex-wrap: wrap;
+  justify-self: start;
+  gap: 0 28px;
+  text-align: left;
+}
+
+/* A very narrow phone: "8 structures found" does not fit half the line, so the clock and the counts are one above the
+   other, the counts' line reserved (it is there with the clock alone, and when the counts come it is not made). */
+@media (max-width: 380px) {
+  .dc-run__meta {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+  }
+  .dc-run__clock {
+    justify-self: center;
+    min-width: 0;
+    text-align: center;
+  }
+  .dc-run__count {
+    justify-self: center;
+    justify-content: center;
+    min-height: 1.6em;
+    text-align: center;
+  }
+}
+
+/* "Show the document": a quiet pill under the numbers, closed. It adds a line to the block, always, so nothing moves when it is used. */
+.dc-run__doc {
+  display: flex;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+.dc-run__doc .dc-doc__toggle {
+  align-self: auto;
+  margin-top: 0;
+}
+
+/*
+ * The document, open: right under the toggle, inside the working block (which grows downwards), as wide as the page's
+ * content is (the header's edges). The pages are big: a strip about 80 % of the window high, one page and a half to three
+ * across, that scrolls inside its own box with the pages snapping into place; on a phone a column of full-width pages.
+ * Each page has its number under it. (The block's gap above is taken back, so it starts a line under the toggle.)
+ */
+/* (Two classes: figure.css, loaded after this file, sets the results' strip on `.dc-doc`.) */
+.dc-run .dc-workdoc {
+  --dc-doc-h: min(80vh, 960px);
+  align-self: stretch;
+  width: 100%;
+  margin: calc(16px - var(--dc-run-gap)) 0 0;
+  text-align: left;
+}
+
+.dc-workdoc[hidden] {
+  display: none;
+}
+
+.dc-workdoc .dc-doc__strip {
+  margin-top: 0;
+  scroll-snap-type: x proximity;
+  scroll-padding-inline: 14px;
+}
+
+.dc-workdoc .dc-doc__page {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: auto;
+  scroll-snap-align: start;
+}
+
+.dc-workdoc .dc-doc__page img,
+.dc-workdoc .dc-doc__missing {
+  height: var(--dc-doc-h);
+}
+
+.dc-workdoc__no {
+  color: var(--dc-muted);
+  font: 400 0.75rem/1 var(--dc-font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* A phone: one page under the other, each as wide as the screen allows. */
+@media (max-width: 640px) {
+  .dc-workdoc .dc-doc__strip {
+    overflow: visible;
+    scroll-snap-type: none;
+  }
+  .dc-workdoc .dc-doc__pages {
+    flex-direction: column;
+    width: auto;
+    padding: 12px;
+  }
+  .dc-workdoc .dc-doc__page {
+    min-width: 0;
+  }
+  .dc-workdoc .dc-doc__page img {
+    width: 100%;
+    height: auto;
+  }
+  .dc-workdoc .dc-doc__missing {
+    height: auto;
+    aspect-ratio: 1 / 1.414;
+  }
+}
+
+.dc-workdoc__note {
+  margin: 0;
+  padding: 28px 20px;
+  color: var(--dc-muted);
+  font-size: 0.9375rem;
+  text-align: center;
 }
 
 .dc-run__note {
@@ -196,16 +525,19 @@
 
 /*
  * The measuring line. Each stage is a segment between two ticks, 5 in a row. A pending one is a hairline; a done one is
- * drawn in full; an active one is drawn from its left tick to its right one, again and again, with a handle at the
- * end of the line being drawn (the same square as the frame's corners). Segments that are active together draw in
- * step (WorkingView.tsx puts them on one clock). The line is scaled from its left end and the handle is translated,
- * so both move on the compositor.
+ * drawn in full; an active one is drawn from its left tick to its right one, again and again: the job reports no
+ * progress inside a stage, so the line does not say how far one is. Segments that are active together draw in step
+ * (WorkingView.tsx puts them on one clock). The line is scaled from its left end, so it moves on the compositor. The
+ * calliper stands above it.
  */
 .dc-rule {
   --dc-rule-faint: color-mix(in srgb, var(--dc-copper) 30%, transparent);
   position: relative;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
+  /* The calliper's room, and the size its own units (cqw) are of. */
+  margin-top: 52px;
+  container-type: inline-size;
 }
 
 /* The last tick. */
@@ -217,14 +549,17 @@
   width: 1px;
   height: 9px;
   background: var(--dc-rule-faint);
+  transition: background-color 0.4s var(--dc-ease);
+}
+
+.dc-rule:has(.dc-rule__segment:last-child[data-state='done'])::after {
+  background: var(--dc-copper);
 }
 
 .dc-rule__segment {
   position: relative;
   display: block;
   padding-top: 22px;
-  /* The handle travels the segment's own width (`cqw`). */
-  container-type: inline-size;
 }
 
 /* The hairline, and the tick at the segment's start. */
@@ -270,26 +605,10 @@
   transform: none;
 }
 
-/* Without motion an active segment is half drawn, with its handle in the middle: not done, not waiting. */
+/* Without motion an active segment is half drawn: not done, not waiting. */
 .dc-rule__segment[data-state='active'] .dc-rule__fill {
   transform: scaleX(0.5);
   animation: dc-measure 3s infinite;
-}
-
-.dc-rule__head {
-  position: absolute;
-  top: 2px;
-  left: -3px;
-  width: 7px;
-  height: 7px;
-  background: var(--dc-copper);
-  opacity: 0;
-}
-
-.dc-rule__segment[data-state='active'] .dc-rule__head {
-  opacity: 1;
-  translate: 50cqw 0;
-  animation: dc-measure-head 3s infinite;
 }
 
 .dc-rule__name {
@@ -305,9 +624,10 @@
   color: var(--dc-ink-2);
 }
 
+/* The active name is darker, not heavier: a heavier weight is wider, and the name would wrap again as its stage starts. */
 .dc-rule__segment[data-state='active'] .dc-rule__name {
   color: var(--dc-ink);
-  font-weight: 500;
+  text-shadow: 0.35px 0 0 currentColor;
 }
 
 /* Drawn fast at first, as a tape is pulled, then settling on the tick; held; gone; again. */
@@ -329,28 +649,216 @@
   }
 }
 
-@keyframes dc-measure-head {
-  0% {
-    translate: 0 0;
-    opacity: 1;
-    animation-timing-function: cubic-bezier(0.33, 1, 0.68, 1);
+/*
+ * The calliper: a copper beam over the measuring line with a jaw on each of two ticks, the first running stage's start
+ * and the last running stage's end, a scale of graduations between the jaws and, over the middle of the span, a mono
+ * readout. When the running stages change the jaws slide to the new ticks and the calliper opens (or closes) across
+ * them, 1.1 s of exponential ease-out; at rest only the readout changes. The ticks are percentages of the line (--x0 to
+ * --x5; on a phone the segments are as long as their names need), the beam is one cqw long and scaled, the jaws and
+ * the readout are translated and the scale is clipped: transform and clip-path only.
+ */
+.dc-cal {
+  --x0: 0;
+  --x1: 20;
+  --x2: 40;
+  --x3: 60;
+  --x4: 80;
+  --x5: 100;
+  --a: var(--x0);
+  --b: var(--x1);
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 0;
+  pointer-events: none;
+  /* Enters after the frame is drawn, rising out of the line (a clip, not a fade: its text is never paler than its colour). */
+  animation: dc-cal-in 0.8s var(--dc-ease) 0.5s both;
+}
+
+@keyframes dc-cal-in {
+  from {
+    clip-path: inset(0 -20px -12px -20px);
   }
-  62%,
-  88% {
-    translate: 100cqw 0;
-    opacity: 1;
-    animation-timing-function: ease-in;
-  }
-  100% {
-    translate: 100cqw 0;
-    opacity: 0;
+  to {
+    clip-path: inset(-60px -20px -12px -20px);
   }
 }
 
+.dc-cal > * {
+  position: absolute;
+  left: 0;
+}
+
+.dc-cal__beam,
+.dc-cal__jaw,
+.dc-cal__stem,
+.dc-cal__read,
+.dc-cal__grad {
+  transition:
+    translate 1.1s var(--dc-ease),
+    scale 1.1s var(--dc-ease),
+    clip-path 1.1s var(--dc-ease);
+}
+
+.dc-cal__beam {
+  top: -17px;
+  width: 1cqw;
+  height: 1px;
+  background: var(--dc-copper);
+  transform-origin: left;
+  translate: calc(var(--a) * 1cqw) 0;
+  scale: calc(var(--b) - var(--a)) 1;
+}
+
+/* The graduations: a copper strip with the ticks cut out of it (a mask, so the colour is the page's copper, not a copy of it). */
+.dc-cal__grad {
+  top: -16px;
+  right: 0;
+  height: 6px;
+  opacity: 0.55;
+  background: var(--dc-copper);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='6'%3E%3Crect x='0' y='0' width='1' height='6'/%3E%3Crect x='6' y='0' width='1' height='3'/%3E%3Crect x='12' y='0' width='1' height='3'/%3E%3Crect x='18' y='0' width='1' height='3'/%3E%3Crect x='24' y='0' width='1' height='3'/%3E%3C/svg%3E")
+    repeat-x 0 0 / 30px 6px;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='30' height='6'%3E%3Crect x='0' y='0' width='1' height='6'/%3E%3Crect x='6' y='0' width='1' height='3'/%3E%3Crect x='12' y='0' width='1' height='3'/%3E%3Crect x='18' y='0' width='1' height='3'/%3E%3Crect x='24' y='0' width='1' height='3'/%3E%3C/svg%3E")
+    repeat-x 0 0 / 30px 6px;
+  clip-path: inset(0 calc(100% - var(--b) * 1%) 0 calc(var(--a) * 1%));
+}
+
+/* A jaw: a line from the beam down to the measuring line, with the square handle of the frame's corners on the beam. */
+.dc-cal__jaw {
+  top: -17px;
+  width: 1px;
+  height: 27px;
+  background: var(--dc-copper);
+}
+
+.dc-cal__jaw::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  width: 7px;
+  height: 7px;
+  background: var(--dc-copper);
+}
+
+.dc-cal__jaw--a {
+  translate: calc(var(--a) * 1cqw) 0;
+}
+
+.dc-cal__jaw--b {
+  translate: calc(var(--b) * 1cqw - 1px) 0;
+}
+
+/* The readout sits over the middle of the span, kept inside the line at its ends (a chip is 18ch, the width of the
+   longest stage name, and its padding wide). */
+.dc-cal__read {
+  top: -48px;
+  font: 400 11px/1.5 var(--dc-font-mono);
+  translate: clamp(9ch + 8px, (var(--a) + var(--b)) * 0.5cqw, 100cqw - 9ch - 8px) 0;
+}
+
+.dc-cal__chip {
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  width: calc(18ch + 16px);
+  padding: 3px 8px;
+  border-radius: 3px;
+  background: var(--dc-copper);
+  color: var(--dc-on-copper);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+/* The stem from the readout down to the beam: over the middle of the span, where the readout would be if it were not
+   kept inside the line (it still meets the readout, which is always within half its width of it). */
+.dc-cal__stem {
+  top: -26px;
+  width: 1px;
+  height: 9px;
+  background: var(--dc-copper);
+  translate: calc((var(--a) + var(--b)) * 0.5cqw) 0;
+}
+
+/* A phone: the segments are as long as their names need (the longest word of each, plus room), not all alike, so that
+   "Recognising" fits at 390 px and at 320 px. The weights are written once: they size the columns of the measuring
+   line and place the calliper's ticks (in percent of the line). */
+@media (max-width: 420px) {
+  .dc-rule {
+    --w1: 59;
+    --w2: 48;
+    --w3: 59;
+    --w4: 70;
+    --w5: 54;
+    --ws: calc(var(--w1) + var(--w2) + var(--w3) + var(--w4) + var(--w5));
+    grid-template-columns:
+      minmax(0, calc(var(--w1) / var(--ws) * 100%))
+      minmax(0, calc(var(--w2) / var(--ws) * 100%))
+      minmax(0, calc(var(--w3) / var(--ws) * 100%))
+      minmax(0, calc(var(--w4) / var(--ws) * 100%))
+      minmax(0, calc(var(--w5) / var(--ws) * 100%));
+  }
+  .dc-cal {
+    --x1: calc(var(--w1) / var(--ws) * 100);
+    --x2: calc((var(--w1) + var(--w2)) / var(--ws) * 100);
+    --x3: calc((var(--w1) + var(--w2) + var(--w3)) / var(--ws) * 100);
+    --x4: calc((var(--w1) + var(--w2) + var(--w3) + var(--w4)) / var(--ws) * 100);
+  }
+}
+
+/*
+ * Reduced motion: no loops, nothing drawn or slid. The structure's fragments fade in as their stages begin (copper while
+ * their stage runs, forest when it is done), the calliper stands on its new span at once (its readout and the
+ * measuring line still change), and a text is a plain cross-fade.
+ */
 @media (prefers-reduced-motion: reduce) {
-  .dc-rule__fill,
-  .dc-rule__head {
+  .dc-rule__fill {
     animation: none !important;
+  }
+  .dc-cal__beam,
+  .dc-cal__jaw,
+  .dc-cal__stem,
+  .dc-cal__read,
+  .dc-cal__grad,
+  .dc-rule__fill {
+    transition: none;
+  }
+  .dc-cal {
+    animation: none;
+  }
+  .dc-mol__frag[data-state='pending'] {
+    opacity: 0;
+  }
+  .dc-mol__frag:not([data-state='pending']) {
+    animation: dc-fade 0.4s ease both;
+  }
+  .dc-mol__frag path {
+    animation: none !important;
+    stroke-dashoffset: 0;
+  }
+  .dc-mol__frag text {
+    animation: none !important;
+    opacity: 1;
+  }
+  .dc-steady__now--arriving {
+    animation: dc-fade 0.4s ease 0.1s both;
+  }
+  .dc-steady__gone {
+    animation: dc-steady-fade 0.2s ease-in both;
+  }
+}
+
+@keyframes dc-steady-fade {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
   }
 }
 
@@ -371,7 +879,7 @@
 
 @media (max-width: 640px) {
   .dc-run {
-    gap: 40px;
+    --dc-run-gap: 40px;
     padding-top: 12px;
   }
   .dc-run__title {
@@ -382,7 +890,7 @@
     font-size: 0.75rem;
   }
   .dc-run__meta {
-    gap: 2px 20px;
+    column-gap: 20px;
     margin-top: 22px;
   }
   .dc-specimen__item {
@@ -405,14 +913,6 @@
     flex-direction: column;
     flex-wrap: nowrap;
     align-items: stretch;
-  }
-}
-
-/* A phone: the segments are as long as their names need (the longest word of each, at the active weight, plus room),
-   not all alike, so that "Recognising" fits at 390 px and at 320 px. */
-@media (max-width: 420px) {
-  .dc-rule {
-    grid-template-columns: 59fr 48fr 59fr 70fr 54fr;
   }
 }
 

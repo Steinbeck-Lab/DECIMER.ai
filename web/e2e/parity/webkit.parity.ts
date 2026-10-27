@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, type Page, type Response } from '@playwright/test';
-import { editorPanel, headerDownload, layoutOnCanvas, waitForEditor, watchProblems } from '../helpers';
+import { editorPanel, downloadButton, layoutOnCanvas, waitForEditor, watchProblems } from '../helpers';
 import { readZip } from '../live/zip';
 import { test } from '../returning';
 import { CROP, dir, Facts, fileFrom, pasteFile, shot } from './shared';
@@ -90,7 +90,7 @@ test('WebKit: no Safari warning, the working view animates, Ketcher 3.18 loads, 
   await shot(page, 'webkit', 'w04-editor-webkit');
 
   const exported = page.waitForResponse((r) => isApi(r, 'POST', `/api/jobs/${jobId}/export`), { timeout: 120_000 });
-  await headerDownload(page).click();
+  await downloadButton(page).click();
   const [download] = await Promise.all([
     page.waitForEvent('download', { timeout: 120_000 }),
     page.getByRole('menuitem', { name: /^ZIP/ }).click({ noWaitAfter: true }),

@@ -248,6 +248,42 @@ h3 {
   padding-right: 5px;
 }
 
+/* Copper porcelain, dark ink on it (the About ribbon's colours: the header's About pill). */
+.dc-pill--copper {
+  background: var(--dc-copper);
+  color: var(--dc-on-copper);
+  box-shadow:
+    inset 2px 2px 4px rgb(255 255 255 / 0.4),
+    inset -3px -3px 6px rgb(90 50 10 / 0.28),
+    0 1px 2px rgb(30 50 38 / 0.16),
+    0 10px 20px -10px rgb(30 50 38 / 0.34);
+}
+
+.dc-pill--copper:hover:not(:disabled, [aria-disabled='true']) {
+  color: var(--dc-on-copper);
+  box-shadow:
+    inset 2px 2px 4px rgb(255 255 255 / 0.44),
+    inset -3px -3px 6px rgb(90 50 10 / 0.3),
+    0 2px 4px rgb(30 50 38 / 0.18),
+    0 14px 24px -10px rgb(30 50 38 / 0.4);
+}
+
+.dc-pill--copper:active:not(:disabled, [aria-disabled='true']) {
+  box-shadow:
+    inset 2px 2px 6px rgb(90 50 10 / 0.35),
+    inset -2px -2px 4px rgb(255 255 255 / 0.25),
+    0 1px 1px rgb(30 50 38 / 0.12);
+}
+
+/* The page it is on: a ring in the page's colour and a darker copper, beside the pill's own shadow. */
+.dc-pill--copper[aria-current='page'] {
+  box-shadow:
+    inset 2px 2px 4px rgb(255 255 255 / 0.4),
+    inset -3px -3px 6px rgb(90 50 10 / 0.28),
+    0 0 0 2px var(--dc-page),
+    0 0 0 4px var(--dc-copper-ink);
+}
+
 /* Secondary: egg-nog porcelain. */
 .dc-pill--quiet {
   background: var(--dc-egg);

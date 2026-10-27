@@ -7,7 +7,6 @@ import { useAppState, useController } from '../state/react';
 import { IconGithub, IconInfo } from '../ui/icons';
 import { ClothRibbon } from './ClothRibbon';
 import { ConfirmNewUpload } from './ConfirmNewUpload';
-import { DownloadMenu } from './DownloadMenu';
 import { hrefFor, navigate, type Route } from './router';
 
 export function Header({ route }: { route: Route }) {
@@ -64,10 +63,17 @@ export function Header({ route }: { route: Route }) {
         </nav>
       ) : (
         <nav className="dc-nav" aria-label={strings.shell.mainNav}>
-          <a className="dc-nav__link" href={hrefFor('/about')} aria-current={route === '/about' ? 'page' : undefined}>
+          {/* The same two as the ribbons of the empty screen, in the same colours, as porcelain pills with the same icons. */}
+          <a
+            className="dc-pill dc-pill--small dc-pill--copper"
+            href={hrefFor('/about')}
+            aria-current={route === '/about' ? 'page' : undefined}
+          >
+            <IconInfo size={16} strokeWidth={1.8} />
             {strings.shell.about}
           </a>
-          <a className="dc-nav__link" href={strings.shell.githubUrl} target="_blank" rel="noreferrer">
+          <a className="dc-pill dc-pill--small" href={strings.shell.githubUrl} target="_blank" rel="noreferrer">
+            <IconGithub size={16} />
             {strings.shell.github}
           </a>
           {showNewUpload && (
@@ -81,7 +87,6 @@ export function Header({ route }: { route: Route }) {
           )}
         </nav>
       )}
-      {hasResults(state) && state.job && <DownloadMenu placement="header" />}
       <ConfirmNewUpload
         opened={confirming}
         edited={work.edited}

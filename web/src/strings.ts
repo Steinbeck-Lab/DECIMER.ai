@@ -6,6 +6,12 @@ import type { Status } from './state/model';
 const plural = (n: number, one: string, other: string) => (n === 1 ? one : other);
 const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
 const andList = new Intl.ListFormat('en', { style: 'long', type: 'conjunction' });
+/** "4", "1 and 4", "1, 4 and 9": the numbers of the structures or pages a warning is about. */
+const numberList = (numbers: readonly number[]) =>
+  numbers.length > 1 ? `${numbers.slice(0, -1).join(', ')} and ${numbers.at(-1)}` : String(numbers[0]);
+/** One sentence for one or for several: "Structure 1 could not be recognised." / "Structures 1 and 4 could not be recognised." */
+const counted = (one: (n: string) => string, many: (list: string) => string) => (numbers: readonly number[]) =>
+  numbers.length === 1 ? one(String(numbers[0])) : many(numberList(numbers));
 
 /** What the working view calls each stage of the pipeline. */
 const STAGE_LABELS = {
@@ -42,25 +48,25 @@ export const strings = {
     impressum: 'Impressum',
     github: 'GitHub',
     githubUrl: 'https://github.com/Steinbeck-Lab/DECIMER.ai',
-    issuesUrl: 'https://github.com/Steinbeck-Lab/DECIMER.ai/issues',
     footerNav: 'Footer',
+    /** The middle of the footer: "Built with [cup] by Kohulan.R at the Steinbeck Lab, Friedrich Schiller University Jena". */
     credit: {
-      before: 'Developed by the ',
-      group: 'Steinbeck group',
+      at: 'at the',
+      group: 'Steinbeck Lab',
       groupUrl: 'https://cheminf.uni-jena.de/',
-      at: ' at ',
       university: 'Friedrich Schiller University Jena',
       universityUrl: 'https://www.uni-jena.de/',
-      after: '.',
     },
-    contact: 'Contact us by email',
-    contactUrl: 'mailto:kohulan.rajan@uni-jena.de;christoph.steinbeck@uni-jena.de',
-    reportIssue: 'or open an issue on GitHub',
+    /** The footer's first link on the right. */
+    contact: 'Contact',
+    contactUrl: 'mailto:kohulan.rajan@uni-jena.de,christoph.steinbeck@uni-jena.de',
     /** The legacy footer's line, as it worded it ("© 2025 DECIMER Project. All rights reserved."), with the current year. */
     copyright: (year: number) => `© ${year} DECIMER Project. All rights reserved.`,
     builtWith: 'Built with',
     builtWithIcon: 'coffee',
-    builtBy: 'by Kohulan',
+    builtBy: 'by',
+    builtByName: 'Kohulan.R',
+    builtByUrl: 'https://kohulanr.com',
     confirmNewTitle: 'Start a new upload?',
     confirm: {
       structure: 'structure',
@@ -148,6 +154,12 @@ export const strings = {
     /** The progress bar's value text: it says what its value, the number of stages done, says. */
     stepsDone: (done: number, total: number) => `${done} of ${total} steps done`,
     elapsed: (time: string) => `Elapsed ${time}`,
+    /** What the calliper above the measuring line reads: only what the job knows (the name of the stage, otherwise). */
+    readout: {
+      queue: (n: number) => `queue ${n}`,
+      pages: (n: number, pdf: boolean) => `${n} ${pdf ? plural(n, 'page', 'pages') : plural(n, 'image', 'images')}`,
+      structures: (n: number) => `${n} ${plural(n, 'structure', 'structures')}`,
+    },
     pages: (done: number, total: number) => `Page ${done} of ${total}`,
     found: (n: number) => `${n} ${plural(n, 'structure', 'structures')} found`,
     /**
@@ -167,6 +179,17 @@ export const strings = {
     queuedLabel: 'In queue',
     stoppedLabel: 'Stopped',
     sourcePreview: (name: string) => `Preview of ${name}`,
+    /** The toggle under the working screen's numbers, and the document it opens below them. */
+    document: {
+      show: 'Show the document',
+      hide: 'Hide the document',
+      region: 'Uploaded document',
+      /** A page of the document that has not been read yet, in the place of its picture. */
+      waiting: (page: number) => `Page ${page} · not read yet`,
+      none: 'The pages appear here as they are read.',
+      /** Under each page of the open document. */
+      caption: (page: number, pages: number) => `Page ${page} of ${pages}`,
+    },
     moreFiles: (n: number) => `${n} more ${plural(n, 'file', 'files')}`,
     failedHeading: 'The job did not finish',
     failedGeneric: 'Something went wrong while processing your file. Please try again.',
@@ -196,9 +219,23 @@ export const strings = {
       unchecked: 'unchecked',
     } satisfies Record<Status, string>,
     pagesLabel: 'Structures per page',
-    /** One page of the strip, for assistive technology (the strip itself shows the page number and the count). */
-    pageStructures: (page: number, n: number) =>
-      n === 0 ? `Page ${page}: no structures` : `Page ${page}: ${n} ${plural(n, 'structure', 'structures')}`,
+    /** The same for an upload of images, where each one is a "page". */
+    imagesLabel: 'Structures per image',
+    /** A chip that is not a button (a page without structures), for assistive technology: "Page 2: no structures". */
+    pageStructures: (page: number, n: number, pdf = true) => {
+      const unit = pdf ? 'Page' : 'Image';
+      return n === 0 ? `${unit} ${page}: no structures` : `${unit} ${page}: ${n} ${plural(n, 'structure', 'structures')}`;
+    },
+    /** The words after a chip's "p. 3" and "8", in its name: "p. 3 8 structures, open in the editor". */
+    pageStructuresWords: (n: number, open: boolean) =>
+      `${plural(n, 'structure', 'structures')}${open ? ', open in the editor' : ''}`,
+    /** A chip's page, and what it says instead of a count for a page with no structures. The tag of the open page ("open") is drawn by CSS. */
+    pageChip: (page: number, pdf = true) => `${pdf ? 'p.' : 'img.'} ${page}`,
+    pageNone: 'none',
+    /** The pill in the filter row while the results are narrowed to a page (it clears the page when pressed). */
+    pageFilter: (page: number, pdf = true) => `${pdf ? 'Page' : 'Image'} ${page}`,
+    pageFilterName: (page: number, pdf = true) =>
+      pdf ? `Page ${page} only. Show every page` : `Image ${page} only. Show every image`,
     /** The selected result's inspection frame: its number and the real size of its tile on screen. */
     frameLabel: (number: number, width: number, height: number) => `Result ${number} · ${width} × ${height} px`,
     countsLabel: 'Status of the structures',
@@ -211,11 +248,49 @@ export const strings = {
       edited: 'You have not edited any structure yet.',
       all: 'Nothing to show.',
     },
+    /** The same on a chosen page. */
+    filterEmptyOnPage: {
+      review: (page: number, pdf = true) => `No structure on ${pdf ? 'page' : 'image'} ${page} needs review.`,
+      edited: (page: number, pdf = true) => `You have not edited any structure on ${pdf ? 'page' : 'image'} ${page} yet.`,
+      all: (page: number, pdf = true) => `No structure on ${pdf ? 'page' : 'image'} ${page}.`,
+    },
     truncatedPages: (pages: number, processed: number) =>
       `This document has ${pages} pages. Only the first ${processed} were processed.`,
     truncatedStructures: (dropped: number) =>
       `${dropped} more ${plural(dropped, 'structure was', 'structures were')} found. Only the first ${LIMITS.maxStructures} are shown.`,
     truncatedGeneric: 'This upload was longer than the limits, so only part of it was processed.',
+    /**
+     * The job's warnings that are about one structure or page each (the codes of the worker's pipeline), put in one sentence
+     * for all the structures or pages of a kind: "Structures 1, 4 and 9 could not be recognised." The API words each
+     * one on its own, with the number in it; the number is what is taken from it.
+     */
+    countedWarnings: {
+      page_render_failed: counted(
+        (n) => `Page ${n} could not be rendered and was skipped.`,
+        (list) => `Pages ${list} could not be rendered and were skipped.`,
+      ),
+      page_segmentation_failed: counted(
+        (n) => `Page ${n} could not be searched for structures.`,
+        (list) => `Pages ${list} could not be searched for structures.`,
+      ),
+      fragments_trimmed: counted(
+        (n) => `Structure ${n}: the prediction had several fragments. Only the first was kept.`,
+        (list) => `Structures ${list}: the predictions had several fragments. Only the first of each was kept.`,
+      ),
+      recognition_failed: counted(
+        (n) => `Structure ${n} could not be recognised.`,
+        (list) => `Structures ${list} could not be recognised.`,
+      ),
+      classification_failed: counted(
+        (n) => `Structure ${n} could not be classified.`,
+        (list) => `Structures ${list} could not be classified.`,
+      ),
+      /** Not a warning the API sends: made from the results the model cut off at its length limit that nobody has edited. */
+      incomplete: counted(
+        (n) => `Structure ${n} was cut off at the model's length limit; check it in the editor.`,
+        (list) => `Structures ${list} were cut off at the model's length limit; check them in the editor.`,
+      ),
+    } satisfies Record<string, (numbers: readonly number[]) => string>,
     document: {
       /** Legacy's label for the same control. */
       toggle: 'Display uploaded document',
@@ -259,6 +334,8 @@ export const strings = {
      * the short form on the tile; the hover has the whole sentence, and says who could not read it.
      */
     cdkOnlyFlag: 'Accepted by CDK only',
+    /** The tile's flag for a structure the model cut off at its length limit (decision D25), until it is edited. */
+    incompleteFlag: 'Incomplete',
     cdkOnlyHover: 'Accepted by CDK only (RDKit could not read it)',
     /**
      * States the fact, not a cause, and does not name Orthonym: names may be switched off altogether (no chemistry

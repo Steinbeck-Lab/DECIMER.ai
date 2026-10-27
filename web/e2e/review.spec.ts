@@ -22,7 +22,8 @@ async function openResults(page: Page, file = 'figure2.png', query = '?mockStepM
 }
 
 test('the working view announces stage and queue in one polite live region, and not the ticking clock', async ({ page }) => {
-  await page.goto('./?mockStepMs=500');
+  // A step is long enough for the sampling below to see every stage, also on a busy machine.
+  await page.goto('./?mockStepMs=1200');
   await page.locator('input[type=file]').setInputFiles(fixtureImage());
 
   const live = page.locator('#main [aria-live]');
@@ -202,29 +203,53 @@ test("a molfile dropped into Ketcher's Open dialog is accepted on the results sc
   await expect(page.getByRole('list', { name: 'Recognised structures' })).toBeVisible();
 });
 
-test('one export at a time: while it runs both Download menus are off, and only one file arrives', async ({ page }) => {
+test('one export at a time: while it runs the Download button is off, and only one file arrives', async ({ page }) => {
   await openResults(page, 'figure2.png', '?mockStepMs=150&mockLatencyMs=2000');
   let downloads = 0;
   page.on('download', () => downloads++);
-  // By placement, not by name: while it works the button's name is "Preparing the download…".
-  const header = page.locator('.dc-download[data-placement="header"]');
-  const atTheEnd = page.locator('.dc-download[data-placement="results"]');
+  // The one Download of the screen. By its class, not by name: while it works its name is "Preparing the download…".
+  const button = page.locator('.dc-download');
+  await expect(button).toHaveCount(1);
 
-  await header.click();
+  await button.click();
   // `noWaitAfter`: a click that starts a download otherwise does not return until the download has finished.
   await page.getByRole('menuitem', { name: /^ZIP/ }).click({ noWaitAfter: true });
-  for (const button of [header, atTheEnd]) {
-    await expect(button).toBeDisabled();
-    await expect(button).toHaveAttribute('aria-busy', 'true');
-  }
-  await expect(header).toContainText('Preparing the download');
-  await atTheEnd.click({ force: true }); // pressing the other one does nothing
+  await expect(button).toBeDisabled();
+  await expect(button).toHaveAttribute('aria-busy', 'true');
+  await expect(button).toContainText('Preparing the download');
+  await button.click({ force: true }); // pressing it again does nothing
 
   await expect(page.getByRole('status').filter({ hasText: 'Your download has started.' })).toBeVisible({ timeout: 10_000 });
-  await expect(header).toBeEnabled();
-  await expect(atTheEnd).toBeEnabled();
+  await expect(button).toBeEnabled();
   await page.waitForTimeout(2500);
   expect(downloads).toBe(1);
+});
+
+test('a structure the model cut off is flagged on its tile, said in the green notices tile, and noted in the editor', async ({ page }) => {
+  const problems = watchProblems(page);
+  await openResults(page, 'incomplete.png');
+  await page.locator('.dc-grid[data-arriving="false"]').waitFor({ timeout: 15_000 });
+  // The mock cuts off its third structure, number 4: a flag in the family of "Invalid SMILES", in the tile's name.
+  await expect(tile(page, 4)).toContainText('Incomplete');
+  await expect(tile(page, 4)).toContainText('Review');
+  await expect(tile(page, 1)).not.toContainText('Incomplete');
+  // One sentence in the second half of the green box, above the grid.
+  const note = page.getByRole('note');
+  await expect(note).toHaveText("Structure 4 was cut off at the model's length limit; check it in the editor.");
+  await expect(page.locator('.dc-top__left .dc-notices')).toBeVisible();
+  // In the editor, right under the name (above the SMILES, which is the cut-off text).
+  await tile(page, 4).click();
+  const panel = editorPanel(page);
+  const cutOff = panel.getByRole('note');
+  await expect(cutOff).toHaveText('Incomplete: the model stopped at its length limit; the structure is cut off.');
+  const below = await panel.evaluate((el) => {
+    const facts = el.querySelector('.dc-facts')!.getBoundingClientRect();
+    const smiles = el.querySelector('.dc-code')!.getBoundingClientRect();
+    const noteBox = el.querySelector('.dc-incomplete')!.getBoundingClientRect();
+    return noteBox.top >= facts.bottom - 1 && noteBox.bottom <= smiles.top + 1;
+  });
+  expect(below).toBe(true);
+  expect(problems).toEqual([]);
 });
 
 test('New upload counts checked results as well as edited ones, and keeping on keeps them', async ({ page }) => {

@@ -56,8 +56,8 @@ export function reasonsFor(r: {
   incomplete?: boolean;
 }): Reason[] {
   const reasons: Reason[] = [];
-  // A cut-off SMILES is never taken for a reading: until the UI shows the flag itself, this puts the result
-  // under "Needs review" whatever RDKit, CDK and the model's confidence say about the text.
+  // A cut-off SMILES is never taken for a reading: beside the visible flag (tile badge, editor note, notices),
+  // this keeps the result under "Needs review" whatever RDKit, CDK and the model's confidence say about the text.
   if (r.incomplete) reasons.push('incomplete');
   // Only an answer of "no" is a doubt. `null` is a classifier that was not there: nothing to say.
   if (r.isStructure === false) reasons.push('notStructure');
@@ -159,16 +159,19 @@ function matchesFilter(view: ResultView, filter: Filter): boolean {
   return view.modified;
 }
 
-export function filterViews(views: readonly ResultView[], filter: Filter): ResultView[] {
-  return views.filter((v) => matchesFilter(v, filter));
+/** A page filter and a status filter together: both must hold. `page` is 0-based; null is every page. */
+const onPage = (view: ResultView, page: number | null) => page === null || view.result.pageIndex === page;
+
+export function filterViews(views: readonly ResultView[], filter: Filter, page: number | null = null): ResultView[] {
+  return views.filter((v) => onPage(v, page) && matchesFilter(v, filter));
 }
 
-/** Filter chip counts. Each is the number of tiles its filter shows, by the same predicate. */
-export function filterCounts(views: readonly ResultView[]): Record<Filter, number> {
+/** Filter chip counts. Each is the number of tiles its filter shows, by the same predicate (on the chosen page, if one is). */
+export function filterCounts(views: readonly ResultView[], page: number | null = null): Record<Filter, number> {
   return {
-    all: filterViews(views, 'all').length,
-    review: filterViews(views, 'review').length,
-    edited: filterViews(views, 'edited').length,
+    all: filterViews(views, 'all', page).length,
+    review: filterViews(views, 'review', page).length,
+    edited: filterViews(views, 'edited', page).length,
   };
 }
 
@@ -177,8 +180,13 @@ export function filterCounts(views: readonly ResultView[]): Record<Filter, numbe
  * result itself where it sits in the figure, even if it has just left the filter
  * (checking a result under "Needs review" must not make Next jump back to the top).
  */
-export function stepList(views: readonly ResultView[], filter: Filter, selected: number | null): ResultView[] {
-  return views.filter((v) => v.index === selected || matchesFilter(v, filter));
+export function stepList(
+  views: readonly ResultView[],
+  filter: Filter,
+  selected: number | null,
+  page: number | null = null,
+): ResultView[] {
+  return views.filter((v) => v.index === selected || (onPage(v, page) && matchesFilter(v, filter)));
 }
 
 /**

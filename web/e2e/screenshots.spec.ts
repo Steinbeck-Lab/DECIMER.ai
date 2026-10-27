@@ -1,6 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { test } from './returning';
-import { clearCanvas, editorPanel, fixtureImage, fixturePdf, headerDownload, layoutOnCanvas, tile, waitForEditor } from './helpers';
+import { clearCanvas, editorPanel, fixtureImage, fixturePdf, downloadButton, layoutOnCanvas, tile, waitForEditor } from './helpers';
 
 // Review screenshots (impeccable finish review). They land in test-results/screens/ and the
 // orchestrator copies them to .impeccable/review/. They double as a check that every state renders.
@@ -71,7 +71,7 @@ test.describe('screenshots', () => {
     await page.waitForTimeout(300);
     await page.screenshot({ path: `${OUT}/tooltip-desktop.png`, clip: { x: 0, y: 150, width: 960, height: 420 } });
 
-    await headerDownload(page).click();
+    await downloadButton(page).click();
     await page.getByRole('menuitem', { name: /^ZIP/ }).waitFor();
     await page.waitForTimeout(300);
     await page.screenshot({ path: `${OUT}/menu-desktop.png`, clip: { x: 800, y: 0, width: 640, height: 240 } });

@@ -1,7 +1,7 @@
 import { MantineProvider } from '@mantine/core';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { memo } from 'react';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { STAGE_ORDER, type Job, type StageState } from '../api/contract';
 import { MockApiClient } from '../mocks/MockApiClient';
 import type { AppController } from '../state/controller';
@@ -225,4 +225,282 @@ test('a queued job shows what the API says of its stages (the upload is done, th
   act(() => c.store.dispatch({ type: 'jobUpdated', job: { ...overlapped(), status: 'queued', queuePosition: 2 } }));
   expect(segments()).toEqual(['done', 'pending', 'pending', 'pending', 'pending']);
   expect(screen.getByRole('progressbar', { name: 'Progress' }).getAttribute('aria-valuenow')).toBe('1');
+});
+
+// The structure that draws itself beside the file: one fragment per stage, in the state of its stage.
+const fragmentStates = () => [...document.querySelectorAll('.dc-mol__frag')].map((el) => el.getAttribute('data-state'));
+
+test('the structure is drawn one fragment per stage: before the job it starts, in the queue it has what is done, then it follows the heading', () => {
+  const c = mountWorking();
+  expect(fragmentStates()).toEqual(['active', 'pending', 'pending', 'pending', 'pending']);
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: { ...overlapped(), status: 'queued', queuePosition: 2 } }));
+  expect(fragmentStates()).toEqual(['done', 'pending', 'pending', 'pending', 'pending']);
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: overlapped('active', 'pending') }));
+  expect(fragmentStates()).toEqual(['done', 'active', 'pending', 'pending', 'pending']);
+  // Stages overlap: the heading's stage is the one being drawn, the ones before it are done.
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: overlapped('active', 'active', 'active') }));
+  expect(fragmentStates()).toEqual(['done', 'done', 'done', 'active', 'pending']);
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: overlapped('done', 'done', 'done', 'active') }));
+  expect(fragmentStates()).toEqual(['done', 'done', 'done', 'done', 'active']);
+});
+
+test('the structure is decoration: hidden from assistive technology, with no text of its own for a screen reader to find', () => {
+  mountWorking();
+  const plate = document.querySelector('.dc-plate');
+  expect(plate?.getAttribute('aria-hidden')).toBe('true');
+  expect(plate?.closest('[aria-live]')).toBeNull();
+});
+
+// The calliper over the measuring line: where it stands and what it reads, from the job's own data only.
+const readout = () => document.querySelector('.dc-cal__chip')?.textContent;
+const calliperSpan = () => {
+  const el = document.querySelector<HTMLElement>('.dc-cal');
+  return [el?.style.getPropertyValue('--a'), el?.style.getPropertyValue('--b')];
+};
+
+test('the calliper stands across the stages that are running, closed in the queue', () => {
+  const c = mountWorking();
+  expect(calliperSpan()).toEqual(['var(--x0)', 'var(--x1)']); // the upload, before the job exists
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: { ...overlapped(), status: 'queued', queuePosition: 2 } }));
+  expect(calliperSpan()).toEqual(['var(--x1)', 'var(--x1)']); // waiting after the upload
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: overlapped('active', 'pending') }));
+  expect(calliperSpan()).toEqual(['var(--x1)', 'var(--x2)']);
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: overlapped('done', 'active', 'active') }));
+  expect(calliperSpan()).toEqual(['var(--x2)', 'var(--x4)']);
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: overlapped('done', 'done', 'done', 'active') }));
+  expect(calliperSpan()).toEqual(['var(--x4)', 'var(--x5)']);
+});
+
+test('the calliper reads the queue position, the pages, the structures found, or the stage\'s name: only what the job knows', () => {
+  const c = mountWorking();
+  expect(readout()).toBe('Uploading'); // nothing to count yet (the clock is below, as "Elapsed")
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: { ...overlapped(), status: 'queued', queuePosition: 2 } }));
+  expect(readout()).toBe('queue 2');
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: { ...overlapped('active', 'pending'), pages: 14, pagesProcessed: 10 } }));
+  expect(readout()).toBe('10 pages'); // a PDF's first 10
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: { ...overlapped('done', 'done', 'active'), pages: 14, pagesProcessed: 10 } }));
+  expect(readout()).toBe('10 pages'); // recognising, but the number of structures is not known yet
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: { ...overlapped('done', 'done', 'active'), structuresFound: 12 } }));
+  expect(readout()).toBe('12 structures');
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: { ...overlapped('done', 'done', 'done', 'active'), structuresFound: 1 } }));
+  expect(readout()).toBe('1 structure');
+  // Finding structures is not given a count of its own (the job has none): it reads the pages it searches.
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: { ...overlapped('done', 'active'), structuresFound: 0, pages: 3, pagesProcessed: 3 } }));
+  expect(readout()).toBe('3 pages');
+  // A job whose pages are not known (yet) has no count to read either: the stage's name.
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: { ...overlapped('done', 'active'), structuresFound: 0, pages: 0, pagesProcessed: 0 } }));
+  expect(readout()).toBe('Finding structures');
+});
+
+test('the calliper counts images as images, and its readout is not in the announced region or the accessibility tree', () => {
+  const c = mountWorking([
+    { name: 'a.png', size: 1, kind: 'image' },
+    { name: 'b.png', size: 1, kind: 'image' },
+  ]);
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: { ...overlapped('active', 'pending'), pages: 2, pagesProcessed: 2 } }));
+  expect(readout()).toBe('2 images');
+  const calliper = document.querySelector('.dc-cal');
+  expect(calliper?.getAttribute('aria-hidden')).toBe('true');
+  expect(calliper?.closest('[aria-live]')).toBeNull();
+  expect(screen.getByRole('status').textContent).not.toContain('2 images');
+});
+
+test('the announced region says only the heading and the two lines, never the text a slot only reserves room for', () => {
+  const c = mountWorking();
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: overlapped('done', 'active', 'active') }));
+  expect(screen.getByRole('status').textContent).toBe(
+    'Recognising each structure' + 'Step 4 of 5. Next: Checking the results.' + 'Also running: finding structures on each page.',
+  );
+  // Each text is in the document once (the slots' other texts and the one that just left are drawn by CSS).
+  expect(screen.getAllByText('Recognising each structure')).toHaveLength(1);
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: overlapped('done', 'done', 'done', 'active') }));
+  expect(screen.getAllByText('Checking the results')).toHaveLength(1);
+  expect(screen.queryByText('Recognising each structure')).toBeNull();
+  expect(screen.getByRole('status').textContent).toBe('Checking the results' + 'Step 5 of 5. This is the last step.');
+});
+
+test('every line keeps its slot, empty or not, and the slot is sized for the longest text it can say', () => {
+  const c = mountWorking();
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: overlapped('done', 'active') }));
+  // No "Also running" line, yet the quiet line is there, with the room both of its texts need.
+  const quiet = document.querySelector('.dc-run__detail--quiet');
+  expect(quiet).not.toBeNull();
+  expect(quiet?.textContent).toBe('');
+  const sizers = [...(quiet?.querySelectorAll('.dc-steady__sizer') ?? [])].map((el) => el.getAttribute('data-text'));
+  expect(sizers).toContain('Your job starts as soon as a worker is free. You can leave this tab open.');
+  expect(sizers).toContain('Also running: reading the pages, finding structures on each page, and recognising each structure.');
+  // The heading's slot holds all six headings, the frame's label all six labels.
+  const heading = [...document.querySelectorAll('.dc-run__title .dc-steady__sizer')].map((el) => el.getAttribute('data-text'));
+  expect(heading).toHaveLength(6);
+  expect(heading).toContain('Finding structures on each page');
+  expect(document.querySelectorAll('.dc-frame__label .dc-steady__sizer')).toHaveLength(6);
+});
+
+test('the clock and the counts have places of their own: the counts come and go and the clock stays where it is', () => {
+  const c = mountWorking();
+  const clock = () => document.querySelector('.dc-run__clock')?.textContent;
+  expect(clock()).toBe('Elapsed 0:00');
+  expect(document.querySelector('.dc-run__count')?.textContent).toBe('');
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: { ...overlapped('active', 'pending'), pages: 14, pagesProcessed: 4 } }));
+  expect(document.querySelector('.dc-run__count')?.textContent).toBe('Page 4 of 10');
+  expect(clock()).toBe('Elapsed 0:00');
+});
+
+// The loops of the measuring line: in step, and paused with the tab.
+const fills = () => [...document.querySelectorAll<HTMLElement>('[data-state="active"] > .dc-rule__fill')];
+
+test('segments that run together are drawn in step: the same delay on the document clock, set through CSS and not the animation API', () => {
+  const c = mountWorking();
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: overlapped('active', 'pending') }));
+  expect(fills()).toHaveLength(1);
+  const first = fills()[0]?.style.animationDelay;
+  expect(first).toMatch(/^-?\d+(\.\d+)?ms$/);
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: overlapped('active', 'active') }));
+  const delays = fills().map((el) => el.style.animationDelay);
+  expect(delays).toHaveLength(2);
+  expect(new Set(delays).size).toBe(1);
+});
+
+test('a hidden tab pauses the loops under the view, and a tab that is back lets them go on, drawn together again', () => {
+  const c = mountWorking();
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: overlapped('active', 'active') }));
+  const main = document.querySelector('main');
+  expect(main?.hasAttribute('data-paused')).toBe(false);
+  const before = fills();
+  const hide = (hidden: boolean) =>
+    act(() => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+  hide(true);
+  expect(main?.hasAttribute('data-paused')).toBe(true);
+  expect(fills()).toEqual(before); // nothing is remade while it is paused
+  hide(false);
+  expect(main?.hasAttribute('data-paused')).toBe(false);
+  // The drawings begin again, all of them at once (new elements, with one delay between them).
+  const after = fills();
+  expect(after).toHaveLength(2);
+  expect(after.some((el) => before.includes(el))).toBe(false);
+  expect(new Set(after.map((el) => el.style.animationDelay)).size).toBe(1);
+  delete (document as { hidden?: boolean }).hidden;
+});
+
+// "Show the document": the upload being processed, under the working block, on request.
+const toggle = () => screen.getByRole('button', { name: /the document$/ });
+const panel = () => document.querySelector<HTMLElement>('.dc-workdoc')!;
+const withPages = (job: Job, n: number, over: Partial<Job> = {}): Job => ({
+  ...job,
+  pages: n,
+  pagesProcessed: n,
+  pageUrls: Array.from({ length: n }, (_, i) => `/api/jobs/job-1/media/page-${i}.png`),
+  ...over,
+});
+
+test('the document is shut by default: a toggle that says what it controls, and no picture asked for', () => {
+  const c = mountWorking();
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: withPages(overlapped('active', 'pending'), 3) }));
+  const button = toggle();
+  expect(button.textContent).toBe('Show the document');
+  expect(button.getAttribute('aria-expanded')).toBe('false');
+  const controlled = document.getElementById(button.getAttribute('aria-controls')!);
+  expect(controlled).not.toBeNull();
+  expect(panel().hidden).toBe(true);
+  expect(panel().contains(controlled)).toBe(true);
+  // Lazy: shut, there is not even an <img> to be fetched, with three pages listed.
+  expect(panel().querySelectorAll('img')).toHaveLength(0);
+  // Neither the toggle nor the document is in the announced region, and the heading is as it was.
+  expect(button.closest('[aria-live]')).toBeNull();
+  expect(panel().closest('[aria-live]')).toBeNull();
+  expect(screen.getByRole('status').textContent).not.toMatch(/document/i);
+});
+
+test('opened, it shows the pages of a PDF as the job lists them, lazily, and shut again it takes them away', () => {
+  const c = mountWorking();
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: withPages(overlapped('active', 'pending'), 3, { pages: 14 }) }));
+  fireEvent.click(toggle());
+  expect(toggle().textContent).toBe('Hide the document');
+  expect(toggle().getAttribute('aria-expanded')).toBe('true');
+  expect(panel().hidden).toBe(false);
+  const images = [...panel().querySelectorAll('img')];
+  expect(images.map((img) => img.getAttribute('src'))).toEqual([0, 1, 2].map((i) => `/api/jobs/job-1/media/page-${i}.png`));
+  expect(images.every((img) => img.getAttribute('loading') === 'lazy')).toBe(true);
+  expect(images.map((img) => img.getAttribute('alt'))).toEqual(['Page 1 of 3', 'Page 2 of 3', 'Page 3 of 3']);
+  // A box that scrolls can be reached with the keyboard, and says what it holds.
+  const region = screen.getByRole('region', { name: /^Uploaded document, 3 pages/ });
+  expect(region.getAttribute('tabindex')).toBe('0');
+  fireEvent.click(toggle());
+  expect(panel().hidden).toBe(true);
+  expect(panel().querySelectorAll('img')).toHaveLength(0);
+});
+
+test('the document opens right under the toggle, inside the working block, whose content is pinned in its place meanwhile', () => {
+  mountWorking();
+  const main = document.querySelector('main')!;
+  // Inside the block (so it starts a line under the toggle, not under the room the block leaves), after the toggle.
+  expect(main.contains(panel())).toBe(true);
+  expect(toggle().compareDocumentPosition(panel()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(main.style.justifyContent).toBe('');
+  fireEvent.click(toggle());
+  // The block is centred in what the window leaves: while the panel is open its content keeps the place it had.
+  expect(main.style.justifyContent).toBe('flex-start');
+  expect(main.style.paddingTop).not.toBe('');
+  fireEvent.click(toggle());
+  expect(main.style.justifyContent).toBe('');
+  expect(main.style.paddingTop).toBe('');
+});
+
+test('each page has its number under it, and the pictures keep their names', () => {
+  const c = mountWorking();
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: withPages(overlapped('active', 'pending'), 3) }));
+  fireEvent.click(toggle());
+  const captions = [...panel().querySelectorAll('.dc-workdoc__no')];
+  expect(captions.map((el) => el.textContent)).toEqual(['Page 1 of 3', 'Page 2 of 3', 'Page 3 of 3']);
+  expect(captions.every((el) => el.getAttribute('aria-hidden') === 'true')).toBe(true);
+  expect([...panel().querySelectorAll('img')].map((img) => img.getAttribute('alt'))).toEqual(['Page 1 of 3', 'Page 2 of 3', 'Page 3 of 3']);
+});
+
+test('a page the worker has not rendered yet is a calm placeholder, asked for again until the pages are read', () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  try {
+    const c = mountWorking();
+    act(() => c.store.dispatch({ type: 'jobUpdated', job: withPages(overlapped('active', 'pending'), 2) }));
+    fireEvent.click(toggle());
+    // The first page answers 404.
+    fireEvent.error(panel().querySelectorAll('img')[0]!);
+    expect(screen.getByText('Page 1 · not read yet')).toBeTruthy();
+    expect(panel().querySelectorAll('img')).toHaveLength(1); // the other page is there
+    // A few seconds on, it is asked for again (a new <img>).
+    act(() => void vi.advanceTimersByTime(3100));
+    expect(screen.queryByText('Page 1 · not read yet')).toBeNull();
+    expect(panel().querySelectorAll('img')).toHaveLength(2);
+    // Once the pages have been read, a page that is still missing will not come: it says so.
+    fireEvent.error(panel().querySelectorAll('img')[0]!);
+    act(() => c.store.dispatch({ type: 'jobUpdated', job: withPages(overlapped('done', 'active'), 2) }));
+    fireEvent.error(panel().querySelectorAll('img')[0]!);
+    expect(screen.getByText('Page 1 could not be shown.')).toBeTruthy();
+    expect(screen.queryByText(/not read yet/)).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('a PDF whose pages the job does not list yet says that they appear as they are read', () => {
+  mountWorking();
+  fireEvent.click(toggle());
+  expect(panel().textContent).toContain('The pages appear here as they are read.');
+  expect(panel().querySelectorAll('img')).toHaveLength(0);
+});
+
+test('images are shown from what the browser holds (the job\'s own pages stand in where it has no preview)', () => {
+  const c = mountWorking([
+    { name: 'a.png', size: 1, kind: 'image', previewUrl: 'blob:a' },
+    { name: 'b.heic', size: 1, kind: 'image' },
+  ]);
+  fireEvent.click(toggle());
+  // Before the job is known: the preview, and a placeholder for the picture the browser cannot show.
+  expect([...panel().querySelectorAll('img')].map((img) => img.getAttribute('src'))).toEqual(['blob:a']);
+  expect(screen.getByText('Page 2 · not read yet')).toBeTruthy();
+  // Then the job's own page 2 takes its place.
+  act(() => c.store.dispatch({ type: 'jobUpdated', job: withPages(overlapped('active', 'pending'), 2) }));
+  expect([...panel().querySelectorAll('img')].map((img) => img.getAttribute('src'))).toEqual(['blob:a', '/api/jobs/job-1/media/page-1.png']);
 });

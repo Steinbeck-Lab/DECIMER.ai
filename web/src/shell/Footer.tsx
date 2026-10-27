@@ -1,5 +1,4 @@
 import { strings } from '../strings';
-import { InspectionFrame } from '../ui/InspectionFrame';
 import { hrefFor } from './router';
 
 /**
@@ -34,12 +33,23 @@ function CoffeeCup() {
   );
 }
 
+/** A link that leaves the site: a new tab, the referrer kept to itself, and a screen reader is told. */
+function External({ href, children }: { href: string; children: string }) {
+  return (
+    <a href={href} target="_blank" rel="noreferrer">
+      {children}
+      <span className="dc-sr"> {strings.editor.external}</span>
+    </a>
+  );
+}
+
 /**
- * The footer, drawn as a piece of the measured sheet: a copper measuring line with ticks across the top, and under it
- * the credit and the copyright inside a copper inspection frame whose guides rise to meet that line (shell.css; the
- * frame is the drop zone's, home.css). Then, on one line, the legal pages, GitHub and who develops the site. About is
- * not here: it is in the header. `compact` is the same design with shorter guides and less air, for the empty screen,
- * whose first screen must fit a laptop window without scrolling.
+ * The footer, drawn as a piece of the measured sheet: a copper measuring line with ticks across the top, and under it,
+ * on one row, the copyright (flush left), the coffee credit (centred on the page, on one line) and Contact, Privacy and
+ * Impressum (flush right). About and GitHub are not here: they are in the header. Where the three do not fit side by
+ * side the copyright and the links share the first row and the credit is the second; on a phone they are stacked, in the
+ * order they are read in. `compact` is the same design with less air, for the empty screen, whose first
+ * screen must fit a laptop window without scrolling.
  */
 export function Footer({ compact = false }: { compact?: boolean }) {
   const c = strings.shell.credit;
@@ -47,37 +57,21 @@ export function Footer({ compact = false }: { compact?: boolean }) {
     <footer className="dc-footer" data-compact={compact}>
       <div className="dc-footer__inner">
         <span className="dc-measure dc-measure--major" aria-hidden="true" />
-        <div className="dc-footer__made">
-          <InspectionFrame className="dc-frame--credit" guides={['top', 'bottom']}>
-            <span className="dc-frame__rise dc-frame__rise--left" />
-            <span className="dc-frame__rise dc-frame__rise--right" />
-            <span className="dc-frame__rise-head dc-frame__rise-head--left" />
-            <span className="dc-frame__rise-head dc-frame__rise-head--right" />
-          </InspectionFrame>
-          <p className="dc-footer__coffee">
-            {strings.shell.builtWith} <CoffeeCup />
-            <span className="dc-sr">{strings.shell.builtWithIcon}</span> {strings.shell.builtBy}
-          </p>
-          <p className="dc-footer__legal">{strings.shell.copyright(new Date().getFullYear())}</p>
-        </div>
         <div className="dc-footer__line">
+          <p className="dc-footer__legal">{strings.shell.copyright(new Date().getFullYear())}</p>
+          <p className="dc-footer__made">
+            {strings.shell.builtWith} <CoffeeCup />
+            <span className="dc-sr">{strings.shell.builtWithIcon}</span> {strings.shell.builtBy}{' '}
+            <External href={strings.shell.builtByUrl}>{strings.shell.builtByName}</External> {c.at}{' '}
+            <External href={c.groupUrl}>{c.group}</External>, <External href={c.universityUrl}>{c.university}</External>
+          </p>
           <nav className="dc-footer__nav" aria-label={strings.shell.footerNav}>
+            <a href={strings.shell.contactUrl}>{strings.shell.contact}</a>
             <a href={hrefFor('/privacy')}>{strings.shell.privacy}</a>
             <a href={hrefFor('/impressum')} lang="de">
               {strings.shell.impressum}
             </a>
-            <a href={strings.shell.githubUrl} target="_blank" rel="noreferrer">
-              {strings.shell.github}
-            </a>
           </nav>
-          <p className="dc-footer__dev">
-            {c.before}
-            <a href={c.groupUrl}>{c.group}</a>
-            {c.at}
-            <a href={c.universityUrl}>{c.university}</a>
-            {c.after} <a href={strings.shell.contactUrl}>{strings.shell.contact}</a>{' '}
-            <a href={strings.shell.issuesUrl}>{strings.shell.reportIssue}</a>.
-          </p>
         </div>
       </div>
     </footer>

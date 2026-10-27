@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test, type BrowserContext, type Download, type Page, type Response } from '@playwright/test';
-import { editorPanel, headerDownload, layoutOnCanvas, waitForEditor, watchProblems } from '../helpers';
+import { editorPanel, downloadButton, layoutOnCanvas, waitForEditor, watchProblems } from '../helpers';
 import { markReturningTab } from '../returning';
 import { parseCsv, readZip } from './zip';
 
@@ -127,7 +127,7 @@ async function expectGone(id: string) {
 /** The header's Download menu, one format; returns what the page asked the API for and what it was given. */
 async function exportAs(format: 'zip' | 'sdf' | 'csv', item: RegExp) {
   const answered = page.waitForResponse((r) => isApi(r, 'POST', `/api/jobs/${jobId}/export`), { timeout: 120_000 });
-  await headerDownload(page).click();
+  await downloadButton(page).click();
   const [download] = await Promise.all([
     page.waitForEvent('download', { timeout: 120_000 }),
     // `noWaitAfter`: the download starts after the API has answered, not at the click.

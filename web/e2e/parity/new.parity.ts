@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, test, type BrowserContext, type Page, type Response } from '@playwright/test';
-import { editorPanel, headerDownload, layoutOnCanvas, waitForEditor, watchProblems } from '../helpers';
+import { editorPanel, downloadButton, layoutOnCanvas, waitForEditor, watchProblems } from '../helpers';
 import { parseCsv, readZip } from '../live/zip';
 import { markReturningTab } from '../returning';
 import { blankImage, blankPdf, CROP, dir, dragEvents, duplicateIds, Facts, fileFrom, NEGATIVES, overflowX, pasteFile, shot, textImage, type FileSpec } from './shared';
@@ -381,7 +381,7 @@ test('a pasted image (job A): 3 paste, 5 stages, 9 result, 10-12 links and repor
   // 14: the exports, started at once after an edit (the race of legacy's submit_with_updated_molfiles).
   await layoutOnCanvas(page);
   const exported = page.waitForResponse((r) => isApi(r, 'POST', `/api/jobs/${jobId}/export`), { timeout: 120_000 });
-  await headerDownload(page).click();
+  await downloadButton(page).click();
   await page.waitForTimeout(500); // the menu fades in
   await shot(page, 'new', 'n18-download-menu');
   const [zipDownload] = await Promise.all([
@@ -414,14 +414,14 @@ test('a pasted image (job A): 3 paste, 5 stages, 9 result, 10-12 links and repor
   expect(names).toContain('results.smiles.txt');
   expect(mol).not.toContain('RDKit');
   const sdfWait = page.waitForResponse((r) => isApi(r, 'POST', `/api/jobs/${jobId}/export`), { timeout: 120_000 });
-  await headerDownload(page).click();
+  await downloadButton(page).click();
   const [sdfDownload] = await Promise.all([page.waitForEvent('download'), page.getByRole('menuitem', { name: /^SDF/ }).click({ noWaitAfter: true })]);
   await sdfWait;
   const sdfPath = resolve(dir('new'), 'exports', 'new-download.sdf');
   await sdfDownload.saveAs(sdfPath);
   const sdf = readFileSync(sdfPath, 'utf8');
   const csvWait = page.waitForResponse((r) => isApi(r, 'POST', `/api/jobs/${jobId}/export`), { timeout: 120_000 });
-  await headerDownload(page).click();
+  await downloadButton(page).click();
   const [csvDownload] = await Promise.all([page.waitForEvent('download'), page.getByRole('menuitem', { name: /^CSV/ }).click({ noWaitAfter: true })]);
   await csvWait;
   const csvPath = resolve(dir('new'), 'exports', 'new-download.csv');

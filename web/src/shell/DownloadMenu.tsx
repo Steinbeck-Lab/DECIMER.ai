@@ -10,10 +10,13 @@ const ITEMS: { format: ExportFormat; label: string }[] = [
   { format: 'csv', label: strings.results.downloadCsv },
 ];
 
-/** The Download menu (the header and the end of the figure show the same one): ZIP, SDF or CSV of the structures as edited on screen. */
-export function DownloadMenu({ placement }: { placement: 'header' | 'results' }) {
+/**
+ * The Download menu, the one on the results screen (at the end of the filter row): ZIP, SDF or CSV of the structures as
+ * edited on screen. One export at a time: while it runs the button is off (the editor is flushed first, see the controller).
+ * `describedBy` names the element that says what the download holds.
+ */
+export function DownloadMenu({ describedBy }: { describedBy?: string }) {
   const controller = useController();
-  // One export at a time for the whole page: both menus show it and neither can start another.
   const busy = useAppState().exporting;
 
   return (
@@ -30,8 +33,8 @@ export function DownloadMenu({ placement }: { placement: 'header' | 'results' })
         <button
           type="button"
           className="dc-pill dc-pill--ink dc-download"
-          data-placement={placement}
           aria-busy={busy}
+          aria-describedby={describedBy}
           disabled={busy}
         >
           <span>{busy ? strings.results.downloading : strings.results.download}</span>

@@ -59,37 +59,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 28px;
+  gap: 6px 10px;
   margin-left: auto;
-  font-size: 0.9375rem;
-  font-weight: 500;
-}
-
-.dc-nav__link {
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-  border: 0;
-  background: none;
-  color: var(--dc-ink);
-  font: inherit;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.dc-nav__link:hover {
-  color: var(--dc-garnet);
-  text-decoration: underline;
-  text-decoration-color: var(--dc-garnet);
-  text-decoration-thickness: 2px;
-  text-underline-offset: 6px;
-}
-
-.dc-nav__link[aria-current='page'] {
-  text-decoration: underline;
-  text-decoration-color: var(--dc-copper);
-  text-decoration-thickness: 2px;
-  text-underline-offset: 6px;
 }
 
 .dc-capacity {
@@ -118,9 +89,6 @@
   .dc-capacity {
     padding-left: 0;
     border-left: 0;
-  }
-  .dc-header .dc-download {
-    margin-left: auto;
   }
   .dc-download__formats {
     display: none;
@@ -258,128 +226,162 @@
 }
 
 /*
- * Footer: a measuring line with ticks across the top, the credit and the copyright inside a copper inspection frame
- * (the drop zone's frame, home.css) whose guides rise to meet that line, then one line of links and of who develops the
- * site. `--rise` is how far the guides climb; the compact footer of the empty screen climbs less and takes less air.
+ * Footer: a measuring line with ticks across the top; under it one row: the copyright flush left, the coffee credit in
+ * the middle of the page and Contact, Privacy and Impressum flush right, all on one baseline. The middle column is `auto`
+ * between two equal ones, so it stays centred on the page whatever the sides say. Where the three do not fit side by
+ * side the row is two (the copyright and the links, then the credit) and on a phone a column, in reading order. The compact footer of
+ * the empty screen takes less air.
  */
 .dc-footer {
-  --rise: 62px;
   position: relative;
   z-index: 1;
   margin-top: auto;
-  padding: 120px 0 36px;
+  padding: 64px 0 28px;
   color: var(--dc-ink-2);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   text-align: center;
-  /* The frame's page guides run past the content; they stop at the window's edge, never scroll it. */
-  overflow-x: clip;
 }
 
 .dc-footer[data-compact='true'] {
-  --rise: 16px;
-  padding: 0 0 10px;
+  padding: 0 0 6px;
 }
 
 .dc-footer p {
   margin: 0;
 }
 
+/* As wide as the header: the measuring line and the row start and end where the header's wordmark and its last button do. */
 .dc-footer__inner {
-  width: min(1360px, 100%);
-  margin-inline: auto;
+  width: 100%;
   padding-inline: var(--dc-gutter);
 }
 
-.dc-footer__made {
-  position: relative;
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  /* The rule is 14 px tall; the guides climb from the frame's top edge to it. */
-  margin-top: calc(var(--rise) + 14px);
-  padding: 14px 26px;
+.dc-footer__line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-areas: 'legal made nav';
+  align-items: baseline;
+  column-gap: 24px;
+  margin-top: 12px;
+  text-align: left;
+  white-space: nowrap;
 }
 
-.dc-footer__coffee {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--dc-ink);
-  font: 500 1.0625rem/1.3 var(--dc-font-ui);
+.dc-footer[data-compact='true'] .dc-footer__line {
+  margin-top: 4px;
 }
 
 .dc-footer__legal {
+  grid-area: legal;
   color: var(--dc-muted);
-  font-size: 0.84375rem;
 }
 
-/* The frame: 7 px out from the credit; its guides stop where they like, and two more rise to the measuring line. */
-/* (Two classes: home.css, which sets `inset: 0` on `.dc-frame`, is loaded after this file.) */
-.dc-frame.dc-frame--credit {
-  inset: -7px;
+/* The credit, in the middle: one line (it wraps on a phone). */
+.dc-footer__made {
+  grid-area: made;
+  color: var(--dc-ink);
+  font-weight: 500;
 }
 
-.dc-frame--credit .dc-frame__guide--top {
-  right: -150px;
-  left: -210px;
+.dc-footer__made a {
+  color: inherit;
 }
 
-.dc-frame--credit .dc-frame__guide--bottom {
-  right: -260px;
-  left: -120px;
+.dc-footer__nav {
+  display: flex;
+  grid-area: nav;
+  justify-content: flex-end;
 }
 
-.dc-frame__rise {
-  top: calc(-1 * var(--rise) - 7px);
-  width: 1px;
-  height: var(--rise);
-  background: color-mix(in srgb, var(--dc-copper) 45%, transparent);
-  transform-origin: bottom;
-  animation: dc-draw-y 0.6s cubic-bezier(0.23, 1, 0.32, 1) 0.2s both;
+.dc-footer__nav a {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 14px;
+  color: var(--dc-ink);
+  font-weight: 500;
 }
 
-.dc-frame__rise--left {
+/* The row ends where the measuring line does: the last link has no room to spare at its right. */
+.dc-footer__nav a:last-child {
+  padding-right: 0;
+}
+
+/* Dividers are hairlines in copper. */
+.dc-footer__nav a + a::before {
+  content: '';
+  position: absolute;
+  top: 50%;
   left: 0;
+  width: 1px;
+  height: 9px;
+  margin-top: -4px;
+  background: color-mix(in srgb, var(--dc-copper) 55%, transparent);
 }
 
-.dc-frame__rise--right {
-  right: 0;
+/* Not wide enough for the three side by side: the copyright and the links, then the credit under them. With the middle
+   truly centred the sides must be as wide as the wider of them (the copyright, 272 px at 13 px), so the row needs about
+   1080 px of content: 1180 px of window, with the header's gutters and a scrollbar. */
+@media (max-width: 1179px) {
+  .dc-footer__line {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'legal nav'
+      'made made';
+    row-gap: 10px;
+  }
+  .dc-footer__made {
+    justify-self: center;
+  }
+  .dc-footer[data-compact='true'] .dc-footer__line {
+    row-gap: 4px;
+  }
 }
 
-.dc-frame__rise-head {
-  top: calc(-1 * var(--rise) - 13px);
-  width: 7px;
-  height: 7px;
-  background: var(--dc-copper);
-  animation: dc-pop 0.35s cubic-bezier(0.23, 1, 0.32, 1) 0.6s both;
+/* No room for the copyright and the links side by side: one under the other, centred, in the order they are read in
+   (the copyright, the credit, the links), so that tab and reading order are what is seen. */
+@media (max-width: 860px) {
+  .dc-footer__line {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'legal'
+      'made'
+      'nav';
+    justify-items: center;
+    text-align: center;
+    row-gap: 6px;
+    white-space: normal;
+  }
+  .dc-footer__made {
+    text-wrap: balance;
+  }
+  .dc-footer__nav {
+    justify-content: center;
+  }
+  .dc-footer__nav a:last-child {
+    padding-right: 14px;
+  }
 }
 
-.dc-frame__rise-head--left {
-  left: -3px;
-}
-
-.dc-frame__rise-head--right {
-  right: -3px;
-}
-
-/* The phone keeps the guides that rise and the frame's own two (home.css drops the drop zone's on a phone). */
 @media (max-width: 640px) {
-  .dc-frame--credit .dc-frame__guide {
-    display: block;
+  .dc-footer {
+    padding-top: 48px;
   }
-  .dc-frame--credit .dc-frame__guide--top {
-    right: -60px;
-    left: -60px;
+  .dc-footer[data-compact='true'] {
+    padding-top: 0;
   }
-  .dc-frame--credit .dc-frame__guide--bottom {
-    right: -60px;
-    left: -60px;
+  .dc-footer__nav a {
+    padding: 0 12px;
+  }
+  .dc-footer__nav a:last-child {
+    padding-right: 12px;
   }
 }
 
 .dc-cup {
   position: relative;
+  display: inline-block;
   flex: none;
   width: 22px;
   height: 24px;
@@ -423,90 +425,6 @@
   .dc-cup__steam {
     animation: none !important;
     opacity: 0.7;
-  }
-}
-
-/* One line: the legal pages and GitHub, then who develops the site. Dividers are hairlines in copper. */
-.dc-footer__line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 6px 0;
-  margin-top: 40px;
-}
-
-.dc-footer[data-compact='true'] .dc-footer__line {
-  margin-top: 16px;
-}
-
-.dc-footer[data-compact='true'] .dc-footer__made {
-  padding-block: 12px;
-}
-
-.dc-footer__nav {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-
-.dc-footer__nav a,
-.dc-footer__dev {
-  position: relative;
-}
-
-.dc-footer__nav a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 32px;
-  padding: 0 16px;
-  color: var(--dc-ink);
-  font-weight: 500;
-}
-
-.dc-footer__nav a + a::before,
-.dc-footer__dev::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 0;
-  width: 1px;
-  height: 9px;
-  margin-top: -4px;
-  background: color-mix(in srgb, var(--dc-copper) 55%, transparent);
-}
-
-.dc-footer__dev {
-  padding: 0 16px;
-}
-
-.dc-footer__dev a {
-  color: var(--dc-ink);
-}
-
-/* Where the two do not fit on one line, the developer credit takes the next one, without a divider. */
-@media (max-width: 1100px) {
-  .dc-footer__dev {
-    flex-basis: 100%;
-    padding: 6px 0 0;
-  }
-  .dc-footer__dev::before {
-    display: none;
-  }
-}
-
-@media (max-width: 640px) {
-  .dc-footer {
-    padding-top: 96px;
-  }
-  .dc-footer[data-compact='true'] {
-    padding-top: 0;
-  }
-  .dc-footer__nav a {
-    padding: 0 12px;
-  }
-  .dc-footer__made {
-    padding: 12px 16px;
   }
 }
 

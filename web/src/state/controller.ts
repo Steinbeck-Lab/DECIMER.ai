@@ -244,6 +244,11 @@ export class AppController {
     this.store.dispatch({ type: 'select', index });
   }
 
+  /** Narrow the results to one page (0-based), or to every page (null); it goes with the status filter. */
+  setPageFilter(page: number | null): void {
+    this.store.dispatch({ type: 'pageFilter', page });
+  }
+
   setFilter(filter: Filter): void {
     this.store.dispatch({ type: 'filter', filter });
   }
