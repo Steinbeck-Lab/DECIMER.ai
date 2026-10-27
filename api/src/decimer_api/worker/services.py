@@ -154,6 +154,11 @@ class ClsAnswer(_Answer):
 class OcsrAnswer(_Answer):
     smiles: str
     mean_confidence: float = Field(description="Clamped to [0, 1] after parsing.")
+    incomplete: bool = Field(
+        default=False,
+        description="ocsr stopped at the model's token limit: `smiles` is cut off. Absent "
+        "from an ocsr that predates the flag, which never returned such an answer.",
+    )
 
     @field_validator("mean_confidence")
     @classmethod

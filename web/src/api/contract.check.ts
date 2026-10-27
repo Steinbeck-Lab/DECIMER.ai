@@ -40,6 +40,8 @@ export type Checks = [
   Assert<Equal<Result['name'], string | null>>,
   // Who accepted the SMILES: the tile and the editor have wording for exactly these (strings.ts, `cdkOnly`).
   Assert<Equal<Result['validBy'], 'rdkit' | 'cdk' | null>>,
+  // Cut off at the model's token limit: a plain boolean, never null.
+  Assert<Equal<Result['incomplete'], boolean>>,
   Assert<Equal<Result['nameTier'], string | null>>,
   Assert<Equal<Result['nameVerified'], string | null>>,
   // The validate answer carries the name fields exactly as a result does, so the two cannot drift.

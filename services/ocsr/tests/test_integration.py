@@ -40,6 +40,10 @@ LABELS = labels_on_the_first_crops()
 # Crop indices whose label the model reads right: 13 of 19, the same as legacy (pinned 2026-10-26 by
 # Kohulan). A change here needs Kohulan, like any expected value of the golden set.
 READ_RIGHT = {0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 16, 17, 18}
+# Crop indices whose decode stops at the token limit: the figure with correlation arrows. Since D25
+# (owner, 2026-10-27) such a crop is answered with the cut-off SMILES and `incomplete: true`; it
+# used to be a 422.
+INCOMPLETE = {15}
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -129,7 +133,9 @@ def table(reads: list[Read]) -> str:
                 verdict(label, read.inchikey),
                 f"{read.body['mean_confidence']:.3f}" if ok else "-",
                 f"{read.seconds:.1f}",
-                read.smiles[:60] if ok else f"{read.status} {read.body.get('detail')}",
+                (read.smiles[:60] + (" [incomplete]" if read.body["incomplete"] else ""))
+                if ok
+                else f"{read.status} {read.body.get('detail')}",
             )
         )
     return "\n".join(lines)
@@ -162,20 +168,30 @@ def test_the_crops_read_right_are_exactly_the_pinned_ones(
     assert sorted(right) == sorted(READ_RIGHT)
 
 
-def test_a_crop_is_either_read_or_refused_as_cut_off_never_a_server_error(
+def test_every_crop_is_answered_and_only_the_token_limit_crop_is_flagged_incomplete(
     reads: list[Read],
 ) -> None:
-    # Crop 15 is a figure with correlation arrows: the model never writes an end token for it.
+    # Crop 15 is a figure with correlation arrows: the model never writes an end token for it. It
+    # used to be refused (422 "no complete structure"); since D25 it is a 200 with the cut-off
+    # SMILES, flagged. Changed expectation, approved by the owner on 2026-10-27.
     for read in reads:
-        if read.status != 200:
-            assert read.status == 422, (read.crop.path.name, read.status, read.body)
-            assert read.body["detail"].startswith("no complete structure")
-    assert len(predictions(reads)) >= 15
+        assert read.status == 200, (read.crop.path.name, read.status, read.body)
+    flagged = {read.crop.index for read in reads if read.body["incomplete"]}
+    assert flagged == INCOMPLETE
+    for read in reads:
+        if read.crop.index in INCOMPLETE:
+            assert read.smiles
+            pairs = read.body["token_confidence"]
+            assert "".join(t for t, _ in pairs) == read.smiles
+            assert len(pairs) == model_module.TOKEN_LIMIT  # all of them, the last at 0.0
+            assert pairs[-1][1] == 0.0
+    assert len(predictions(reads)) == len(CROPS)
 
 
 def test_every_token_has_a_confidence_in_zero_to_one(reads: list[Read]) -> None:
     for read in predictions(reads):
-        assert set(read.body) == {"smiles", "token_confidence", "mean_confidence"}
+        assert set(read.body) == {"smiles", "token_confidence", "mean_confidence", "incomplete"}
+        assert isinstance(read.body["incomplete"], bool)
         pairs = read.body["token_confidence"]
         assert pairs, read.crop.path.name
         assert "".join(token for token, _ in pairs) == read.smiles
@@ -200,6 +216,20 @@ def test_the_installed_library_still_uses_the_url_and_files_we_check() -> None:
 
     assert {"DECIMER_model": decimer.model_urls["DECIMER"]} == model_module.MODEL_URLS
     assert Path(str(decimer.default_path)) == weights_dir()
+
+
+@pytest.mark.usefixtures("client")
+def test_the_multi_character_tokens_are_the_librarys_and_every_other_token_is_one_character() -> (
+    None
+):
+    # `_result` accepts the token the library drops at the limit if it is one character or one of
+    # these; the tokenizer decides what a token is.
+    from DECIMER import decimer
+
+    special = {"<end>", "<pad>", "<start>", "<unk>"}
+    vocabulary = set(decimer.tokenizer.word_index)
+    assert len(vocabulary) == 156
+    assert {t for t in vocabulary if len(t) > 1} - special == model_module.MULTI_CHAR_TOKENS
 
 
 @pytest.mark.usefixtures("client")
@@ -264,13 +294,14 @@ def _png(image: Image.Image) -> bytes:
 )
 def test_degenerate_images_are_answered_not_crashed(model: OcsrModel, name: str, make: Any) -> None:
     # Whatever the model makes of them (each takes the full 302 steps, about 45 s, and ends at the
-    # token limit), a caller gets a prediction or a 422, never a 500.
+    # token limit), a caller gets a prediction (flagged incomplete when it was cut off, D25) or,
+    # for a special token, a 422; never a 500.
     try:
         result = model.infer(_png(make()), {})
     except ValueError as exc:
         assert str(exc).startswith("no complete structure"), name
         return
-    assert set(result) == {"smiles", "token_confidence", "mean_confidence"}, name
+    assert set(result) == {"smiles", "token_confidence", "mean_confidence", "incomplete"}, name
     assert math.isfinite(result["mean_confidence"])
 
 

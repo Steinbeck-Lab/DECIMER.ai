@@ -15,6 +15,8 @@ import numpy as np
 from numpy.typing import NDArray
 from PIL import Image
 
+from decimer_ocsr.model import TOKEN_LIMIT
+
 Pairs = Sequence[tuple[str, float | np.float32]]
 Answer = tuple[str, Pairs]
 AnswerRule = Answer | Callable[[NDArray[np.uint8]], Answer]
@@ -25,6 +27,16 @@ DAIDZEIN = "C1=CC(=CC=C1C2=COC3=CC(=CC=C3C2=O)O)O"
 DAIDZEIN_TOKENS: list[tuple[str, float | np.float32]] = [
     (token, np.float32(0.99)) for token in re.findall(r"Cl|Br|.", DAIDZEIN)
 ]
+
+
+def cut_off(last: str = "C", head: Pairs = ()) -> Answer:
+    """What `predict_SMILES` returns when decoding stops at the token limit without an end token:
+    a SMILES of TOKEN_LIMIT tokens (302) and TOKEN_LIMIT - 1 pairs, because the library cuts the
+    last token's confidence. `head` are the first pairs, the rest are ("C", 0.9); `last` is the
+    token that has no pair."""
+    pairs: list[tuple[str, float | np.float32]] = [*head]
+    pairs += [("C", 0.9)] * (TOKEN_LIMIT - 1 - len(pairs))
+    return "".join(token for token, _ in pairs) + last, pairs
 
 
 def image_bytes(

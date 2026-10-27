@@ -367,7 +367,15 @@ async def test_a_golden_pdf_and_a_pasted_image_go_through_the_whole_stack(
     assert exported.status_code == 200, exported.text
     assert exported.headers["content-type"] == "text/csv; charset=utf-8"
     rows = list(csv.DictReader(io.StringIO(exported.text)))
-    assert list(rows[0]) == ["number", "smiles", "inchikey", "valid", "name", "edited"]
+    assert list(rows[0]) == [
+        "number",
+        "smiles",
+        "inchikey",
+        "valid",
+        "name",
+        "edited",
+        "incomplete",
+    ]
     assert [row["number"] for row in rows] == [str(n) for n in range(1, CAP + 1)]
     for position, (row, expected) in enumerate(zip(rows, shown, strict=True)):
         assert row == {
@@ -377,6 +385,7 @@ async def test_a_golden_pdf_and_a_pasted_image_go_through_the_whole_stack(
             "valid": "true",
             "name": expected["name"] or "",
             "edited": "true" if position in edited else "false",
+            "incomplete": "false",
         }, position
 
     # an export without edits is the job as stored

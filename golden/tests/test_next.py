@@ -490,6 +490,32 @@ def test_the_inchikey_is_the_one_the_scorer_computes_and_differences_are_reporte
     assert next_stack.inchikey_differences(job, predictions) == [0, 2]
 
 
+def test_the_apis_incomplete_flag_reaches_the_predictions_and_the_score() -> None:
+    # D25: ocsr stopped at its token limit, the API says so; a result without the field (an API
+    # from before) is complete.
+    job = next_stack.parse_job(
+        job_json(
+            "done",
+            results=[
+                result_json(0, CAFFEINE, incomplete=False),
+                result_json(1, "C1CC", incomplete=True),
+                result_json(2, BENZENE),
+            ],
+        )
+    )
+    assert [r.incomplete for r in job.results] == [False, True, False]
+    predictions = next_stack.to_predictions(job)
+    assert [p.incomplete for p in predictions] == [False, True, False]
+    s = score([], predictions)
+    assert (s.extra, s.invalid, s.incomplete) == (2, 0, 1)  # not "invalid 1": it is cut off
+
+
+def test_an_incomplete_that_is_not_a_boolean_is_a_bad_response() -> None:
+    raw = job_json("done", results=[{**result_json(0, CAFFEINE), "incomplete": "yes"}])
+    with pytest.raises(next_stack.BadResponse, match="incomplete"):
+        next_stack.parse_job(raw)
+
+
 def test_a_failed_recognition_is_refused_and_a_cut_structure_is_dropped() -> None:
     job = next_stack.parse_job(
         job_json("done", results=[result_json(0, "", is_structure=None)], dropped=3)

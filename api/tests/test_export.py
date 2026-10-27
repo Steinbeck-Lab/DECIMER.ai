@@ -25,12 +25,14 @@ from tests.results import (
     crop_path,
     make_cdk_only_result,
     make_done_job,
+    make_incomplete_result,
     make_results,
     molfile_of,
     name_of,
 )
 
 ENTRY_NAME = re.compile(r"structure-\d{2,}\.(png|mol)|results\.smiles\.txt")
+CSV_HEADER = ["number", "smiles", "inchikey", "valid", "name", "edited", "incomplete"]
 
 
 @dataclass
@@ -398,7 +400,7 @@ async def test_the_csv_has_a_row_per_structure_in_order_with_the_edit(
     assert response.status_code == 200
     assert response.headers["content-type"] == "text/csv; charset=utf-8"
     rows = list(csv.reader(io.StringIO(response.text)))
-    assert rows[0] == ["number", "smiles", "inchikey", "valid", "name", "edited"]
+    assert rows[0] == CSV_HEADER
     assert [row[0] for row in rows[1:]] == ["1", "2", "3", "4", "5"]
     assert rows[4] == [
         "4",
@@ -407,8 +409,17 @@ async def test_the_csv_has_a_row_per_structure_in_order_with_the_edit(
         "true",
         name_of("CCCl"),
         "true",
+        "false",
     ]
-    assert rows[1] == ["1", "CCO", analyse_smiles("CCO").inchikey, "true", name_of("CCO"), "false"]
+    assert rows[1] == [
+        "1",
+        "CCO",
+        analyse_smiles("CCO").inchikey,
+        "true",
+        name_of("CCO"),
+        "false",
+        "false",
+    ]
 
 
 async def test_the_csv_of_an_invalid_structure_says_so(
@@ -420,7 +431,7 @@ async def test_the_csv_of_an_invalid_structure_says_so(
     )
     bad = await make_done_job(store, settings, clock, results, ip="bad")
     rows = list(csv.reader(io.StringIO((await export(client, bad.id, "csv")).text)))
-    assert rows[1] == ["1", "C(C", "", "false", "", "false"]
+    assert rows[1] == ["1", "C(C", "", "false", "", "false", "false"]
 
 
 # --- a structure that only CDK accepted ---------------------------------------------
@@ -448,10 +459,10 @@ async def test_the_csv_valid_column_is_true_cdk_or_false(
     client: httpx.AsyncClient, mixed_job: Job
 ) -> None:
     rows = list(csv.reader(io.StringIO((await export(client, mixed_job.id, "csv")).text)))
-    assert rows[0] == ["number", "smiles", "inchikey", "valid", "name", "edited"]
+    assert rows[0] == CSV_HEADER
     assert [row[3] for row in rows[1:]] == ["true", "cdk", "false"]
-    # CDK-only: DECIMER's SMILES, no InChIKey, no name, not edited.
-    assert rows[2] == ["2", PENTAVALENT_SMILES, "", "cdk", "", "false"]
+    # CDK-only: DECIMER's SMILES, no InChIKey, no name, not edited, not incomplete.
+    assert rows[2] == ["2", PENTAVALENT_SMILES, "", "cdk", "", "false", "false"]
 
 
 async def test_a_cdk_only_structure_exports_cdks_molblock_in_the_zip_and_the_sdf(
@@ -491,6 +502,7 @@ async def test_an_edited_cdk_only_structure_is_judged_by_rdkit_alone(
         "true",
         name_of("CCCl"),
         "true",
+        "false",
     ]
     # An edit RDKit still refuses is `false`, whatever CDK said of the structure before the edit.
     still_bad = {"1": PENTAVALENT_MOLBLOCK}
@@ -501,6 +513,68 @@ async def test_an_edited_cdk_only_structure_is_judged_by_rdkit_alone(
     sdf = (await export(client, mixed_job.id, "sdf", still_bad)).text
     assert "> <VALID>" not in sdf  # an edit is never `cdk`
     assert namer.calls == [["CCCl"]]  # chem is asked about the valid edit only
+
+
+# --- a structure the model cut off at its token limit --------------------------------------
+
+
+@pytest.fixture
+async def cut_off_job(store: JobStore, settings: Settings, clock: FakeClock) -> Job:
+    """Result 0 is ethanol, result 1 is a cut-off SMILES RDKit reads (a chain), result 2 is a
+    cut-off SMILES nobody reads (an open ring)."""
+    results = make_results(["CCO", "CCN", "CCC"])
+    results[1] = make_incomplete_result(1, "CCCCCCCCCCCC")
+    results[2] = make_incomplete_result(2, "c1ccccc", valid=False)
+    return await make_done_job(store, settings, clock, results, ip="cut-off")
+
+
+async def test_the_csv_incomplete_column_is_true_for_a_cut_off_structure_only(
+    client: httpx.AsyncClient, cut_off_job: Job
+) -> None:
+    rows = list(csv.reader(io.StringIO((await export(client, cut_off_job.id, "csv")).text)))
+    assert rows[0] == CSV_HEADER
+    assert [row[6] for row in rows[1:]] == ["false", "true", "true"]
+    # The cut-off SMILES is exported as it is stored, whatever RDKit made of it, and has no name.
+    assert rows[2] == [
+        "2",
+        "CCCCCCCCCCCC",
+        analyse_smiles("CCCCCCCCCCCC").inchikey,
+        "true",
+        "",
+        "false",
+        "true",
+    ]
+    assert rows[3] == ["3", "c1ccccc", "", "false", "", "false", "true"]
+
+
+async def test_the_sdf_says_incomplete_only_where_it_is(
+    client: httpx.AsyncClient, cut_off_job: Job
+) -> None:
+    records = (await export(client, cut_off_job.id, "sdf")).text.split("$$$$\n")[:-1]
+    assert len(records) == 2  # ethanol and the readable cut-off; the open ring has no molfile
+    assert "> <INCOMPLETE>" not in records[0]  # said only where it adds something
+    assert "> <INCOMPLETE>\ntrue\n" in records[1]
+    assert "> <NAME>" not in records[1]
+
+
+async def test_the_smiles_file_keeps_its_three_columns_for_a_cut_off_structure(
+    client: httpx.AsyncClient, cut_off_job: Job
+) -> None:
+    exported = await export_zip(client, cut_off_job.id)
+    assert exported.smiles_lines[1] == ["structure-02.png", "CCCCCCCCCCCC", ""]
+    assert exported.smiles_lines[2] == ["structure-03.png", "c1ccccc", ""]
+
+
+async def test_an_edited_cut_off_structure_is_no_longer_incomplete(
+    client: httpx.AsyncClient, cut_off_job: Job
+) -> None:
+    """The edit is the editor's structure, judged on its own; the cut-off text is gone."""
+    edits = {"1": molfile_of("CCCl")}
+    rows = list(csv.reader(io.StringIO((await export(client, cut_off_job.id, "csv", edits)).text)))
+    assert rows[2][1] == "CCCl" and rows[2][5] == "true" and rows[2][6] == "false"
+    assert rows[3][6] == "true"  # the one that was not edited stays flagged
+    sdf = (await export(client, cut_off_job.id, "sdf", edits)).text
+    assert sdf.count("> <INCOMPLETE>") == 0  # result 1 was edited, result 2 has no molfile
 
 
 # --- text from outside is made harmless ----------------------------------------------------------
@@ -520,7 +594,7 @@ async def test_a_hostile_name_cannot_add_records_lines_or_columns(
     assert not any(line.startswith("> <X>") for line in lines)
     assert len(re.findall(r"^> <NUMBER>$", sdf, re.MULTILINE)) == 5
     csv_rows = list(csv.reader(io.StringIO((await export(client, job.id, "csv", edits)).text)))
-    assert len(csv_rows) == 6 and all(len(row) == 6 for row in csv_rows)
+    assert len(csv_rows) == 6 and all(len(row) == len(CSV_HEADER) for row in csv_rows)
     exported = await export_zip(client, job.id, edits)
     assert len(exported.smiles_lines) == 5 and all(len(line) == 3 for line in exported.smiles_lines)
 

@@ -44,9 +44,10 @@ def result_json(
     name_tier: str | None = None,
     inchikey: str | None = None,
     crop_url: str | None = None,
+    incomplete: bool | None = None,  # None: the field is left out, as an API before D25 does
 ) -> dict[str, Any]:
     key = to_inchikey(smiles)
-    return {
+    result: dict[str, Any] = {
         "index": index,
         "number": index + 1,
         "pageIndex": page_index,
@@ -63,6 +64,9 @@ def result_json(
         "molfile": "",
         "cropUrl": crop_url or f"/api/jobs/{JOB_ID}/media/crop-{index}.png",
     }
+    if incomplete is not None:
+        result["incomplete"] = incomplete
+    return result
 
 
 def job_json(

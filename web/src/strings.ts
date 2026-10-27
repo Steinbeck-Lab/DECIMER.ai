@@ -347,6 +347,7 @@ export const strings = {
     reported: 'Thank you for your report',
     reportFailed: 'The report could not be sent. Please try again.',
     reasons: {
+      incomplete: 'Incomplete: the model stopped at its length limit; the structure is cut off.',
       notStructure: 'We are not sure this is a chemical structure.',
       invalid: 'This SMILES is not valid. Check the structure in the editor.',
       cdkOnly: 'RDKit could not read this SMILES, but CDK could. Check the structure in the editor.',

@@ -11,8 +11,18 @@ What a prediction without a usable structure counts as (ROADMAP §5: "Invalid: S
 rejects"; decided by Kohulan 2026-10-23, gate P2-08 passes as §5 words it):
 - invalid: a non-empty SMILES that RDKit rejects;
 - refused: an empty SMILES that the stack returned (`valid` is True or False, not None): it
-  tried and its recognition declined to answer, e.g. the new stack's 422 "no complete structure".
-  It is reported apart from invalid, so it never counts against the pass rule's invalid limit;
+  tried and its recognition declined to answer, e.g. the new stack's 422 "no complete structure"
+  (a special token in the output). It is reported apart from invalid, so it never counts
+  against the pass rule's invalid limit;
+- incomplete: a non-empty SMILES the stack flagged `incomplete`: the model stopped at its
+  token limit, so the text is cut off. Legacy kept such a string and scored it as any SMILES (its
+  one invalid is one); the new stack used to refuse it (a 422, so "refused"). The owner accepted
+  (2026-10-27) a cut-off prediction of a label excluded from scoring as "incomplete", not as a
+  new failure. It is reported apart, like a refusal: whatever RDKit says of the text it is
+  neither correct, extra nor invalid, and the label it sits on stays unmatched (or, if that label
+  is excluded from scoring, uncounted). Every flagged prediction is counted, so none hides; the
+  pass rule's invalid limit is read on `invalid` alone, `incomplete` is printed beside it
+  (`invalid 1 · incomplete 1`), and the cutover gate caps it (`GOLDEN_MAX_INCOMPLETE`);
 - cut: an empty SMILES with `valid` None, the padding rows for structures beyond the 20-structure
   cap (legacy writes its cut rows the same way).
 """
@@ -55,6 +65,7 @@ class Prediction:
     confidence: float | None = None
     name: str = ""
     name_tier: str = ""
+    incomplete: bool = False  # the API's `incomplete`: the text is cut off at the token limit
 
 
 @dataclass
@@ -67,6 +78,7 @@ class Score:
     missing: list[str] = field(default_factory=list)
     excluded: int = 0  # predictions that used up an excluded label (neither correct nor extra)
     refused: int = 0  # empty SMILES the stack returned: its recognition declined, not invalid
+    incomplete: int = 0  # cut off at the token limit: reported apart, not scored
 
 
 def to_inchikey(smiles: str) -> str | None:
@@ -84,13 +96,15 @@ def score(labels: list[Label], predictions: list[Prediction]) -> Score:
     counted = [label for label in labels if label.scored]
     remaining = Counter(label.inchikey for label in counted)
     spare = Counter(label.inchikey for label in labels if not label.scored)
-    correct = extra = invalid = dropped = excluded = refused = 0
+    correct = extra = invalid = dropped = excluded = refused = incomplete = 0
     for p in predictions:
         if not p.smiles.strip():
             if p.valid is not None:
                 refused += 1  # a result the stack returned (valid either way) with no SMILES
             else:
                 dropped += 1  # padding beyond the 20-structure cap (valid=None; legacy: "")
+        elif p.incomplete:
+            incomplete += 1  # a cut-off text is not a reading, whatever RDKit makes of it
         elif p.inchikey is None:
             invalid += 1
         elif remaining[p.inchikey] > 0:
@@ -108,7 +122,9 @@ def score(labels: list[Label], predictions: list[Prediction]) -> Score:
         if unmatched[label.inchikey] > 0:
             unmatched[label.inchikey] -= 1
             missing.append(label.number)
-    return Score(len(counted), correct, extra, invalid, dropped, missing[::-1], excluded, refused)
+    return Score(
+        len(counted), correct, extra, invalid, dropped, missing[::-1], excluded, refused, incomplete
+    )
 
 
 def read_labels(path: Path) -> list[Label]:
@@ -147,6 +163,7 @@ PREDICTION_FIELDS = [
     "confidence",
     "name",
     "name_tier",
+    "incomplete",
 ]
 
 
@@ -167,6 +184,7 @@ def write_predictions(path: Path, predictions: list[Prediction]) -> None:
                     "confidence": "" if p.confidence is None else repr(p.confidence),
                     "name": p.name,
                     "name_tier": p.name_tier,
+                    "incomplete": p.incomplete,
                 }
             )
 
@@ -185,6 +203,7 @@ def read_predictions(path: Path) -> list[Prediction]:
                 confidence=_optional(row, "confidence", float),
                 name=row.get("name") or "",
                 name_tier=row.get("name_tier") or "",
+                incomplete=_optional(row, "incomplete", _parse_incomplete) or False,
             )
             for row in csv.DictReader(f)
         ]
@@ -200,4 +219,11 @@ def _parse_valid(text: str) -> bool:
     """The `valid` column as `write_predictions` writes it: exactly "True" or "False"."""
     if text not in ("True", "False"):
         raise ValueError(f"valid must be 'True', 'False' or empty, not {text!r}")
+    return text == "True"
+
+
+def _parse_incomplete(text: str) -> bool:
+    """The `incomplete` column: exactly "True" or "False" (older runs have no such column)."""
+    if text not in ("True", "False"):
+        raise ValueError(f"incomplete must be 'True', 'False' or empty, not {text!r}")
     return text == "True"
