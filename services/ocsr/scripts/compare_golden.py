@@ -55,12 +55,15 @@ def main() -> None:
     tally = {"legacy": 0, "new": 0, "both": 0, "only new": 0, "only legacy": 0, "neither": 0}
     judged = checked_ok = checked = 0
     timings = []
-    same_as_legacy = refused = new_all = 0
+    same_as_legacy = refused = cut_off = new_all = 0
     for crop in crops(limit):
         begin = time.perf_counter()
         try:
             result = model.infer(crop.path.read_bytes(), {})
             smiles, mean, error = result["smiles"], f"{result['mean_confidence']:.3f}", ""
+            if result["incomplete"]:  # stopped at the token limit: returned, flagged
+                cut_off += 1
+                error = "[incomplete] "
         except ValueError as exc:  # what the service answers with a 422
             smiles, mean, error = "", "-", f"422 {exc}"
             refused += 1
@@ -103,7 +106,7 @@ def main() -> None:
                 mean,
                 f"{elapsed:.1f}",
                 "yes" if same else "no",
-                (error or smiles)[:60],
+                (error + smiles if smiles else error)[:60],
             )
         )
     print(f"\n{judged} of the {limit} crops have a label (* = checked=yes)")
@@ -118,7 +121,7 @@ def main() -> None:
     print(f"checked labels: {checked_ok} of {checked} correct")
     print(
         f"identical SMILES string to legacy's: {same_as_legacy} of {min(limit, 20)} crops "
-        f"({refused} crops refused with a 422)"
+        f"({refused} crops refused with a 422, {cut_off} cut off at the token limit)"
     )
     ordered = sorted(timings)
     print(

@@ -8,7 +8,7 @@ import httpx
 import numpy as np
 import pytest
 import uvicorn
-from helpers import DAIDZEIN, FakePredictor, image_bytes
+from helpers import DAIDZEIN, FakePredictor, cut_off, image_bytes
 
 from decimer_ocsr import __main__ as entry
 from decimer_ocsr import app as ocsr_app
@@ -93,6 +93,7 @@ async def test_infer_returns_the_documented_shape(client: httpx.AsyncClient) -> 
         "smiles": "CO",
         "token_confidence": [["C", 0.5], ["O", 0.25]],
         "mean_confidence": 0.375,
+        "incomplete": False,
     }
 
 
@@ -209,7 +210,7 @@ async def test_readyz_answers_promptly_while_a_long_decode_is_in_flight() -> Non
             assert (await long_decode).status_code == 200
 
 
-async def test_readyz_does_not_rerun_the_selftest_after_a_token_limit_422() -> None:
+async def test_readyz_does_not_rerun_the_selftest_after_a_token_limit_answer() -> None:
     fake = FakePredictor()
     app = ocsr_app.build_app(OcsrModel(fake))
     async with app.router.lifespan_context(app):
@@ -217,11 +218,11 @@ async def test_readyz_does_not_rerun_the_selftest_after_a_token_limit_422() -> N
         async with httpx.AsyncClient(transport=transport, base_url="http://ocsr") as c:
             assert (await c.get("/readyz")).status_code == 200
             fake.calls.clear()
-            fake.answer = ("CCC", [("C", 0.9), ("C", 0.9)])  # decoding stopped at the token limit
+            fake.answer = cut_off()  # decoding stopped at the token limit
 
             r = await c.post("/infer", files={"image": ("crop.png", CROP, "image/png")})
-            assert r.status_code == 422
-            assert r.json()["detail"] == "no complete structure: too long or not a structure"
+            assert r.status_code == 200  # D25: answered, flagged incomplete (was a 422)
+            assert r.json()["incomplete"] is True
 
             ready = await c.get("/readyz")
 
@@ -320,6 +321,37 @@ async def test_an_idle_model_is_not_decoding_on_every_probe(fake: FakePredictor)
             statuses = [(await c.get("/readyz")).status_code for _ in range(6)]
     assert statuses == [200] * 6
     assert len(fake.calls) == 1
+
+
+async def test_a_decode_at_the_token_limit_is_a_200_with_the_cut_off_smiles_flagged_incomplete(
+    client: httpx.AsyncClient, fake: FakePredictor
+) -> None:
+    # D25 (owner, 2026-10-27): like legacy, the cut-off SMILES is passed on; the answer says so.
+    # The library's pairs lack the last token; it comes back with confidence 0.0 ("not reported").
+    fake.answer = cut_off("Cl", head=[("C", 0.5), ("C", 0.25)])
+
+    r = await client.post("/infer", files={"image": ("crop.png", CROP, "image/png")})
+
+    assert r.status_code == 200
+    body = r.json()
+    assert set(body) == {"smiles", "token_confidence", "mean_confidence", "incomplete"}
+    assert body["incomplete"] is True
+    assert body["smiles"] == "C" * 301 + "Cl"  # 302 tokens, the last one `Cl`
+    assert body["token_confidence"][:2] == [["C", 0.5], ["C", 0.25]]
+    assert body["token_confidence"][-2:] == [["C", 0.9], ["Cl", 0.0]]
+    assert len(body["token_confidence"]) == 302
+    assert body["mean_confidence"] == pytest.approx((0.5 + 0.25 + 299 * 0.9) / 302)
+
+
+async def test_a_special_token_in_a_cut_off_answer_is_still_a_422(
+    client: httpx.AsyncClient, fake: FakePredictor
+) -> None:
+    fake.answer = cut_off("4unk5")  # the dropped last token is the special one
+
+    r = await client.post("/infer", files={"image": ("crop.png", CROP, "image/png")})
+
+    assert r.status_code == 422
+    assert r.json()["detail"] == "no complete structure: the model wrote a special token (4unk5)"
 
 
 async def test_a_special_token_is_a_422_with_the_stable_prefix(

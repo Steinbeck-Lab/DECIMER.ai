@@ -76,6 +76,26 @@ def make_cdk_only_result(index: int = 0) -> Result:
     )
 
 
+def make_incomplete_result(index: int, smiles: str, *, valid: bool = True) -> Result:
+    """A result as the worker leaves it when ocsr stopped at its token limit: the cut-off
+    SMILES kept (`valid` as RDKit judged it, no name whatever chem could say), `incomplete` set."""
+    chem = analyse_smiles(smiles)
+    assert chem.valid is valid  # the premise
+    return Result(
+        index=index,
+        page_index=0,
+        bbox=(0, 0, 40 + index, 30),
+        smiles=chem.smiles,
+        inchikey=chem.inchikey,
+        valid=chem.valid,
+        is_structure=True,
+        confidence=0.6,
+        incomplete=True,
+        svg=chem.svg,
+        molfile=chem.molfile,
+    )
+
+
 async def make_done_job(
     store: JobStore,
     settings: Settings,

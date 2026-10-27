@@ -86,6 +86,16 @@ export function asCdkOnly(result: Result): Result {
 }
 
 /**
+ * The result as the API leaves one the model cut off at its token limit (decision D25): `incomplete` is true, the SMILES
+ * is the cut-off text kept as legacy kept it, and no name is looked up for it. RDKit's reading (`valid`, `validBy`,
+ * `inchikey`, the drawing and the molfile) stays the fixture's: a mock cannot cut a structure off and read it again, so
+ * this is a structure RDKit still reads (`valid` true, `validBy` rdkit), which is what a cut-off chain gives.
+ */
+export function asIncomplete(result: Result): Result {
+  return { ...result, incomplete: true, confidence: 0.55, name: null, nameTier: null, nameVerified: null };
+}
+
+/**
  * `count` results. With more than the 8 fixtures the compounds repeat, which
  * only the "twenty structures" scenario uses. `numbering: 'paper'` keeps the
  * paper's compound numbers; otherwise results are numbered 1..count.
@@ -115,6 +125,7 @@ export function fixtureResults(
       validBy: 'rdkit' as const,
       isStructure: classifierUnavailable ? null : !NOT_A_STRUCTURE.has(c.number),
       confidence: CONFIDENCE[c.number] ?? 0.95,
+      incomplete: false,
       name: c.iupac,
       nameTier: c.iupac ? (NAME_CHECK[c.number]?.tier ?? 'pin_verified') : null,
       nameVerified: c.iupac ? (NAME_CHECK[c.number]?.verified ?? 'opsin') : null,

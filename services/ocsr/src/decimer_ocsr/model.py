@@ -15,17 +15,23 @@ accepts a numpy array as well as a path, so the request bytes are decoded here (
 no temporary file is written. The hand-drawn model is never loaded (not by `load_models` as called
 here, not by `predict_SMILES(hand_drawn=False)`), and nothing in a request can select it.
 
-Response of `infer` (always exactly these three keys, all plain Python types):
+Response of `infer` (always exactly these four keys, all plain Python types):
 
     {"smiles": "C1=CC(=CC=C1C2=COC3=CC(=CC=C3C2=O)O)O",
      "token_confidence": [["C", 0.99...], ["1", 0.99...], ...],
-     "mean_confidence": 0.99...}
+     "mean_confidence": 0.99...,
+     "incomplete": false}
 
 - `token_confidence` has one `[token, confidence]` pair per SMILES token, in order. The tokens are
   the model's own (`Cl` is one token, `C` and `l` are not) and concatenate to exactly `smiles`.
   The confidence is the decoder's softmax probability of the token it chose, in [0, 1].
 - `mean_confidence` is the arithmetic mean of those confidences. An empty prediction (the model
-  answers "end" at once) is `{"smiles": "", "token_confidence": [], "mean_confidence": 0.0}`.
+  answers "end" at once) is `{"smiles": "", "token_confidence": [], "mean_confidence": 0.0,
+  "incomplete": false}`.
+- `incomplete` is true only when decoding stopped at the model's token limit (302) without an end
+  token: `smiles` is then cut off in the middle, as legacy returned it, and the caller is
+  told so. The library does not report the confidence of the last token in that case; the
+  pair for it is `[token, 0.0]` ("not reported"), so the tokens still concatenate to `smiles`.
 """
 
 from __future__ import annotations
@@ -223,6 +229,31 @@ SPECIAL_TOKENS = frozenset(
 )
 
 
+# The detail of the 422 for a decode that stopped at the token limit, which `_result` no longer
+# raises (D25: such a prediction is returned, flagged `incomplete`). The selftest still refuses it.
+TOKEN_LIMIT_DETAIL = f"{NO_STRUCTURE}: too long or not a structure"
+
+# The model decodes at most this many tokens (`assets/max_length.pkl`; README "The token limit"). A
+# decode that reaches it without an end token has all of them in `smiles` and, because decimer
+# 2.8.1 cuts `[1:-1]` of the confidence array, the confidences of all but the last: one fewer.
+TOKEN_LIMIT = 302
+
+# The vocabulary has 156 entries: 57 single characters, the four special tokens and these 95
+# element symbols of two letters (a slow test compares them with the library's tokenizer). Every
+# other token is one character, so a text is one token if it is one character or one of these.
+MULTI_CHAR_TOKENS = frozenset(
+    {
+        "Ac", "Ag", "Al", "Am", "Ar", "As", "At", "Au", "Ba", "Be", "Bh", "Bi", "Bk", "Br", "Ca",
+        "Cd", "Ce", "Cf", "Cl", "Cm", "Co", "Cr", "Cs", "Cu", "Db", "Dy", "Er", "Es", "Eu", "Fe",
+        "Fm", "Fr", "Ga", "Gd", "Ge", "He", "Hf", "Hg", "Ho", "Hs", "In", "Ir", "Kr", "La", "Li",
+        "Lr", "Lu", "Md", "Mg", "Mn", "Mo", "Mt", "Na", "Nb", "Nd", "Ne", "Ni", "No", "Np", "Os",
+        "Pa", "Pb", "Pd", "Pm", "Po", "Pr", "Pt", "Pu", "Ra", "Rb", "Re", "Rf", "Rh", "Rn", "Ru",
+        "Sb", "Sc", "Se", "Sg", "Si", "Sm", "Sn", "Sr", "Ta", "Tb", "Tc", "Te", "Th", "Ti", "Tl",
+        "Tm", "Xe", "Yb", "Zn", "Zr",
+    }
+)  # fmt: skip
+
+
 def _result(smiles: object, pairs: Sequence[tuple[str, float]]) -> dict[str, Any]:
     if not isinstance(smiles, str):
         raise RuntimeError(f"DECIMER returned a {type(smiles).__name__} instead of a SMILES string")
@@ -236,18 +267,36 @@ def _result(smiles: object, pairs: Sequence[tuple[str, float]]) -> dict[str, Any
             # but not from the pairs, so such a token also makes them differ.
             raise ValueError(f"{NO_STRUCTURE}: the model wrote a special token ({token})")
     joined = "".join(tokens)
-    if joined != smiles:
-        if smiles.startswith(joined):
-            # decimer 2.8.1 drops the last token's confidence when decoding stops at the model's
-            # token limit (302) without an end token, so the pairs are the SMILES minus its last
-            # token. Such a SMILES is cut off in the middle: no structure was read to the end.
-            raise ValueError(f"{NO_STRUCTURE}: too long or not a structure")
-        raise RuntimeError(f"tokens do not add up to the SMILES {smiles!r}")
+    incomplete = joined != smiles
+    if incomplete:
+        if not smiles.startswith(joined):
+            raise RuntimeError(f"tokens do not add up to the SMILES {smiles!r}")
+        # decimer 2.8.1 drops the last token's confidence when decoding stops at the model's
+        # token limit (302) without an end token, so the pairs are the SMILES minus its last
+        # token. Such a SMILES is cut off in the middle: no structure was read to the end. Legacy
+        # kept it and let CDK and RDKit judge it, so it is returned, flagged `incomplete`,
+        # with the dropped token put back at confidence 0.0 (not reported) so that the tokens
+        # still concatenate to the SMILES.
+        last = smiles[len(joined) :]
+        if last in SPECIAL_TOKENS:  # the token the pairs lack is not checked above
+            raise ValueError(f"{NO_STRUCTURE}: the model wrote a special token ({last})")
+        # Only exactly that case is flagged. Anything else that is a prefix (more than one token
+        # missing, or fewer confidences than the limit allows) means the library changed.
+        if len(pairs) != TOKEN_LIMIT - 1:
+            raise RuntimeError(
+                f"DECIMER returned {len(pairs)} confidences for a SMILES that is longer than "
+                f"they are; a decode cut off at the token limit has {TOKEN_LIMIT - 1}"
+            )
+        if len(last) != 1 and last not in MULTI_CHAR_TOKENS:
+            raise RuntimeError(f"the cut-off SMILES ends in {last!r}, which is not one token")
+        tokens.append(last)
+        confidences.append(0.0)
     mean = math.fsum(confidences) / len(confidences) if confidences else 0.0
     return {
         "smiles": smiles,
         "token_confidence": [[t, c] for t, c in zip(tokens, confidences, strict=True)],
         "mean_confidence": mean,
+        "incomplete": incomplete,
     }
 
 
@@ -297,9 +346,10 @@ class OcsrModel:
 
     def selftest(self) -> None:
         # /readyz must not queue behind a decode: one that ends at the token limit holds the model
-        # for 38-55 s, answers 422, and so does not refresh the skeleton's readiness cache; a
-        # selftest that waited for it would time out and the container would turn unhealthy. But
-        # it must not take "busy" or "a request completed" for "correct" either.
+        # for 38-55 s (and answers 200 with an `incomplete` prediction since D25, which says
+        # nothing about the model being right); a selftest that waited for it would time out and
+        # the container would turn unhealthy. But it must not take "busy" or "a request
+        # completed" for "correct" either.
         #   - Model busy: alive, unless the decode has run for more than `hang_after`.
         #   - A selftest passed, or a request completed, within `ready_window`: no need to decode
         #     again (the skeleton's cache would have done this; it is off, see `app.LIMITS`). A
@@ -336,11 +386,18 @@ class OcsrModel:
         # decoding is greedy and deterministic, and a change of library or TensorFlow that alters
         # it has to be noticed (and go through the golden-set check) anyway.
         try:
-            got = _result(smiles, pairs)["smiles"]
+            result = _result(smiles, pairs)
         except ValueError as exc:
             raise RuntimeError(
                 f"selftest failed: the embedded structure was refused: {exc}"
             ) from exc
+        if result["incomplete"]:
+            # Strict, unlike a request: a model that cannot finish the embedded structure
+            # is not ready, and a cut-off answer is never "the right one".
+            raise RuntimeError(
+                f"selftest failed: the embedded structure was refused: {TOKEN_LIMIT_DETAIL}"
+            )
+        got = result["smiles"]
         if got != SELFTEST_SMILES:
             raise RuntimeError(
                 f"selftest failed: the embedded structure was read as {got!r}, "
@@ -363,7 +420,14 @@ class OcsrModel:
         array = _to_array(_decode(image))
         with self._lock:
             smiles, pairs = self._call(array, is_request=True)
-        return _result(smiles, pairs)
+        result = _result(smiles, pairs)
+        if result["incomplete"]:
+            # The count only: what the model wrote is the caller's data and stays out of the log.
+            log.info(
+                "decode stopped at the token limit: %d tokens, returned flagged incomplete",
+                len(result["token_confidence"]),
+            )
+        return result
 
     def _call(self, array: Array, *, is_request: bool) -> Prediction:
         """Run the predictor; the caller holds the lock.
