@@ -14,7 +14,7 @@ import type { EditEntry, Filter, SourceFile, State, Status } from './model';
 /** Below this the model is not confident and the result goes to "review". */
 const REVIEW_CONFIDENCE_BELOW = 0.8;
 
-export type Reason = 'notStructure' | 'invalid' | 'cdkOnly' | 'rgroup' | 'lowConfidence';
+export type Reason = 'incomplete' | 'notStructure' | 'invalid' | 'cdkOnly' | 'rgroup' | 'lowConfidence';
 
 export interface ResultView {
   index: number;
@@ -52,8 +52,13 @@ export function reasonsFor(r: {
   validBy?: ValidBy | null;
   confidence: number;
   smiles: string;
+  /** The model stopped at its token limit: the SMILES is cut off (decision D25). */
+  incomplete?: boolean;
 }): Reason[] {
   const reasons: Reason[] = [];
+  // A cut-off SMILES is never taken for a reading: until the UI shows the flag itself, this puts the result
+  // under "Needs review" whatever RDKit, CDK and the model's confidence say about the text.
+  if (r.incomplete) reasons.push('incomplete');
   // Only an answer of "no" is a doubt. `null` is a classifier that was not there: nothing to say.
   if (r.isStructure === false) reasons.push('notStructure');
   // A structure only CDK accepted stays a reason to look (RDKit, the stricter reader, refused it, so it is
@@ -72,7 +77,7 @@ function buildView(result: Result, edit?: EditEntry): ResultView {
   const validBy = derived ? (derived.valid ? 'rdkit' : null) : result.validBy;
   const modified = edit?.modified ?? false;
   const checked = edit?.checked ?? false;
-  const reasons = reasonsFor({ isStructure: result.isStructure, valid, validBy, confidence: result.confidence, smiles });
+  const reasons = reasonsFor({ isStructure: result.isStructure, valid, validBy, confidence: result.confidence, smiles, incomplete: result.incomplete });
 
   let status: Status;
   if (checked) status = 'checked';

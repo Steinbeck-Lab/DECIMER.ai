@@ -16,10 +16,18 @@ What goes in, for each structure and in the order of the job's results (never th
   SMILES is the one DECIMER wrote, its InChIKey and name are empty, and the CSV column `valid`
   says `cdk`.
 
-The CSV has the columns `number, smiles, inchikey, valid, name, edited`, one row per structure:
-`valid` is `true` (RDKit accepts the structure), `cdk` (RDKit does not, CDK does: see above) or
-`false` (neither); `edited` is `true` or `false`. An edited structure is judged by RDKit alone
-(the molfile comes from the editor), so it is `true` or `false`, never `cdk`.
+* **an incomplete structure** (the model stopped at its token limit and its SMILES is cut off: D25)
+  is exported like any other, whatever RDKit and CDK made of it; the CSV column `incomplete` says
+  `true` and the SDF record has `INCOMPLETE` = `true`, so that a cut-off SMILES is never taken for
+  a reading. It has no name. A structure the user edited is no longer the cut-off text: it is
+  `false`, like `valid`, it is the editor's structure that is judged.
+
+The CSV has the columns `number, smiles, inchikey, valid, name, edited, incomplete`, one row per
+structure: `valid` is `true` (RDKit accepts the structure), `cdk` (RDKit does not, CDK does: see
+above) or `false` (neither); `edited` and `incomplete` are `true` or `false`. An edited structure
+is judged by RDKit alone (the molfile comes from the editor), so its `valid` is `true` or `false`,
+never `cdk`. Like `VALID` in the SDF, which is written only for `cdk`, `INCOMPLETE` is written only
+for `true`; the SMILES file has no room for either (it keeps legacy's columns).
 * text from outside (a SMILES that OCSR made up, a name from chem) is put on one line and cleaned
   of what could end an SDF record or start a spreadsheet formula.
 
@@ -46,7 +54,7 @@ from .names import NO_NAME, NameInfo, Namer, nameable
 
 CHUNK_BYTES = 64 * 1024
 SMILES_FILE = "results.smiles.txt"
-CSV_COLUMNS = ("number", "smiles", "inchikey", "valid", "name", "edited")
+CSV_COLUMNS = ("number", "smiles", "inchikey", "valid", "name", "edited", "incomplete")
 # Characters that break a line or a record in a text file (`$` is dealt with separately).
 LINE_UNSAFE = re.compile(r"[\x00-\x1f\x7f-\x9f  ]+")
 # A spreadsheet reads a cell that starts with one of these as a formula.
@@ -72,6 +80,7 @@ class Row:
     name: str | None
     molfile: str  # clean (see `clean_molfile`), or "" when there is none
     edited: bool
+    incomplete: bool = False  # the SMILES is cut off at the model's token limit
 
     @property
     def number(self) -> int:
@@ -140,6 +149,7 @@ async def build_rows(
                     name=result.name,
                     molfile=stored_molfile(result),
                     edited=False,
+                    incomplete=result.incomplete,
                 )
             )
         else:
@@ -193,6 +203,7 @@ def sdf_text(rows: Sequence[Row]) -> str:
             "NAME": _sdf_value(row.name),
             "EDITED": "true" if row.edited else "false",
             "VALID": "cdk" if row.validity == "cdk" else "",  # only where it adds something
+            "INCOMPLETE": "true" if row.incomplete else "",  # likewise
         }
         body = "".join(f"> <{key}>\n{value}\n\n" for key, value in properties.items() if value)
         records.append(f"{row.molfile}{body}$$$$\n")
@@ -217,6 +228,7 @@ def csv_text(rows: Sequence[Row]) -> str:
                 row.validity,
                 _cell(row.name or ""),
                 "true" if row.edited else "false",
+                "true" if row.incomplete else "false",
             ]
         )
     return out.getvalue()

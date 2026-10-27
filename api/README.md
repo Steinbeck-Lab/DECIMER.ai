@@ -183,12 +183,16 @@ the request; unknown JSON fields are refused.
   (`MAX_DOWNLOADS_PER_CLIENT`, `429`), each for at most `DOWNLOAD_TIMEOUT_SECONDS` (120; a client that does not
   read is cut off); the places and the files are given back when the response ends, however it ends; compose gives the api `nofile` 4096).
   The SDF has a record per structure with a molfile (`NUMBER`, `SMILES`, `INCHIKEY`, `NAME`, `EDITED`
-  data items, and `VALID` = `cdk` where only CDK accepted the structure), the CSV a row for every structure
-  (`number,smiles,inchikey,valid,name,edited`; **contract change:** `valid` used to be `true|false` and is now
+  data items, `VALID` = `cdk` where only CDK accepted the structure, and `INCOMPLETE` = `true` where the model
+  stopped at its token limit; the last two only where they add something), the CSV a row for every structure
+  (`number,smiles,inchikey,valid,name,edited,incomplete`; **contract change:** `valid` used to be `true|false` and is now
   `true|cdk|false`: `true` when RDKit accepts the structure, `cdk` when
   RDKit refused it and CDK read it (CDK's molblock is then the molfile, the SMILES is DECIMER's, `inchikey`
   and `name` are empty), `false` for neither; an edited structure is `true` or `false` only: RDKit judges the
-  editor's molfile). Text that
+  editor's molfile. **Contract change:** the column `incomplete` (`true|false`) is new, at the end so that
+  the position of the others does not move; it is `true` for a structure whose SMILES is the cut-off text of a
+  decode that stopped at the token limit, and `false` for an edited one: the editor's structure is no longer the
+  cut-off text. `results.smiles.txt` keeps legacy's three columns and says nothing about either flag). Text that
   came from OCSR or chem is put on one line, cannot start an SDF record or data item, and a CSV cell that
   starts like a formula gets a leading `'`.
 * **report.** Only `{"index"}` is sent. The api writes `REPORTS_DIR/<job id>-<index>/` with `crop.png`
@@ -240,10 +244,18 @@ JSON is camelCase. A job:
 ```
 
 `Result` (filled by the worker): `index`, `number`, `pageIndex`, `bbox` `[x0,y0,x1,y1]`, `smiles`,
-`inchikey`, `valid`, `validBy`, `isStructure`, `confidence`, `name`, `nameTier`, `svg`, `molfile`, `cropUrl`.
+`inchikey`, `valid`, `validBy`, `isStructure`, `confidence`, `incomplete`, `name`, `nameTier`, `svg`, `molfile`,
+`cropUrl`.
 `validBy` is `"rdkit"` for a valid result, `"cdk"` for one that RDKit refused and only CDK accepted (`valid` is
 `false`; `molfile` is CDK's, `svg` RDKit's drawing of it, `smiles` DECIMER's own text, `inchikey` and `name`
 empty), `null` for one neither accepted.
+`incomplete` (boolean, `false` unless set; D25) is `true` when the model stopped at its token limit without
+finishing: `smiles` is then the cut-off text, kept as legacy kept it, so it is probably not the structure in the
+image. It still went through RDKit and CDK, so `valid` and `validBy` mean what they always mean (a long chain RDKit
+reads is `valid: true`, `validBy: "rdkit"`, `incomplete: true`; one only CDK reads is `validBy: "cdk"`; an
+unreadable one is `valid: false` with its raw `smiles`), **but no name is looked up for it**: a checked name would
+read as "this is the structure", and nobody vouched for a cut-off SMILES. A record stored before the field
+existed reads as `false`. The UI does not show the flag itself yet; until it does, the web lists such a result under "Needs review" (reason `incomplete`). **Deploy this api before or with ocsr** (docs/RUNBOOK.md section 3, step 5): an api from before the flag takes ocsr's cut-off SMILES for a normal result and may name it.
 `pageUrls` lists `page-0.png` to `page-<pagesProcessed - 1>.png`, one URL for each page the job processes, in
 page order and same-origin like `cropUrl` (the UI's "Display uploaded document", shown for PDFs). An upload of
 images lists every image; a PDF lists its first `MAX_PDF_PAGES` pages, and the pages past the cap are not
@@ -556,7 +568,7 @@ and a 120 s timeout. An answer is read as a stream and refused above 64 MiB (seg
 
 | What failed | What the job does |
 |---|---|
-| ocsr 500 / 422 / timeout, or a lost connection, on one crop | that result is `valid: false`, `smiles: ""`, `confidence: 0`; warning `recognition_failed`; the job goes on |
+| ocsr 500 / 422 / timeout, or a lost connection, on one crop | that result is `valid: false`, `smiles: ""`, `confidence: 0`; warning `recognition_failed`; the job goes on. (A decode that stopped at the model's token limit is **not** a 422 any more, D25: ocsr answers 200 with the cut-off SMILES and `incomplete: true`, which becomes the result's `incomplete`, with no warning and no name. A 422 is now an undecodable or oversized image, or a special token in the output.) |
 | ocsr times out `OCSR_MAX_TIMEOUTS` (3) times in one job | the job fails: `service_unavailable` |
 | cls 500 / 422 on one crop | `isStructure: null` for it; warning `classification_failed` |
 | cls unreachable, busy or timing out | no more calls to cls in this job; `isStructure: null` for the crops it did not answer; one warning `classifier_unavailable` |

@@ -228,7 +228,10 @@ async def test_an_image_ocsr_refuses_is_one_invalid_result_and_the_others_are_re
 ) -> None:
     def refuses_the_second(request: httpx.Request, parts: dict[str, bytes]) -> httpx.Response:
         if width_of(parts) == 101:
-            return httpx.Response(422, json={"detail": "no complete structure"})
+            return httpx.Response(
+                422,
+                json={"detail": "no complete structure: the model wrote a special token (<unk>)"},
+            )
         return by_width(request, parts)
 
     backend = FakeBackend(layout={n: 2 for n in range(3)}, hooks={"ocsr": refuses_the_second})

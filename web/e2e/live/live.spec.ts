@@ -366,9 +366,9 @@ test('3. export ZIP, SDF and CSV through the Download menu: the edit is in all t
   expect(csv.request.format).toBe('csv');
   expect(Object.keys(csv.request.molfiles)).toEqual(['0']);
   const text = csv.body.toString('utf8');
-  expect(text.split(/\r?\n/)[0]).toBe('number,smiles,inchikey,valid,name,edited');
+  expect(text.split(/\r?\n/)[0]).toBe('number,smiles,inchikey,valid,name,edited,incomplete');
   const rows = parseCsv(text);
-  expect(rows[0]).toEqual(['number', 'smiles', 'inchikey', 'valid', 'name', 'edited']);
+  expect(rows[0]).toEqual(['number', 'smiles', 'inchikey', 'valid', 'name', 'edited', 'incomplete']);
   expect(rows.slice(1)).toHaveLength(count);
   const row1 = rows[1] ?? [];
   expect(row1.slice(0, 4)).toEqual(['1', validated.smiles, validated.inchikey, 'true']);

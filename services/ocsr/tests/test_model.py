@@ -14,6 +14,7 @@ from decimer_service import Limits
 from helpers import (
     DAIDZEIN,
     FakePredictor,
+    cut_off,
     image_bytes,
     jpeg_with_exif_orientation,
     library_flatten,
@@ -40,11 +41,12 @@ def seen_by_predictor(data: bytes) -> NDArray[np.uint8]:
 # --- the response ---------------------------------------------------------------------------
 
 
-def test_response_is_exactly_smiles_token_confidence_and_mean_confidence() -> None:
+def test_response_is_exactly_smiles_token_confidence_mean_confidence_and_incomplete() -> None:
     result = read(FakePredictor())
 
-    assert set(result) == {"smiles", "token_confidence", "mean_confidence"}
+    assert set(result) == {"smiles", "token_confidence", "mean_confidence", "incomplete"}
     assert result["smiles"] == DAIDZEIN
+    assert result["incomplete"] is False
 
 
 def test_response_holds_plain_python_types_that_survive_json() -> None:
@@ -54,6 +56,7 @@ def test_response_holds_plain_python_types_that_survive_json() -> None:
     assert type(result["smiles"]) is str
     assert type(result["token_confidence"]) is list
     assert type(result["mean_confidence"]) is float
+    assert type(result["incomplete"]) is bool
     for pair in result["token_confidence"]:
         assert type(pair) is list
         assert len(pair) == 2
@@ -93,7 +96,12 @@ def test_an_empty_prediction_is_an_empty_smiles_no_tokens_and_zero_confidence() 
     # float that sorts and serialises, and says "no confidence in anything".
     result = read(FakePredictor(("", [])))
 
-    assert result == {"smiles": "", "token_confidence": [], "mean_confidence": 0.0}
+    assert result == {
+        "smiles": "",
+        "token_confidence": [],
+        "mean_confidence": 0.0,
+        "incomplete": False,
+    }
     assert type(result["mean_confidence"]) is float
 
 
@@ -103,13 +111,114 @@ def test_a_non_finite_confidence_is_an_error_not_a_json_crash(bad: float) -> Non
         read(FakePredictor(("CC", [("C", 0.9), ("C", bad)])))
 
 
-def test_a_decode_cut_off_at_the_token_limit_is_refused_as_unreadable_input() -> None:
-    # decimer 2.8.1 returns the whole SMILES but the confidences of all tokens except the last
-    # when decoding hits the token limit (golden crop 15, a figure with correlation arrows, does).
-    # The SMILES is then cut off mid-structure; it is not passed on as if it were an answer.
-    with pytest.raises(ValueError) as excinfo:
-        read(FakePredictor(("CCC", [("C", 0.9), ("C", 0.9)])))
-    assert str(excinfo.value) == "no complete structure: too long or not a structure"
+def test_a_decode_cut_off_at_the_token_limit_is_returned_flagged_incomplete() -> None:
+    # decimer 2.8.1 returns the whole SMILES (302 tokens) but the confidences of all tokens except
+    # the last when decoding hits the token limit (golden crop 15 of the legacy crops, and crop 12
+    # of the full-pipeline runs, do). The SMILES is cut off mid-structure. D25 (owner, 2026-10-27):
+    # like legacy it is passed on, not refused, and the answer says so; the caller (the API, then
+    # CDK and RDKit) judges it.
+    result = read(FakePredictor(cut_off()))
+
+    assert result["smiles"] == "C" * 302
+    assert result["incomplete"] is True
+
+
+def test_an_incomplete_answer_keeps_the_tokens_adding_up_to_the_smiles() -> None:
+    # The library leaves out the confidence of the last token, so it is put back with 0.0 ("not
+    # reported"): token_confidence still concatenates to `smiles`, as the README promises, and the
+    # mean is that of the pairs returned (it includes the 0.0).
+    result = read(FakePredictor(cut_off("Cl", head=[("C", 0.5), ("N", 0.25)])))
+
+    pairs = result["token_confidence"]
+    assert len(pairs) == 302
+    assert pairs[:2] == [["C", 0.5], ["N", 0.25]]
+    assert pairs[-2:] == [["C", 0.9], ["Cl", 0.0]]
+    assert "".join(token for token, _ in pairs) == result["smiles"]
+    assert result["mean_confidence"] == pytest.approx((0.5 + 0.25 + 299 * 0.9) / 302)
+    assert result["incomplete"] is True
+    assert json.loads(json.dumps(result)) == result
+
+
+def test_a_complete_answer_is_not_flagged_incomplete_whatever_its_confidence() -> None:
+    result = read(FakePredictor(("CCC", [("C", 0.01), ("C", 0.01), ("C", 0.01)])))
+    assert result["incomplete"] is False
+
+
+@pytest.mark.parametrize("last", ["C", "[", "1", "@", "Cl", "Br", "Si", "Zr"])
+def test_the_dropped_token_may_be_any_one_vocabulary_token(last: str) -> None:
+    result = read(FakePredictor(cut_off(last)))
+    assert result["incomplete"] is True
+    assert result["token_confidence"][-1] == [last, 0.0]
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        ("C", []),  # a prefix, but no confidences at all
+        ("CCC", [("C", 0.9), ("C", 0.9)]),  # a prefix, two confidences: not at the limit
+        (cut_off()[0], cut_off()[1][:-1]),  # 300 confidences for 302 tokens: two are missing
+        (cut_off()[0] + "C", cut_off()[1][:-1]),  # 300 confidences for 303 tokens
+    ],
+)
+def test_a_prefix_that_is_not_one_token_short_of_the_limit_is_our_error(
+    answer: tuple[str, list[tuple[str, float]]],
+) -> None:
+    # Only a decode that stopped at the limit is flagged; any other answer whose confidences stop
+    # short of the SMILES means the library changed (a 500, not a result a user could take for a
+    # reading).
+    with pytest.raises(RuntimeError, match="confidences for a SMILES that is longer"):
+        read(FakePredictor(answer))
+
+
+@pytest.mark.parametrize("leftover", ["CC", "Cc", "Xx", "Cl2", "cc", "()"])
+def test_a_dropped_text_that_is_not_one_token_is_our_error(leftover: str) -> None:
+    # `Cc` is two tokens (C, c), not an element; `Xx` is no vocabulary entry.
+    with pytest.raises(RuntimeError, match="is not one token"):
+        read(FakePredictor(cut_off(leftover)))
+
+
+def test_an_incomplete_answer_is_logged_without_its_smiles(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.INFO, logger="decimer_ocsr"):
+        read(FakePredictor(cut_off("N")))
+
+    messages = [r.getMessage() for r in caplog.records if r.name == "decimer_ocsr"]
+    assert messages == [
+        "decode stopped at the token limit: 302 tokens, returned flagged incomplete"
+    ]
+    assert "CCCC" not in messages[0]
+
+
+def test_a_complete_answer_logs_nothing_about_the_token_limit(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.INFO, logger="decimer_ocsr"):
+        read(FakePredictor())
+    assert [r for r in caplog.records if "token limit" in r.getMessage()] == []
+
+
+def test_the_token_the_library_dropped_is_checked_for_a_special_spelling_too() -> None:
+    # The cut-off answer is returned only if nothing in it is a special token, the one the pairs
+    # lack included (it is only in the SMILES): that is still the 422, not a flagged answer.
+    for special in ("4unk5", "<unk>", "4pad5"):
+        with pytest.raises(ValueError, match="^no complete structure: the model wrote a special"):
+            read(FakePredictor(cut_off(special)))
+
+
+def test_a_special_token_in_a_cut_off_answer_is_still_a_422() -> None:
+    # Cut off at the token limit AND a special token inside: the special token decides.
+    with pytest.raises(ValueError, match="^no complete structure: the model wrote a special"):
+        read(FakePredictor(cut_off(head=[("C", 0.9), ("4unk5", 0.9)])))
+
+
+def test_the_multi_character_tokens_are_two_letter_element_symbols() -> None:
+    # A slow test compares the set with the library's tokenizer; this is its shape.
+    assert len(model_module.MULTI_CHAR_TOKENS) == 95
+    assert all(
+        len(t) == 2 and t[0].isupper() and t[1].islower() for t in model_module.MULTI_CHAR_TOKENS
+    )
+    assert model_module.TOKEN_LIMIT == 302
 
 
 def test_the_422_detail_prefix_the_worker_and_ui_match_on_is_pinned() -> None:
@@ -569,7 +678,7 @@ def test_selftest_fails_on_an_empty_answer() -> None:
 
 def test_selftest_fails_when_the_model_refuses_the_embedded_structure() -> None:
     # A selftest answer that is cut off at the token limit is a failed selftest, not a 422.
-    fake = FakePredictor(("CCC", [("C", 0.9), ("C", 0.9)]))
+    fake = FakePredictor(cut_off())
     with pytest.raises(RuntimeError, match="selftest failed.*no complete structure"):
         OcsrModel(fake).selftest()
 
@@ -590,7 +699,7 @@ class Clock:
 
 
 WRONG = ("CCO", [("C", 0.99), ("C", 0.99), ("O", 0.99)])  # a model that runs but reads wrongly
-TOKEN_LIMIT = ("CCC", [("C", 0.9), ("C", 0.9)])  # a decode cut off at the token limit
+CUT_OFF = cut_off()  # a decode cut off at the token limit
 
 
 def passed_model(clock: Clock, **options: float) -> tuple[OcsrModel, FakePredictor]:
@@ -783,12 +892,12 @@ def test_selftest_runs_on_a_model_that_has_not_decoded_anything_yet() -> None:
 
 
 def test_a_decode_that_ends_at_the_token_limit_still_counts_as_ready() -> None:
-    # The decode completed (the model is alive and answering), it just is not a structure.
+    # The decode completed (the model is alive and answering), it just is not a structure: the
+    # request is answered, flagged incomplete.
     clock = Clock()
     model, fake = passed_model(clock)
-    fake.answer = TOKEN_LIMIT
-    with pytest.raises(ValueError, match="no complete structure"):
-        model.infer(image_bytes(), {})
+    fake.answer = CUT_OFF
+    assert model.infer(image_bytes(), {})["incomplete"] is True
 
     model.selftest()  # would fail on this answer if it ran
     assert len(fake.calls) == 1

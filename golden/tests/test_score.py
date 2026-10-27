@@ -44,6 +44,88 @@ def test_counts_correct_extra_invalid_refused_and_dropped() -> None:
     assert s.missing == ["2"]
 
 
+def incomplete_pred(i: int, smiles: str) -> Prediction:
+    return Prediction(
+        index=i, smiles=smiles, inchikey=to_inchikey(smiles), valid=False, incomplete=True
+    )
+
+
+def test_a_cut_off_prediction_is_incomplete_not_invalid_extra_or_correct() -> None:
+    # D25 (owner 2026-10-27): the text is cut off at the token limit, so it is not a reading,
+    # whatever RDKit says of it: an unclosed ring (RDKit rejects it) and a chain (RDKit reads it)
+    # both go to `incomplete`, and a label they sit on stays unmatched.
+    labels = [label("1", CAFFEINE), label("2", BENZENE)]
+    preds = [
+        pred(0, CAFFEINE),
+        incomplete_pred(1, "C1CC"),
+        incomplete_pred(2, "CCCCCC"),
+        pred(3, "C1CC"),  # a plain invalid one, for contrast
+    ]
+    s = score(labels, preds)
+    assert (s.correct, s.extra, s.invalid, s.incomplete, s.refused, s.dropped) == (1, 0, 1, 2, 0, 0)
+    assert s.missing == ["2"]
+
+
+def test_a_prediction_without_the_flag_is_scored_as_before() -> None:
+    s = score([label("1", CAFFEINE)], [pred(0, "C1CC"), pred(1, "CCO")])
+    assert (s.invalid, s.incomplete, s.extra) == (1, 0, 1)
+
+
+def test_the_flag_on_an_empty_smiles_changes_nothing() -> None:
+    cut = Prediction(index=0, smiles="", inchikey=None, valid=False, incomplete=True)
+    s = score([], [cut])
+    assert (s.refused, s.incomplete, s.invalid) == (1, 0, 0)
+
+
+def test_the_newest_committed_run_read_as_the_owner_accepted_it_under_d25() -> None:
+    """Owner, 2026-10-27: a cut-off prediction of an excluded label is "incomplete", not a new
+    failure; it was a refusal before. The committed run `next-20261026-151657` has the
+    token-limit crop at index 12, the `1 (Fig 3)` drawing, which is excluded from scoring and was
+    refused (empty SMILES). Built after D25 it carries a cut-off SMILES that RDKit and CDK 2.8
+    both reject (measured 2026-10-27; here a short unclosed-ring SMILES stands in for its 302
+    characters, which does not change what RDKit says). Read the two ways:
+
+    - without the flag it is one more invalid SMILES: invalid 2 against legacy's 1;
+    - with it, as the API sends it: `invalid 1 · incomplete 1`, correct 13/24 = legacy, the pass
+      rule's invalid count 1 against legacy's 1.
+    """
+    labels = read_labels(GOLDEN / "labels.csv")
+    run = GOLDEN / "runs" / "next-20261026-151657" / "predictions.csv"
+    predictions = read_predictions(run)
+    assert (predictions[12].smiles, predictions[12].valid) == ("", False)  # the refusal then
+    as_run = score(labels, predictions)
+    assert (as_run.correct, as_run.extra, as_run.invalid, as_run.refused, as_run.incomplete) == (
+        13,
+        5,
+        1,
+        1,
+        0,
+    )
+
+    cut_off = "C1CC"
+    unflagged = [*predictions[:12], pred(12, cut_off), *predictions[13:]]
+    s = score(labels, unflagged)
+    assert (s.correct, s.labels, s.extra, s.invalid, s.refused, s.incomplete) == (
+        13,
+        24,
+        5,
+        2,
+        0,
+        0,
+    )
+    flagged = [*predictions[:12], incomplete_pred(12, cut_off), *predictions[13:]]
+    s = score(labels, flagged)
+    assert (s.correct, s.labels, s.extra, s.invalid, s.refused, s.incomplete) == (
+        13,
+        24,
+        5,
+        1,
+        0,
+        1,
+    )
+    assert (s.dropped, s.excluded, s.missing) == (as_run.dropped, as_run.excluded, as_run.missing)
+
+
 def test_each_prediction_matches_at_most_one_label() -> None:
     # Two labelled caffeines, one predicted: one correct, one missing.
     s = score([label("1", CAFFEINE), label("1b", CAFFEINE)], [pred(0, CAFFEINE)])
@@ -107,12 +189,43 @@ def test_predictions_round_trip_through_csv(tmp_path: Path) -> None:
         ),
         Prediction(index=1, smiles="", inchikey=None, valid=False, classifier=""),
         Prediction(index=2, smiles="", inchikey=None),
+        Prediction(index=3, smiles="C1CC", inchikey=None, valid=False, incomplete=True),
     ]
     write_predictions(tmp_path / "p.csv", rows)
     assert read_predictions(tmp_path / "p.csv") == rows
+    assert (tmp_path / "p.csv").read_text().splitlines()[0] == PREDICTIONS_HEADER_D25
+
+
+@pytest.mark.parametrize(("text", "flag"), [("True", True), ("False", False), ("", False)])
+def test_the_incomplete_column_reads_true_false_or_empty(
+    tmp_path: Path, text: str, flag: bool
+) -> None:
+    path = tmp_path / "p.csv"
+    path.write_text(f"{PREDICTIONS_HEADER_D25}\n0,,C1CC,,,1,False,,,,{text}\n")
+    (p,) = read_predictions(path)
+    assert p.incomplete is flag
+
+
+@pytest.mark.parametrize("text", ["true", "1", "yes", " True", "None"])
+def test_any_other_incomplete_value_is_an_error_not_a_silent_false(
+    tmp_path: Path, text: str
+) -> None:
+    path = tmp_path / "p.csv"
+    path.write_text(f"{PREDICTIONS_HEADER_D25}\n0,,C1CC,,,1,False,,,,{text}\n")
+    with pytest.raises(ValueError, match="incomplete"):
+        read_predictions(path)
+
+
+def test_a_run_from_before_the_column_reads_as_complete(tmp_path: Path) -> None:
+    path = tmp_path / "p.csv"
+    path.write_text(f"{PREDICTIONS_HEADER}\n0,,CCO,,,1,True,,,\n")
+    (p,) = read_predictions(path)
+    assert p.incomplete is False
 
 
 PREDICTIONS_HEADER = "index,segment,smiles,inchikey,classifier,page,valid,confidence,name,name_tier"
+# What `write_predictions` writes since D25: the same columns and `incomplete`.
+PREDICTIONS_HEADER_D25 = PREDICTIONS_HEADER + ",incomplete"
 
 
 @pytest.mark.parametrize(("text", "valid"), [("True", True), ("False", False), ("", None)])
@@ -222,6 +335,22 @@ def test_the_committed_new_stack_run_scores_exactly_as_the_baseline_against_the_
         "missing labels: 2, 3, 3 (Fig 3), S4, S5, S6, S7, S8, S9, S10, S11\n"
     )
     assert captured.err == ""
+
+
+def test_the_score_line_says_incomplete_only_for_a_run_that_has_some(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "p.csv"
+    write_predictions(path, [pred(0, "C1CC"), incomplete_pred(1, "C1CC")])
+    assert main(["score", str(path)]) == 0
+    first = capsys.readouterr().out.splitlines()[0]
+    assert first == (
+        "correct 0/24 · extra 0 · invalid 1 · incomplete 1 · refused 0 · dropped by cap 0 · "
+        "excluded 0"
+    )
+    write_predictions(path, [pred(0, "C1CC")])
+    assert main(["score", str(path)]) == 0
+    assert "incomplete" not in capsys.readouterr().out
 
 
 def test_the_score_command_warns_about_an_unchecked_scored_label_only(

@@ -230,8 +230,11 @@ def _score(args: argparse.Namespace) -> int:
     # excluded labels (scored=no) do not count, so their check state does not matter here
     unchecked = [label.number for label in labels if label.scored and not label.checked]
     s = score(labels, read_predictions(Path(args.predictions)))
+    # `incomplete` (cut off at the token limit, D25) is said only when a run has any, so the line of
+    # every older run reads as it always did.
+    incomplete = f" · incomplete {s.incomplete}" if s.incomplete else ""
     print(
-        f"correct {s.correct}/{s.labels} · extra {s.extra} · invalid {s.invalid} · "
+        f"correct {s.correct}/{s.labels} · extra {s.extra} · invalid {s.invalid}{incomplete} · "
         f"refused {s.refused} · dropped by cap {s.dropped} · excluded {s.excluded}"
     )
     if s.missing:

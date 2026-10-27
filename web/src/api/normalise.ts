@@ -29,6 +29,8 @@ function parseResult(wire: WireResult, resolveUrl: (url: string) => string): Res
     nameVerified: wire.nameVerified ?? null,
     // A server that does not say who accepted the SMILES (older than D4's CDK fallback): a valid result is RDKit's.
     validBy: wire.validBy ?? (wire.valid ? 'rdkit' : null),
+    // A server older than D25 never says a SMILES was cut off.
+    incomplete: wire.incomplete ?? false,
     svg: wire.svg ?? '',
     molfile: wire.molfile ?? '',
     cropUrl: resolveUrl(wire.cropUrl),
