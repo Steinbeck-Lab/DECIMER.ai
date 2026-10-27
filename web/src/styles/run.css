@@ -408,8 +408,18 @@
   text-align: left;
 }
 
+/* "10 of 10 pages read" and "12 structures found" take about 340 px together: in a window narrower than about 800 px they do
+   not share a line, so the counts' box is two lines high from the start, and the second count, which comes while the
+   pages are being read, does not make the block grow. */
+@media (max-width: 800px) {
+  .dc-run__count {
+    align-content: flex-start;
+    min-height: 3.2em;
+  }
+}
+
 /* A very narrow phone: "8 structures found" does not fit half the line, so the clock and the counts are one above the
-   other, the counts' line reserved (it is there with the clock alone, and when the counts come it is not made). */
+   other, the counts' lines reserved as above (they are there with the clock alone, and when the counts come they are not made). */
 @media (max-width: 380px) {
   .dc-run__meta {
     grid-template-columns: minmax(0, 1fr);
@@ -423,12 +433,11 @@
   .dc-run__count {
     justify-self: center;
     justify-content: center;
-    min-height: 1.6em;
     text-align: center;
   }
 }
 
-/* "Show the document": a quiet pill under the numbers, closed. It adds a line to the block, always, so nothing moves when it is used. */
+/* "Display uploaded document": a quiet pill under the numbers, closed. It adds a line to the block, always, so nothing moves when it is used. */
 .dc-run__doc {
   display: flex;
   justify-content: center;

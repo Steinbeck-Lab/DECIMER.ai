@@ -416,9 +416,9 @@
   flex-direction: column;
   gap: 12px;
   padding: 28px 28px 26px;
+  border: 1px solid var(--dc-line);
   border-radius: 20px;
   background: var(--dc-tile);
-  box-shadow: var(--dc-porcelain-egg);
 }
 
 .dc-cite h3 {

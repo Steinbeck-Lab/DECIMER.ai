@@ -49,7 +49,8 @@
   gap: 16px;
 }
 
-/* The left of the top row: the counts and, when the job has warnings, a second tile under them, together as tall as the document tile. */
+/* The left of the top row: the counts and, when the job has warnings, a second tile under them, together as tall as the
+   document tile: the notices are as tall as their lines and the counts take the rest. */
 .dc-top__left {
   display: flex;
   flex-direction: column;
@@ -68,9 +69,12 @@
   color: var(--dc-egg);
 }
 
-/* Alone (no warnings) it is the whole height of the row, the number at its foot. */
-.dc-top__left > .dc-stats:only-child {
+/* It takes the height of the row that the notices (if any) leave, the number at its foot; alone, a little roomier. */
+.dc-top__left > .dc-stats {
   flex: 1;
+}
+
+.dc-top__left > .dc-stats:only-child {
   gap: 18px;
   padding: 22px 26px 24px;
 }
@@ -88,7 +92,7 @@
   gap: 12px 26px;
 }
 
-.dc-top__left > .dc-stats:only-child .dc-stats__body {
+.dc-top__left > .dc-stats .dc-stats__body {
   margin-top: auto;
 }
 
@@ -414,12 +418,10 @@
 }
 
 /* The job's warnings and limits: the second half of the green box, a Velvet Forest tile under the counts with egg-nog
-   text and a mustard dot to a line. */
+   text and a mustard dot to a line. As tall as its lines, no more: it hangs under the counts tile, it does not stretch. */
 .dc-top .dc-callout.dc-notices[data-kind='warning'] {
   display: flex;
-  flex: 1 1 auto;
   flex-direction: column;
-  justify-content: center;
   gap: 6px;
   margin: 0;
   padding: 14px 22px;
@@ -448,8 +450,11 @@
   background: var(--dc-mustard);
 }
 
-/* The filter row: the filters, and the one Download of the screen right-aligned at its end (a line of its own on a phone). */
+/* The filter row: the filters, and the one Download of the screen right-aligned at its end (a line of its own on a phone).
+   It keeps to one row as its column narrows (the editor is open): the format hint of Download goes and the pills tighten;
+   only where that is not enough does Download drop to a line of its own. */
 .dc-filterbar {
+  container: filterbar / inline-size;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -519,6 +524,31 @@
   color: var(--dc-mustard);
 }
 
+/* As the row's column narrows (the editor is open beside the results): the format hint of Download goes, and the pills tighten.
+   The pill that says the results are narrowed to a page is one more to fit, so it narrows the row's room by its width. */
+@container filterbar (max-width: 660px) {
+  .dc-download__formats {
+    display: none;
+  }
+  .dc-filter {
+    padding: 0 12px;
+  }
+}
+
+@container filterbar (max-width: 780px) {
+  .dc-filterbar:has(.dc-filter--page) .dc-download__formats {
+    display: none;
+  }
+  .dc-filterbar:has(.dc-filter--page) .dc-filter {
+    padding: 0 12px;
+  }
+}
+
+/* While the download is prepared its name is longer and the hint goes. */
+.dc-download[aria-busy='true'] .dc-download__formats {
+  display: none;
+}
+
 .dc-figure__empty {
   margin: 28px 0;
   color: var(--dc-muted);
@@ -549,16 +579,24 @@
   }
 }
 
+/* A tile is three rows of the grid (the drawing, the name, the footer), and its button shares them (subgrid): the rows
+   are as tall as the tallest of their row of tiles, so the drawings, the names and the dividers line up across a row
+   whatever a footer holds. The grid's gap is for the space between rows of tiles, not between the rows of one. */
 .dc-tile {
   position: relative;
+  display: grid;
+  grid-row: span 3;
+  grid-template-rows: subgrid;
+  row-gap: 0;
   min-width: 0;
 }
 
 .dc-tile__button {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-row: 1 / -1;
+  grid-template-rows: subgrid;
+  row-gap: 0;
   width: 100%;
-  height: 100%;
   padding: 14px 16px;
   border: 1px solid var(--dc-line);
   border-radius: 22px;
@@ -645,12 +683,13 @@
   font-style: italic;
 }
 
+/* The footer fills its row of the grid (the divider is its top edge); what it holds stays at the top of it. */
 .dc-tile__foot {
   display: flex;
   flex-wrap: wrap;
+  align-content: flex-start;
   align-items: center;
   gap: 4px 10px;
-  margin-top: auto;
   padding-top: 10px;
   border-top: 1px solid var(--dc-line);
 }
