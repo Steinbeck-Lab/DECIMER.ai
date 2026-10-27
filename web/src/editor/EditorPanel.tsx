@@ -73,6 +73,19 @@ function Idle() {
 }
 
 /**
+ * A structure the model cut off at its length limit says so right under its name (above the SMILES, which is the
+ * cut-off text), as long as it is the model's: once the user has edited it, it is theirs and the note goes.
+ */
+export function IncompleteNote({ view }: { view: ResultView }) {
+  if (!view.result.incomplete || view.modified) return null;
+  return (
+    <p className="dc-callout dc-incomplete" data-kind="problem" role="note">
+      {strings.editor.reasons.incomplete}
+    </p>
+  );
+}
+
+/**
  * Why the result needs a look. The reasons about the recognition (low confidence, the classifier's
  * doubt) go once the user has acted on the result. The ones about the structure as it is now stay:
  * an invalid SMILES must be visible after an edit, and after "checked" too. While the server has not
@@ -81,6 +94,8 @@ function Idle() {
 function Reasons({ view }: { view: ResultView }) {
   const unresolved = view.status === 'review' || view.status === 'notsure';
   const shown = view.reasons.filter((reason) => {
+    // The cut-off note is under the name (`IncompleteNote`), not in this list.
+    if (reason === 'incomplete') return false;
     if (reason === 'invalid' || reason === 'rgroup' || reason === 'cdkOnly') return !view.stale;
     return unresolved;
   });
@@ -362,6 +377,7 @@ export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boole
               </dl>
             </div>
 
+            <IncompleteNote view={view} />
             <StructureCode view={view} />
           </div>
         )}

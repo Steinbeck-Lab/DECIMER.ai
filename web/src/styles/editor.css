@@ -283,7 +283,8 @@
   list-style: none;
 }
 
-.dc-reasons .dc-callout {
+.dc-reasons .dc-callout,
+.dc-incomplete {
   margin: 0;
   font-size: 0.875rem;
 }

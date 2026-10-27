@@ -1,7 +1,7 @@
 import { MantineProvider } from '@mantine/core';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
-import { asCdkOnly, fixtureResults } from '../mocks/fixtures';
+import { asCdkOnly, asIncomplete, fixtureResults } from '../mocks/fixtures';
 import { viewOf } from '../state/selectors';
 import type { EditEntry } from '../state/model';
 import { Tile } from './Tile';
@@ -116,4 +116,24 @@ test('the button is named "Structure n", the name and the status, in that order;
   expect(button.textContent?.startsWith(`Structure ${ethanol!.number}`)).toBe(true);
   expect(button.querySelector('.dc-tile__id')?.getAttribute('aria-hidden')).toBe('true');
   expect(button.querySelector('.dc-status .dc-dot')?.getAttribute('data-status')).toBe('unchecked');
+});
+
+test('a structure the model cut off at its length limit has an "Incomplete" flag, in the tile\'s name, until it is edited', () => {
+  const button = show(asIncomplete(ethanol));
+  expect(button.textContent).toContain('Incomplete');
+  expect(button.querySelector('.dc-status--invalid svg')).not.toBeNull(); // the family of "Invalid SMILES", with its icon
+  expect(button.getAttribute('data-status')).toBe('review');
+  // The flag is part of what the button says, so it is in the name: "Structure 1 ... Review Incomplete".
+  expect(screen.getByRole('button', { name: /Incomplete/ })).toBe(button);
+  cleanup();
+  // An edit is the user's structure now: no flag. (And it is "Edited", not in review.)
+  const edited = show(asIncomplete(ethanol), { molfile: 'x', modified: true, checked: false, derived: null, validating: false, validationFailed: false });
+  expect(edited.textContent).not.toContain('Incomplete');
+  cleanup();
+  // A structure the model finished has none, and one that is both cut off and invalid has both.
+  expect(show().textContent).not.toContain('Incomplete');
+  cleanup();
+  const both = show({ ...asIncomplete(ethanol), valid: false, validBy: null, inchikey: '' });
+  expect(both.textContent).toContain('Incomplete');
+  expect(both.textContent).toContain('Invalid SMILES');
 });

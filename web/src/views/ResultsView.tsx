@@ -30,8 +30,8 @@ const FILTERS: { filter: Filter; label: string }[] = [
  * is the second half of the green box: a Velvet Forest tile under the counts, a mustard dot to a line; alone on the "no
  * structures" screen it is the yellow callout.
  */
-function JobNotices({ job, calm = false }: { job: Job; calm?: boolean }) {
-  const notices = jobNotices(job);
+function JobNotices({ job, calm = false, incomplete = [] }: { job: Job; calm?: boolean; incomplete?: readonly number[] }) {
+  const notices = jobNotices(job, incomplete);
   if (notices.length === 0) return null;
   return (
     <div className={calm ? 'dc-callout dc-notices' : 'dc-callout'} data-kind="warning" role="note">
@@ -60,6 +60,12 @@ export function ResultsView() {
   const select = useCallback((index: number) => controller.select(index), [controller]);
 
   const counts = useMemo(() => countsOf(views), [views]);
+  // The structures the model cut off at its length limit that nobody has edited or checked yet (an edit is the user's
+  // structure; a check means they have looked at it, so "check it in the editor" is done).
+  const cutOff = useMemo(
+    () => views.filter((v) => v.result.incomplete && !v.modified && !v.checked).map((v) => v.number),
+    [views],
+  );
   // "All" counts every page, whichever page is chosen: pressing it shows them all. The others are counted on the chosen page.
   const chipCounts = useMemo(() => ({ ...filterCounts(views, pageFilter), all: views.length }), [views, pageFilter]);
   const shown = useMemo(() => filterViews(views, filter, pageFilter), [views, filter, pageFilter]);
@@ -101,7 +107,7 @@ export function ResultsView() {
               </ul>
             </div>
           </div>
-          <JobNotices job={job} calm />
+          <JobNotices job={job} calm incomplete={cutOff} />
         </div>
         {/* Legacy shows the document for a PDF only; an image is its own picture, and the tile shows its crop. */}
         <DocumentTile

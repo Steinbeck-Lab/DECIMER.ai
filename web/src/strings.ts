@@ -285,6 +285,11 @@ export const strings = {
         (n) => `Structure ${n} could not be classified.`,
         (list) => `Structures ${list} could not be classified.`,
       ),
+      /** Not a warning the API sends: made from the results the model cut off at its length limit that nobody has edited. */
+      incomplete: counted(
+        (n) => `Structure ${n} was cut off at the model's length limit; check it in the editor.`,
+        (list) => `Structures ${list} were cut off at the model's length limit; check them in the editor.`,
+      ),
     } satisfies Record<string, (numbers: readonly number[]) => string>,
     document: {
       /** Legacy's label for the same control. */
@@ -329,6 +334,8 @@ export const strings = {
      * the short form on the tile; the hover has the whole sentence, and says who could not read it.
      */
     cdkOnlyFlag: 'Accepted by CDK only',
+    /** The tile's flag for a structure the model cut off at its length limit (decision D25), until it is edited. */
+    incompleteFlag: 'Incomplete',
     cdkOnlyHover: 'Accepted by CDK only (RDKit could not read it)',
     /**
      * States the fact, not a cause, and does not name Orthonym: names may be switched off altogether (no chemistry

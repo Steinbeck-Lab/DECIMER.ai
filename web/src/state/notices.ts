@@ -8,10 +8,13 @@ import { strings } from '../strings';
  * `structures_truncated` warning for the same fact, which are not repeated. A
  * warning code this version does not know is shown as the API worded it, and
  * a job that was truncated for no stated reason still says so. The warnings about one structure or page each are
- * joined by kind: "Structures 1, 4 and 9 could not be recognised." is one line, not three.
+ * joined by kind: "Structures 1, 4 and 9 could not be recognised." is one line, not three. So are the structures the
+ * model cut off at its length limit (`incomplete`, made from the results, not from a warning).
  */
 export function jobNotices(
   job: Pick<Job, 'pages' | 'pagesProcessed' | 'structuresDropped' | 'truncated' | 'warnings'>,
+  /** The numbers of the structures the model cut off at its length limit and nobody has edited: the API sends no warning for them. */
+  incomplete: readonly number[] = [],
 ): string[] {
   const notices: (string | Counted)[] = [];
   if (job.pages > job.pagesProcessed || job.warnings.some((w) => w.code === 'pages_truncated')) {
@@ -39,6 +42,8 @@ export function jobNotices(
     }
     if (!group.numbers.includes(Number(number))) group.numbers.push(Number(number));
   }
+  // The cut-off structures, in one sentence, after the warnings the API sent.
+  if (incomplete.length > 0) notices.push({ code: 'incomplete', numbers: [...new Set(incomplete)] });
   const lines = notices.map((notice) =>
     typeof notice === 'string' ? notice : strings.results.countedWarnings[notice.code]([...notice.numbers].sort((a, b) => a - b)),
   );

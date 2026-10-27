@@ -56,8 +56,8 @@ export function reasonsFor(r: {
   incomplete?: boolean;
 }): Reason[] {
   const reasons: Reason[] = [];
-  // A cut-off SMILES is never taken for a reading: until the UI shows the flag itself, this puts the result
-  // under "Needs review" whatever RDKit, CDK and the model's confidence say about the text.
+  // A cut-off SMILES is never taken for a reading: beside the visible flag (tile badge, editor note, notices),
+  // this keeps the result under "Needs review" whatever RDKit, CDK and the model's confidence say about the text.
   if (r.incomplete) reasons.push('incomplete');
   // Only an answer of "no" is a doubt. `null` is a classifier that was not there: nothing to say.
   if (r.isStructure === false) reasons.push('notStructure');

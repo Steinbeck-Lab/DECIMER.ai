@@ -162,3 +162,22 @@ test('with no warnings there is no second tile: the counts have the whole left c
   expect(left.children).toHaveLength(1);
   expect(left.firstElementChild?.classList.contains('dc-stats')).toBe(true);
 });
+
+test('structures the model cut off are said in the green notices tile, flagged on their tiles, and the sentence goes with the edit', async () => {
+  const c = await mountResults(new File(['x'], 'incomplete.png', { type: 'image/png' }));
+  // The mock cuts off its third structure (number 4).
+  const note = screen.getByRole('note');
+  expect(note.classList.contains('dc-notices')).toBe(true);
+  expect(note.textContent).toContain("Structure 4 was cut off at the model's length limit; check it in the editor.");
+  // An edit is the user's structure: the sentence is not true any more.
+  act(() => c.store.dispatch({ type: 'edit', index: 2, molfile: 'x' }));
+  expect(screen.queryByRole('note')).toBeNull();
+});
+
+test('the cut-off sentence also goes once the structure is marked checked, though nothing was edited', async () => {
+  const c = await mountResults(new File(['x'], 'incomplete.png', { type: 'image/png' }));
+  expect(screen.getByRole('note').textContent).toContain('Structure 4 was cut off');
+  // "Check it in the editor" is done: the user has looked at it. The tile badge stays (the text is still cut off).
+  act(() => c.store.dispatch({ type: 'check', index: 2, checked: true }));
+  expect(screen.queryByRole('note')).toBeNull();
+});

@@ -138,3 +138,18 @@ test('a warning of a counted kind with no number in its text is shown as the API
     'Something could not be recognised.',
   ]);
 });
+
+test('structures the model cut off are one sentence made from the results, after the warnings the API sent', () => {
+  expect(jobNotices(base, [4])).toEqual(["Structure 4 was cut off at the model's length limit; check it in the editor."]);
+  expect(jobNotices(base, [9, 1, 4, 8, 10, 1])).toEqual([
+    "Structures 1, 4, 8, 9 and 10 were cut off at the model's length limit; check them in the editor.",
+  ]);
+  expect(
+    jobNotices({ ...base, warnings: [{ code: 'recognition_failed', message: 'Structure 2 could not be recognised.' }] }, [3, 5]),
+  ).toEqual([
+    'Structure 2 could not be recognised.',
+    "Structures 3 and 5 were cut off at the model's length limit; check them in the editor.",
+  ]);
+  // None cut off (or all edited): nothing is said.
+  expect(jobNotices(base, [])).toEqual([]);
+});

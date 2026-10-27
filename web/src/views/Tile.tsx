@@ -85,6 +85,12 @@ export const Tile = memo(function Tile({ view, selected, order, onSelect }: Prop
                 <span className="dc-dot" data-status={view.status} aria-hidden="true" />
                 {status}
               </span>
+              {view.result.incomplete && !view.modified && (
+                <span className="dc-status dc-status--invalid">
+                  <IconAlert size={12} />
+                  {strings.tile.incompleteFlag}
+                </span>
+              )}
               {view.invalid && !view.stale && (
                 <span className="dc-status dc-status--invalid">
                   <IconAlert size={12} />

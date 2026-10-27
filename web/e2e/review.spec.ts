@@ -225,6 +225,33 @@ test('one export at a time: while it runs the Download button is off, and only o
   expect(downloads).toBe(1);
 });
 
+test('a structure the model cut off is flagged on its tile, said in the green notices tile, and noted in the editor', async ({ page }) => {
+  const problems = watchProblems(page);
+  await openResults(page, 'incomplete.png');
+  await page.locator('.dc-grid[data-arriving="false"]').waitFor({ timeout: 15_000 });
+  // The mock cuts off its third structure, number 4: a flag in the family of "Invalid SMILES", in the tile's name.
+  await expect(tile(page, 4)).toContainText('Incomplete');
+  await expect(tile(page, 4)).toContainText('Review');
+  await expect(tile(page, 1)).not.toContainText('Incomplete');
+  // One sentence in the second half of the green box, above the grid.
+  const note = page.getByRole('note');
+  await expect(note).toHaveText("Structure 4 was cut off at the model's length limit; check it in the editor.");
+  await expect(page.locator('.dc-top__left .dc-notices')).toBeVisible();
+  // In the editor, right under the name (above the SMILES, which is the cut-off text).
+  await tile(page, 4).click();
+  const panel = editorPanel(page);
+  const cutOff = panel.getByRole('note');
+  await expect(cutOff).toHaveText('Incomplete: the model stopped at its length limit; the structure is cut off.');
+  const below = await panel.evaluate((el) => {
+    const facts = el.querySelector('.dc-facts')!.getBoundingClientRect();
+    const smiles = el.querySelector('.dc-code')!.getBoundingClientRect();
+    const noteBox = el.querySelector('.dc-incomplete')!.getBoundingClientRect();
+    return noteBox.top >= facts.bottom - 1 && noteBox.bottom <= smiles.top + 1;
+  });
+  expect(below).toBe(true);
+  expect(problems).toEqual([]);
+});
+
 test('New upload counts checked results as well as edited ones, and keeping on keeps them', async ({ page }) => {
   await openResults(page);
   await tile(page, 6).click();
