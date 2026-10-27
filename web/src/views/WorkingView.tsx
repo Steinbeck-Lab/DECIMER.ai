@@ -284,7 +284,7 @@ export function WorkingView() {
         <p className="dc-run__meta">
           <span className="dc-run__clock">{strings.working.elapsed(formatElapsed(elapsed))}</span>
           <span className="dc-run__count">
-            {rendering && <span>{strings.working.pages(job.pagesProcessed, pagesToProcess(job, pdf))}</span>}
+            {rendering && <span>{strings.working.pages(job.pagesProcessed, pagesToProcess(job, pdf), pdf)}</span>}
             {/* The results themselves arrive with the finished job; until then a poll only carries this count. */}
             {job && job.structuresFound > 0 && <span>{strings.working.found(job.structuresFound)}</span>}
           </span>

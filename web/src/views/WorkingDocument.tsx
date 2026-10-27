@@ -13,7 +13,7 @@ interface ToggleProps {
 }
 
 /**
- * "Show the document": a quiet porcelain pill under the working screen's numbers. It only opens and closes the panel
+ * "Display uploaded document": a quiet porcelain pill under the working screen's numbers. It only opens and closes the panel
  * below the working block (the page grows downwards; nothing above it moves).
  */
 export function DocumentToggle({ open, onToggle, controls }: ToggleProps) {

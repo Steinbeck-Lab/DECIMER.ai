@@ -7,6 +7,7 @@ import { MockApiClient } from '../mocks/MockApiClient';
 import type { AppController } from '../state/controller';
 import type { SourceFile } from '../state/model';
 import { AppProvider, useController } from '../state/react';
+import { strings } from '../strings';
 import { WorkingView } from './WorkingView';
 
 afterEach(cleanup);
@@ -137,9 +138,16 @@ test('the progress rule shows each stage in its own state, and its value and its
 test('the page count is shown as long as the render stage is not done, also beside another stage', () => {
   const c = mountWorking();
   act(() => c.store.dispatch({ type: 'jobUpdated', job: { ...overlapped('active', 'active'), pages: 14, pagesProcessed: 10 } }));
-  expect(screen.getByText('Page 10 of 10')).toBeTruthy();
+  expect(screen.getByText('10 of 10 pages read')).toBeTruthy();
   act(() => c.store.dispatch({ type: 'jobUpdated', job: { ...overlapped('done', 'active'), pages: 14, pagesProcessed: 10 } }));
-  expect(screen.queryByText(/^Page \d+ of \d+$/)).toBeNull();
+  expect(screen.queryByText(/^\d+ of \d+ (pages?|images?) read$/)).toBeNull();
+});
+
+test('the page count reads as progress, with the noun of the upload', () => {
+  expect(strings.working.pages(0, 10, true)).toBe('0 of 10 pages read');
+  expect(strings.working.pages(1, 1, true)).toBe('1 of 1 page read');
+  expect(strings.working.pages(3, 12, false)).toBe('3 of 12 images read');
+  expect(strings.working.pages(1, 1, false)).toBe('1 of 1 image read');
 });
 
 // The hint says what to expect for this upload, not "a 10-page PDF" for everything.
@@ -179,13 +187,13 @@ test('several images are counted as images; a PDF whose pages are not known yet 
   expect(note()).toBe('How long this takes depends on the number of pages.');
 });
 
-test('images are not capped at the PDF page limit: 12 images are 12, in the hint and in "Page x of y"', () => {
+test('images are not capped at the PDF page limit: 12 images are 12, in the hint and in "x of y images read"', () => {
   const images = Array.from({ length: 12 }, (_, i): SourceFile => ({ name: `${i}.png`, size: 1, kind: 'image' }));
   const c = mountWorking(images);
   expect(note()).toBe('12 images can take a minute or more.');
   act(() => c.store.dispatch({ type: 'jobUpdated', job: { ...overlapped('active', 'active'), pages: 12, pagesProcessed: 12 } }));
   expect(note()).toBe('12 images can take a minute or more.');
-  expect(screen.getByText('Page 12 of 12')).toBeTruthy();
+  expect(screen.getByText('12 of 12 images read')).toBeTruthy();
 });
 
 // What was uploaded sits in the inspection frame, whose label says the stage (decoration: the heading says it in words).
@@ -342,7 +350,7 @@ test('the clock and the counts have places of their own: the counts come and go 
   expect(clock()).toBe('Elapsed 0:00');
   expect(document.querySelector('.dc-run__count')?.textContent).toBe('');
   act(() => c.store.dispatch({ type: 'jobUpdated', job: { ...overlapped('active', 'pending'), pages: 14, pagesProcessed: 4 } }));
-  expect(document.querySelector('.dc-run__count')?.textContent).toBe('Page 4 of 10');
+  expect(document.querySelector('.dc-run__count')?.textContent).toBe('4 of 10 pages read');
   expect(clock()).toBe('Elapsed 0:00');
 });
 
@@ -385,8 +393,8 @@ test('a hidden tab pauses the loops under the view, and a tab that is back lets 
   delete (document as { hidden?: boolean }).hidden;
 });
 
-// "Show the document": the upload being processed, under the working block, on request.
-const toggle = () => screen.getByRole('button', { name: /the document$/ });
+// "Display uploaded document": the upload being processed, under the working block, on request.
+const toggle = () => screen.getByRole('button', { name: /uploaded document$/ });
 const panel = () => document.querySelector<HTMLElement>('.dc-workdoc')!;
 const withPages = (job: Job, n: number, over: Partial<Job> = {}): Job => ({
   ...job,
@@ -400,7 +408,7 @@ test('the document is shut by default: a toggle that says what it controls, and 
   const c = mountWorking();
   act(() => c.store.dispatch({ type: 'jobUpdated', job: withPages(overlapped('active', 'pending'), 3) }));
   const button = toggle();
-  expect(button.textContent).toBe('Show the document');
+  expect(button.textContent).toBe('Display uploaded document');
   expect(button.getAttribute('aria-expanded')).toBe('false');
   const controlled = document.getElementById(button.getAttribute('aria-controls')!);
   expect(controlled).not.toBeNull();
@@ -418,7 +426,7 @@ test('opened, it shows the pages of a PDF as the job lists them, lazily, and shu
   const c = mountWorking();
   act(() => c.store.dispatch({ type: 'jobUpdated', job: withPages(overlapped('active', 'pending'), 3, { pages: 14 }) }));
   fireEvent.click(toggle());
-  expect(toggle().textContent).toBe('Hide the document');
+  expect(toggle().textContent).toBe('Hide uploaded document');
   expect(toggle().getAttribute('aria-expanded')).toBe('true');
   expect(panel().hidden).toBe(false);
   const images = [...panel().querySelectorAll('img')];

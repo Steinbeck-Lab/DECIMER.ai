@@ -143,6 +143,13 @@
   font: 400 0.75rem/1.5 var(--dc-font-mono);
 }
 
+/* "or paste ⌘V": a phone has no key to press for it (no fine pointer, so no keyboard to expect). */
+@media not (any-pointer: fine) {
+  .dc-drop__hint {
+    display: none;
+  }
+}
+
 .dc-drop__button {
   flex: none;
   min-height: 52px;

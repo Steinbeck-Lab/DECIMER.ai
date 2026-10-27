@@ -1,7 +1,7 @@
 /*
  * The About page: a specimen bento (owner-approved sketch A, .impeccable/mocks/decision/about-a.html). The title and
  * lead sit beside the wordmark under the copper inspection frame; then tiles for how to use, the limits as big
- * figures and what DECIMER is; the project components on a measuring line; the citations as porcelain cards.
+ * figures and what DECIMER is; the project components on a measuring line; the citations as flat hairline cards.
  * Privacy and Impressum keep the reading column of pages.css.
  */
 
@@ -416,9 +416,9 @@
   flex-direction: column;
   gap: 12px;
   padding: 28px 28px 26px;
+  border: 1px solid var(--dc-line);
   border-radius: 20px;
   background: var(--dc-tile);
-  box-shadow: var(--dc-porcelain-egg);
 }
 
 .dc-cite h3 {

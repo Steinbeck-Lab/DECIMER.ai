@@ -160,7 +160,9 @@ export const strings = {
       pages: (n: number, pdf: boolean) => `${n} ${pdf ? plural(n, 'page', 'pages') : plural(n, 'image', 'images')}`,
       structures: (n: number) => `${n} ${plural(n, 'structure', 'structures')}`,
     },
-    pages: (done: number, total: number) => `Page ${done} of ${total}`,
+    /** The count under the progress rule, as progress ("0 of 10 pages read"); images are not pages. */
+    pages: (done: number, total: number, pdf: boolean) =>
+      `${done} of ${total} ${pdf ? plural(total, 'page', 'pages') : plural(total, 'image', 'images')} read`,
     found: (n: number) => `${n} ${plural(n, 'structure', 'structures')} found`,
     /**
      * What to expect, from the job: the pages that will be processed (null while the upload is still being read) and
@@ -179,10 +181,10 @@ export const strings = {
     queuedLabel: 'In queue',
     stoppedLabel: 'Stopped',
     sourcePreview: (name: string) => `Preview of ${name}`,
-    /** The toggle under the working screen's numbers, and the document it opens below them. */
+    /** The toggle under the working screen's numbers, and the document it opens below them (legacy's wording, as on the results). */
     document: {
-      show: 'Show the document',
-      hide: 'Hide the document',
+      show: 'Display uploaded document',
+      hide: 'Hide uploaded document',
       region: 'Uploaded document',
       /** A page of the document that has not been read yet, in the place of its picture. */
       waiting: (page: number) => `Page ${page} · not read yet`,
