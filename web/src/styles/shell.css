@@ -130,8 +130,8 @@
 /*
  * The ribbon bookmarks of the empty screen: two strips of cloth hanging from the top edge, About (copper) in front
  * of GitHub (forest) by about 12 px. Each is a real link around a canvas (ClothRibbon.tsx simulates and draws the
- * cloth) and a label printed on the cloth that follows it. The link is exactly as wide as the strip, so nothing
- * beside the cloth is clickable. On a phone the pair is a little smaller.
+ * cloth; a mouse can pull it) and a label printed on the cloth that follows it. The link is exactly as wide as the
+ * strip at rest, so nothing beside the cloth is clickable. On a phone the pair is a little smaller.
  */
 .dc-ribbons {
   position: absolute;
@@ -149,6 +149,14 @@
   height: var(--ribbon-len);
   color: var(--ribbon-ink);
   text-decoration: none;
+  /* A mouse can take hold of the cloth and pull it: no text selection, no browser drag of the link. */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
+
+.dc-ribbon[data-pulling='true'] {
+  cursor: grabbing;
 }
 
 .dc-ribbon:first-child {
@@ -168,9 +176,9 @@
 .dc-ribbon canvas {
   position: absolute;
   top: 0;
-  left: -38px;
-  width: 122px;
-  height: 220px;
+  left: -52px;
+  width: 150px;
+  height: 236px;
   pointer-events: none;
 }
 

@@ -1,6 +1,6 @@
 import { MantineProvider } from '@mantine/core';
-import { act, cleanup, render, screen, within } from '@testing-library/react';
-import { afterEach, expect, test } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, expect, test, vi } from 'vitest';
 import { App } from '../App';
 import { MockApiClient } from '../mocks/MockApiClient';
 import { AppProvider } from '../state/react';
@@ -39,6 +39,94 @@ test('the empty screen hangs About and GitHub from the top edge as two ribbon li
   }
   // The wordmark is the big logo of the page: the header does not repeat it.
   expect(within(header).queryByRole('link', { name: strings.shell.home })).toBeNull();
+});
+
+test('a ribbon is still a plain link to a click: the browser does not drag it, and a press that does not pull follows it', () => {
+  renderApp();
+  const about = within(screen.getByRole('navigation', { name: strings.shell.mainNav })).getByRole('link', { name: strings.shell.about });
+  expect(about.getAttribute('draggable')).toBe('false');
+  fireEvent.pointerDown(about, { button: 0, pointerId: 1, pointerType: 'mouse', clientX: 10, clientY: 40 });
+  fireEvent.pointerMove(about, { pointerId: 1, pointerType: 'mouse', clientX: 11, clientY: 41 });
+  fireEvent.pointerUp(about, { pointerId: 1, pointerType: 'mouse', clientX: 11, clientY: 41 });
+  const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+  about.dispatchEvent(click);
+  expect(click.defaultPrevented).toBe(false);
+});
+
+/**
+ * Gives jsdom just enough of a canvas for the ribbons to build their cloth (every drawing call does nothing) and
+ * pointer capture that remembers who holds it, for as long as the test runs.
+ */
+function withFakeCanvas() {
+  const noop = () => {};
+  const context = new Proxy({}, { get: (_, key) => (key === 'canvas' ? undefined : noop), set: () => true });
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((() => context) as never);
+  vi.stubGlobal('Path2D', class { moveTo() {} lineTo() {} closePath() {} });
+  const captured = new WeakMap<Element, Set<number>>();
+  const held = (el: Element) => captured.get(el) ?? captured.set(el, new Set()).get(el)!;
+  Element.prototype.setPointerCapture = function (id: number) {
+    held(this).add(id);
+  };
+  Element.prototype.releasePointerCapture = function (id: number) {
+    held(this).delete(id);
+  };
+  Element.prototype.hasPointerCapture = function (id: number) {
+    return held(this).has(id);
+  };
+  return () => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    for (const key of ['setPointerCapture', 'releasePointerCapture', 'hasPointerCapture'] as const) delete (Element.prototype as Partial<Element>)[key];
+  };
+}
+
+test('a press that leaves the ribbon and is let go elsewhere is over: hovering back does not grab the cloth, a click still follows the link', () => {
+  const restore = withFakeCanvas();
+  try {
+    renderApp();
+    const about = within(screen.getByRole('navigation', { name: strings.shell.mainNav })).getByRole('link', { name: strings.shell.about });
+    const mouse = { pointerId: 1, pointerType: 'mouse' };
+    // Down near the edge, out of the ribbon before the pull starts, and released somewhere the link does not hear of.
+    fireEvent.pointerDown(about, { ...mouse, button: 0, buttons: 1, clientX: 2, clientY: 60 });
+    fireEvent.pointerLeave(about, { ...mouse, buttons: 1, clientX: -3, clientY: 60 });
+    fireEvent.pointerUp(document.body, { ...mouse, button: 0, buttons: 0, clientX: -40, clientY: 60 });
+    about.releasePointerCapture(1); // what the browser does on any pointerup
+    // The pointer comes back with no button held, far enough to have been a pull.
+    fireEvent.pointerEnter(about, { ...mouse, buttons: 0, clientX: 20, clientY: 80 });
+    fireEvent.pointerMove(about, { ...mouse, buttons: 0, clientX: 30, clientY: 90 });
+    expect(about.dataset.pulling).toBeUndefined();
+    expect(about.hasPointerCapture(1)).toBe(false);
+    // A click elsewhere does not end in the link, and a click on it follows it.
+    fireEvent.pointerDown(document.body, { ...mouse, button: 0, buttons: 1 });
+    fireEvent.pointerUp(document.body, { ...mouse, button: 0, buttons: 0 });
+    expect(about.hasPointerCapture(1)).toBe(false);
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+    about.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(false);
+  } finally {
+    restore();
+  }
+});
+
+test('a real pull of the ribbon grabs the cloth, and the click that ends it does not follow the link', () => {
+  const restore = withFakeCanvas();
+  try {
+    renderApp();
+    const about = within(screen.getByRole('navigation', { name: strings.shell.mainNav })).getByRole('link', { name: strings.shell.about });
+    const mouse = { pointerId: 1, pointerType: 'mouse' };
+    fireEvent.pointerDown(about, { ...mouse, button: 0, buttons: 1, clientX: 20, clientY: 100 });
+    expect(about.hasPointerCapture(1)).toBe(true);
+    fireEvent.pointerMove(about, { ...mouse, buttons: 1, clientX: 40, clientY: 110 });
+    expect(about.dataset.pulling).toBe('true');
+    fireEvent.pointerUp(about, { ...mouse, button: 0, buttons: 0, clientX: 40, clientY: 110 });
+    expect(about.dataset.pulling).toBeUndefined();
+    expect(about.hasPointerCapture(1)).toBe(false);
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+    about.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(true);
+  } finally {
+    restore();
+  }
 });
 
 test('every other page has the wordmark and plain links in the header, not ribbons', async () => {
