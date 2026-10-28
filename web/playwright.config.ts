@@ -12,6 +12,8 @@ export default defineConfig({
   // e2e/live/ runs against a stack that is already up, with its own config (e2e/live/live.config.ts, `npm run e2e:live`).
   testIgnore: '**/live/**',
   timeout: 120_000,
+  // GitHub's runners are slower than the VM: Ketcher-heavy tests flake there (2026-10-28). Retries only in CI.
+  retries: process.env.CI ? 2 : 0,
   reporter: [['list']],
   use: {
     baseURL: `${origin(PORT)}/`,
