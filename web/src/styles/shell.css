@@ -145,6 +145,8 @@
   width: 150px;
   height: 236px;
   pointer-events: none;
+  /* Its own compositor layer: Safari otherwise left the second ribbon's canvas unpainted (not even an outline showed). */
+  will-change: transform;
 }
 
 .dc-ribbon__label {
