@@ -3,7 +3,7 @@ report carries a crash and nothing a user gave us.
 
 OFF unless `SENTRY_DSN` is set. In the stack it names the `glitchtip-gate` container on the
 `glitchtip-sdk` network (`http://<key>@glitchtip-gate:8000/<project>`; the gate lets the envelope
-endpoint through and nothing else): nothing leaves the VM.
+endpoint through and nothing else): nothing leaves the host.
 
 Everything that could carry user data is switched off at the source, and `scrub.scrub_event` (the
 `before_send`) is an allowlist behind that, so a setting that is wrong cannot be the only guard:

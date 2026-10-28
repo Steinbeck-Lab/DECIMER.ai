@@ -1,4 +1,4 @@
-"""Stopping a job that the user deleted (TODO: `DELETE /api/jobs/{id}`).
+"""Stopping a job that the user deleted (`DELETE /api/jobs/{id}`).
 
 The api removes the record and sets a marker (`JobStore.cancel`). A job that is only queued needs
 nothing more: the worker finds no record and skips it. A job that is *running* has to be stopped:

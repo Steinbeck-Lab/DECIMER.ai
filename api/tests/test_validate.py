@@ -1,4 +1,4 @@
-"""POST /api/jobs/{id}/results/{n}/validate (TODO, D12)."""
+"""POST /api/jobs/{id}/results/{n}/validate."""
 
 from __future__ import annotations
 

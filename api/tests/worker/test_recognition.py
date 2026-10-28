@@ -1,4 +1,4 @@
-"""What is done with ocsr's SMILES: legacy's fragment filter, R groups, then RDKit."""
+"""What is done with ocsr's SMILES: the earlier version's fragment filter, R groups, then RDKit."""
 
 from __future__ import annotations
 

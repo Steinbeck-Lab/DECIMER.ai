@@ -1,4 +1,4 @@
-"""The CDK fallback (D4 kept, TODO): the SMILES RDKit refuses go to chem's `POST /cdk` in one
+"""The CDK fallback: the SMILES RDKit refuses go to chem's `POST /cdk` in one
 batch per job; a structure only CDK accepts is a result with `valid: false`, `validBy: "cdk"`,
 CDK's molblock, RDKit's drawing of it and the SMILES as DECIMER wrote it. Never a failure of the
 job."""
@@ -110,7 +110,7 @@ async def test_every_structure_rdkit_accepts_never_reaches_cdk(make_rig: RigFact
     job = await rig.run(await rig.pdf_job(1))
     assert backend.chem_batches("/cdk") == []
     assert [(r.valid, r.valid_by) for r in job.results] == [(True, "rdkit")] * 3
-    # What RDKit says is what the P3-04 pipeline always said, byte for byte.
+    # What RDKit says is what the pipeline says without CDK, byte for byte.
     for k, result in enumerate(job.results):
         expected = analyse_smiles(smiles_for(0, k))
         assert (result.smiles, result.inchikey, result.molfile, result.svg) == (

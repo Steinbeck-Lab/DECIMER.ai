@@ -1,4 +1,4 @@
-"""The worker counts a finished job once (TODO, `decimer_api.usage`)."""
+"""The worker counts a finished job once (`decimer_api.usage`)."""
 
 from __future__ import annotations
 

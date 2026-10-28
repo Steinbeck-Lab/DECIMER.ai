@@ -1,6 +1,7 @@
-"""Legacy's fragment filter (decision D16), applied to ocsr's SMILES before RDKit.
+"""The fragment filter of the earlier Laravel version of decimer.ai, applied to ocsr's SMILES
+before RDKit, so that results match what its users got.
 
-DECIMER sometimes reads a drawing as several structures joined with dots. The legacy site
+DECIMER sometimes reads a drawing as several structures joined with dots. That version
 (`app/Python/decimer_predictor_server.py` in DECIMER_Web) keeps only the first fragment when
 
 * there are more than four `.`-separated fragments, or

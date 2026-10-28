@@ -96,7 +96,7 @@ async def test_the_cdk_flag_with_chem_says_nothing(
 
 
 def test_the_cdk_fallback_is_on_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
-    """D4 (kept, 2026-10-23): on unless CDK_FALLBACK says otherwise."""
+    """On unless CDK_FALLBACK says otherwise."""
     monkeypatch.delenv("CDK_FALLBACK", raising=False)
     assert WorkerSettings().cdk_fallback is True
     monkeypatch.setenv("CDK_FALLBACK", "false")

@@ -43,7 +43,7 @@ async def test_arq_enqueue_passes_the_job_id_and_the_queue(monkeypatch: pytest.M
     await enqueue("b" * 32)
     assert len(created) == 1  # one pool, reused
     assert created[0].host == "redis" and created[0].database == 3
-    # Changed with P3-04b: the queue is named in the call (the default lane, `arq:queue`).
+    # The queue is named in the call (the default lane, `arq:queue`).
     assert pool.calls[0] == (
         (PROCESS_JOB, "a" * 32),
         {"_job_id": "a" * 32, "_queue_name": "arq:queue"},

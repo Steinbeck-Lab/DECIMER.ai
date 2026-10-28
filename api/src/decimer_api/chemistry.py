@@ -1,6 +1,6 @@
-"""Canonical values for one structure, computed with RDKit (ROADMAP §3, "Canonical values").
+"""Canonical values for one structure, computed with RDKit.
 
-Shared by the worker (`check` stage) and, later, by `/validate`: both must give the
+Shared by the worker (`check` stage) and by `/validate`: both must give the
 screen and the export the same SMILES, InChIKey, molfile and drawing.
 
 `analyse_smiles` never raises for a bad SMILES; the answer says `valid=False`. What "valid" means:

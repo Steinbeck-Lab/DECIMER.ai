@@ -1,10 +1,11 @@
 """A job of several images never calls seg: every image is one structure, read whole.
 
-Legacy never segments an upload of several images: each image goes to ocsr and cls as it is, and
-structure N is image N. The worker copies that for a job of MORE THAN ONE image: no seg call, the
-crop of an image is a hard link to the image, its box is the whole image, the structures are
-numbered in image order by the same prefix rule and the same cap (`MAX_STRUCTURES`, 20) as every
-other job. A single image keeps the single-image rule (D20: seg first) and a PDF is untouched.
+The earlier Laravel version of decimer.ai never segmented an upload of several images: each image
+goes to ocsr and cls as it is, and structure N is image N. The worker copies that for a job of MORE
+THAN ONE image: no seg call, the crop of an image is a hard link to the image, its box is the whole
+image, the structures are numbered in image order by the same prefix rule and the same cap
+(`MAX_STRUCTURES`, 20) as every other job. A single image keeps the single-image rule (seg first)
+and a PDF is untouched.
 
 The fake seg here would find TWO structures on every page, so a pipeline that still asked it would
 give twice as many results, with seg's boxes, and the tests below could not pass.
@@ -125,9 +126,9 @@ async def test_an_image_that_settles_first_waits_for_the_images_before_it(
 
 
 async def test_twenty_five_images_follow_the_cap_rule(make_rig: RigFactory) -> None:
-    """Legacy reads the first 20 and leaves the rest empty, with a warning that only the first 20
-    are processed. Here: the first 20 are read, `structuresFound` counts all 25, nothing is sent
-    for the last five, and the job says so."""
+    """The earlier version read the first 20 and left the rest empty, with a warning that only the
+    first 20 are processed. Here: the first 20 are read, `structuresFound` counts all 25, nothing is
+    sent for the last five, and the job says so."""
     rig = make_rig(backend=seeing_two_everywhere(25))
     job = await rig.run(await rig.image_job(sizes_of(25)))
 
@@ -187,7 +188,8 @@ async def test_only_a_single_image_and_a_pdf_still_call_seg(
 async def test_a_single_image_keeps_seg_crop_when_seg_finds_a_small_structure(
     make_rig: RigFactory,
 ) -> None:
-    """D20 is unchanged: one image goes to seg and only a big enough box makes it whole."""
+    """The single-image rule is unchanged: one image goes to seg and only a big enough box makes
+    it whole."""
     rig = make_rig(backend=FakeBackend(layout={0: 1}))
     done = await rig.run(await rig.image_job([(600, 600)]))
     assert rig.backend.count("seg") == 1
@@ -200,8 +202,8 @@ async def test_a_single_image_keeps_seg_crop_when_seg_finds_a_small_structure(
 async def test_an_image_that_is_no_png_keeps_its_number_as_an_empty_result(
     make_rig: RigFactory,
 ) -> None:
-    """Legacy keeps every image in its slot: one it cannot read gets its place with an empty
-    SMILES, and the images after it are not renumbered."""
+    """The earlier version kept every image in its slot: one it cannot read got its place with an
+    empty SMILES, and the images after it are not renumbered."""
     rig = make_rig(backend=seeing_two_everywhere(4))
     job = await rig.image_job(sizes_of(4))
     rig.file(job, "input/0002.png").write_bytes(b"this was not a PNG")
@@ -290,7 +292,8 @@ async def test_when_no_image_of_several_can_be_read_every_one_is_an_empty_result
     for name in ("0001.png", "0002.png"):
         rig.file(job, f"input/{name}").write_bytes(b"nothing")
     done = await rig.run(job)
-    assert done.status is JobStatus.DONE  # as legacy: empty rows, not a failed upload
+    # As in the earlier version: empty rows, not a failed upload.
+    assert done.status is JobStatus.DONE
     assert not list(rig.file(job, ".").glob("page-*.png"))
     assert not list(rig.file(job, ".").glob("crop-*.png"))
     assert [(r.index, r.smiles, r.valid) for r in done.results] == [(0, "", False), (1, "", False)]
@@ -319,8 +322,8 @@ async def test_an_unreadable_image_counts_against_the_cap_in_its_place(
 async def test_a_job_of_several_images_finishes_with_seg_dead_but_a_single_image_fails(
     make_rig: RigFactory,
 ) -> None:
-    """The point of D23: seg is not needed for several images. The same outage still fails a
-    single image (which needs seg's answer) as before."""
+    """The point of reading them whole: seg is not needed for several images. The same outage
+    still fails a single image (which needs seg's answer) as before."""
     several = make_rig(backend=FakeBackend(hooks={"ocsr": by_width}, down={"seg.test"}))
     done = await several.run(await several.image_job(sizes_of(3)))
     assert done.status is JobStatus.DONE
