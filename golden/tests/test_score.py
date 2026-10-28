@@ -193,7 +193,7 @@ def test_predictions_round_trip_through_csv(tmp_path: Path) -> None:
     ]
     write_predictions(tmp_path / "p.csv", rows)
     assert read_predictions(tmp_path / "p.csv") == rows
-    assert (tmp_path / "p.csv").read_text().splitlines()[0] == PREDICTIONS_HEADER_D25
+    assert (tmp_path / "p.csv").read_text().splitlines()[0] == PREDICTIONS_HEADER_WITH_INCOMPLETE
 
 
 @pytest.mark.parametrize(("text", "flag"), [("True", True), ("False", False), ("", False)])
@@ -201,7 +201,7 @@ def test_the_incomplete_column_reads_true_false_or_empty(
     tmp_path: Path, text: str, flag: bool
 ) -> None:
     path = tmp_path / "p.csv"
-    path.write_text(f"{PREDICTIONS_HEADER_D25}\n0,,C1CC,,,1,False,,,,{text}\n")
+    path.write_text(f"{PREDICTIONS_HEADER_WITH_INCOMPLETE}\n0,,C1CC,,,1,False,,,,{text}\n")
     (p,) = read_predictions(path)
     assert p.incomplete is flag
 
@@ -211,7 +211,7 @@ def test_any_other_incomplete_value_is_an_error_not_a_silent_false(
     tmp_path: Path, text: str
 ) -> None:
     path = tmp_path / "p.csv"
-    path.write_text(f"{PREDICTIONS_HEADER_D25}\n0,,C1CC,,,1,False,,,,{text}\n")
+    path.write_text(f"{PREDICTIONS_HEADER_WITH_INCOMPLETE}\n0,,C1CC,,,1,False,,,,{text}\n")
     with pytest.raises(ValueError, match="incomplete"):
         read_predictions(path)
 
@@ -225,7 +225,7 @@ def test_a_run_from_before_the_column_reads_as_complete(tmp_path: Path) -> None:
 
 PREDICTIONS_HEADER = "index,segment,smiles,inchikey,classifier,page,valid,confidence,name,name_tier"
 # What `write_predictions` writes: the same columns and `incomplete`.
-PREDICTIONS_HEADER_D25 = PREDICTIONS_HEADER + ",incomplete"
+PREDICTIONS_HEADER_WITH_INCOMPLETE = PREDICTIONS_HEADER + ",incomplete"
 
 
 @pytest.mark.parametrize(("text", "valid"), [("True", True), ("False", False), ("", None)])

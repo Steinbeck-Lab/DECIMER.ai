@@ -356,7 +356,7 @@ def table(rows: list[dict[str, str]]) -> str:
         lines.append(
             f"groups of {size}: {len(jobs)} jobs, {len(part)} images, "
             f"right {sum(r['correct'] == 'True' for r in scored)}/{len(scored)} scored, "
-            f"D23-shaped {len(whole)}/{len(jobs)} jobs, "
+            f"whole-image {len(whole)}/{len(jobs)} jobs, "
             f"{sum(r['status'] != 'done' for r in part)} images in jobs that did not finish"
         )
     lines.append("(marks: label number, * unchecked label, ! wrong; - not scored)")
@@ -394,5 +394,5 @@ def compare(before: list[dict[str, str]], after: list[dict[str, str]]) -> str:
         now = sum(
             r["job_whole"] == "True" for r in after if r["size"] == size and r["position"] == "0"
         )
-        lines.append(f"groups of {size} D23-shaped: {was} jobs before, {now} after")
+        lines.append(f"groups of {size} whole-image: {was} jobs before, {now} after")
     return "\n".join(lines)

@@ -84,7 +84,7 @@ describe.each(PAGES)('$name', ({ page, tree }) => {
 });
 
 describe('no placeholder, no STOUT, no Google Analytics', () => {
-  const NEEDLE = ['TODO', 'P4-10'].join(' '); // built in two pieces so that this file does not contain it
+  const NEEDLE = 'TODO';
 
   test('no copy of the site mentions STOUT or Google Analytics', () => {
     const all = allStrings(strings);

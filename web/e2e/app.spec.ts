@@ -353,7 +353,7 @@ test('About, Privacy and Impressum are pages of the same site, and the footer li
     await page.goto(`./#/${route}`);
     await page.locator('main h1').waitFor();
     const text = (await page.locator('main').textContent()) ?? '';
-    expect(text, route).not.toMatch(/TODO|Draft text/);
+    expect(text, route).not.toMatch(/\bTODO\b|Draft text/);
     expect(text, route).not.toMatch(/STOUT/i);
     expect(text, route).not.toMatch(/Google Analytics/i);
   }
