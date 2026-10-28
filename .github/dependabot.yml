@@ -1,0 +1,140 @@
+version: 2
+
+# Weekly version updates, grouped so each ecosystem opens one PR. Security updates are separate and immediate.
+# The model stack (TensorFlow, Keras, NumPy, the DECIMER packages, RDKit, OpenCV) is pinned on purpose: any change to it
+# must pass the golden-set check (golden/README.md) before it ships, so Dependabot does not propose version updates for it.
+updates:
+  - package-ecosystem: uv
+    directory: /api
+    schedule: { interval: weekly }
+    commit-message: { prefix: deps }
+    groups:
+      python:
+        patterns: ['*']
+    ignore:
+      - dependency-name: 'tensorflow*'
+      - dependency-name: 'keras'
+      - dependency-name: 'tf-keras'
+      - dependency-name: 'numpy'
+      - dependency-name: 'decimer*'
+      - dependency-name: 'rdkit'
+      - dependency-name: 'opencv-python-headless'
+      - dependency-name: 'protobuf'
+  - package-ecosystem: uv
+    directory: /services/common
+    schedule: { interval: weekly }
+    commit-message: { prefix: deps }
+    groups:
+      python:
+        patterns: ['*']
+    ignore:
+      - dependency-name: 'tensorflow*'
+      - dependency-name: 'keras'
+      - dependency-name: 'tf-keras'
+      - dependency-name: 'numpy'
+      - dependency-name: 'decimer*'
+      - dependency-name: 'rdkit'
+      - dependency-name: 'opencv-python-headless'
+      - dependency-name: 'protobuf'
+  - package-ecosystem: uv
+    directory: /services/seg
+    schedule: { interval: weekly }
+    commit-message: { prefix: deps }
+    groups:
+      python:
+        patterns: ['*']
+    ignore:
+      - dependency-name: 'tensorflow*'
+      - dependency-name: 'keras'
+      - dependency-name: 'tf-keras'
+      - dependency-name: 'numpy'
+      - dependency-name: 'decimer*'
+      - dependency-name: 'rdkit'
+      - dependency-name: 'opencv-python-headless'
+      - dependency-name: 'protobuf'
+  - package-ecosystem: uv
+    directory: /services/ocsr
+    schedule: { interval: weekly }
+    commit-message: { prefix: deps }
+    groups:
+      python:
+        patterns: ['*']
+    ignore:
+      - dependency-name: 'tensorflow*'
+      - dependency-name: 'keras'
+      - dependency-name: 'tf-keras'
+      - dependency-name: 'numpy'
+      - dependency-name: 'decimer*'
+      - dependency-name: 'rdkit'
+      - dependency-name: 'opencv-python-headless'
+      - dependency-name: 'protobuf'
+  - package-ecosystem: uv
+    directory: /services/cls
+    schedule: { interval: weekly }
+    commit-message: { prefix: deps }
+    groups:
+      python:
+        patterns: ['*']
+    ignore:
+      - dependency-name: 'tensorflow*'
+      - dependency-name: 'keras'
+      - dependency-name: 'tf-keras'
+      - dependency-name: 'numpy'
+      - dependency-name: 'decimer*'
+      - dependency-name: 'rdkit'
+      - dependency-name: 'opencv-python-headless'
+      - dependency-name: 'protobuf'
+  - package-ecosystem: uv
+    directory: /services/chem
+    schedule: { interval: weekly }
+    commit-message: { prefix: deps }
+    groups:
+      python:
+        patterns: ['*']
+    ignore:
+      - dependency-name: 'tensorflow*'
+      - dependency-name: 'keras'
+      - dependency-name: 'tf-keras'
+      - dependency-name: 'numpy'
+      - dependency-name: 'decimer*'
+      - dependency-name: 'rdkit'
+      - dependency-name: 'opencv-python-headless'
+      - dependency-name: 'protobuf'
+  - package-ecosystem: uv
+    directory: /golden
+    schedule: { interval: weekly }
+    commit-message: { prefix: deps }
+    groups:
+      python:
+        patterns: ['*']
+    ignore:
+      - dependency-name: 'tensorflow*'
+      - dependency-name: 'keras'
+      - dependency-name: 'tf-keras'
+      - dependency-name: 'numpy'
+      - dependency-name: 'decimer*'
+      - dependency-name: 'rdkit'
+      - dependency-name: 'opencv-python-headless'
+      - dependency-name: 'protobuf'
+  - package-ecosystem: npm
+    directory: /web
+    schedule: { interval: weekly }
+    commit-message: { prefix: deps }
+    groups:
+      web:
+        patterns: ['*']
+  - package-ecosystem: docker
+    directory: /deploy
+    schedule: { interval: weekly }
+    commit-message: { prefix: deps }
+  - package-ecosystem: docker-compose
+    directory: /deploy
+    schedule: { interval: weekly }
+    commit-message: { prefix: deps }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    commit-message: { prefix: ci }
+    groups:
+      actions:
+        patterns: ['*']
