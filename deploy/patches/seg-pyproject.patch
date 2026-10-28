@@ -36,7 +36,7 @@ still have git dependencies and still pin theirs (cls-pyproject.patch, chem-pypr
      "numpy==1.26.3",
 -    "opencv-python>=4.11.0.86",
 +    "opencv-python-headless==4.11.0.86",
-     "protobuf==4.25.1",
+     "protobuf==4.25.9",
 @@ -48,2 +48,19 @@
  ]
 +

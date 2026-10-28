@@ -13,7 +13,7 @@ dependencies = [
     "numpy==1.26.3",
     "opencv-python-headless==4.11.0.86",
     "pillow>=13.0.0",
-    "protobuf==4.25.1",
+    "protobuf==4.25.9",
     "pystow",
     "tensorflow==2.15.1",
     # Linux arm64 only (e.g. Docker on Apple Silicon): tensorflow's aarch64 wheel is an empty wrapper around

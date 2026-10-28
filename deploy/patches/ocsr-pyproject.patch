@@ -23,7 +23,7 @@ the patch adds the headless wheel as one. ocsr needs no build pins: every depend
      "numpy==1.26.3",
 +    "opencv-python-headless==4.11.0.86",
      "pillow>=13.0.0",
-     "protobuf==4.25.1",
+     "protobuf==4.25.9",
      "pystow",
 @@ -48,6 +49,16 @@
      "slow: runs the real DECIMER Image Transformer on the golden crops (CPU, TensorFlow); select with -m slow",
