@@ -5,8 +5,8 @@
 #
 # One variable per setting, taken from the environment first, then from the env file (default deploy/.env, read with
 # grep: the file holds secrets and is never sourced), then the default:
-#   TRUSTED_PROXY_CIDR          ""                          the campus proxy's address(es), comma or space separated
-#                                                           (TODO Q3). Empty = trust nobody (safe), no limit of our own.
+#   TRUSTED_PROXY_CIDR          ""                          your reverse proxy's address(es), comma or space separated.
+#                                                           Empty = trust nobody (safe), no limit of its own.
 #   MAX_UPLOAD_MB               100                         the API's upload limit; this file allows 2 MB more
 #   PROXY_READ_TIMEOUT_SECONDS  60                          the edge's value; this file waits 5 s longer
 #   FRONTDOOR_EDGE_ORIGIN       http://decimer-next-edge:8080   where the edge answers on the docker network

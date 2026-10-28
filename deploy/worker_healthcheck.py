@@ -3,7 +3,7 @@
 arq's worker sets the key `<queue name>:health-check` every `health_check_interval` seconds (60,
 decimer_api/worker/arq_app.py) with a lifetime of that plus one second, so the key exists exactly
 while the worker's loop is alive and turning. The default queue is `arq:queue`; a worker that serves
-another queue (the fast lane, TODO) names it in WORKER_QUEUE_NAME, which this script reads.
+another queue (the fast lane) names it in WORKER_QUEUE_NAME, which this script reads.
 Exit 0 if the key exists, 1 otherwise (also when Redis does not answer). REDIS_URL and
 WORKER_QUEUE_NAME come from the container's environment.
 """

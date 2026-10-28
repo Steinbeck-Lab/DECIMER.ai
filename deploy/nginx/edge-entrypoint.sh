@@ -4,7 +4,7 @@
 # same names compose gives the api container (compose.yaml says which values the edge gets):
 #
 #   TRUSTED_PROXY_CIDR          the proxies whose X-Forwarded-For the EDGE believes (comma or space
-#                               separated): compose gives it the public network's subnet plus the campus
+#                               separated): compose gives it the public network's subnet plus the reverse
 #                               proxies from deploy/.env -> set_real_ip_from lines
 #   PROXY_READ_TIMEOUT_SECONDS  the API refuses to start unless INGEST_WAIT_SECONDS + the ingest
 #                               child's deadline + 5 s is below this, so nginx must not wait less

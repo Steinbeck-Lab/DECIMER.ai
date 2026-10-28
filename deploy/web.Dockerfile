@@ -10,7 +10,7 @@
 # VITE_API picks the backend client at build time (web/src/api/index.ts). `http` is the real one;
 # `mock` gives a working UI on canned data (a demo, never for decimer.ai).
 #
-# The app is built with a relative base, so the same files serve / and /beta/.
+# The app is built with a relative base: the files do not hard-code the path they are served from.
 
 ARG NODE_IMAGE=node:24.22.1-trixie-slim@sha256:43b9ba1142b8dcf33fa8f922ca1be85714adc444e0586c7cf7726daaeabc1bea
 ARG NGINX_IMAGE=nginx:1.31.8-alpine3.24@sha256:1ef7ca94d7879df82421428ce13bd1eaa412404953859cf7a5b6512c25e67a60

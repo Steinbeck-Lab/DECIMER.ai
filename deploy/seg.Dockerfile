@@ -11,10 +11,10 @@
 #
 # The pyproject patch (deploy/patches/apply-pyproject-patches.sh) is applied to services/seg in the
 # repository: it switches to opencv-python-headless and pins the project's own build backend
-# (uv-build). A checkout without it can still build with the legacy fallback --build-arg
+# (uv-build). A checkout without it can still build with the older fallback --build-arg
 # OPENCV_GUI_LIBS=1, but then runs an unpinned backend. decimer-segmentation is a wheel from PyPI
-# (1.6.0), pinned in services/seg/uv.lock, and the build fails if PyMuPDF (AGPL, docs/DECISIONS.md D10)
-# is installed. For release builds see the --no-cache note in deploy/README.md.
+# (1.6.0), pinned in services/seg/uv.lock, and the build fails if PyMuPDF (AGPL; no image of this
+# project ships it) is installed. For release builds see the --no-cache note in deploy/README.md.
 #
 # Base image: python 3.11 on Debian 13 (trixie). The wheels are manylinux, so the distribution only
 # matters for its support window: bookworm is in LTS since 2026-06, trixie has regular security
@@ -69,7 +69,7 @@ LABEL org.opencontainers.image.title="decimer-seg" \
 # cv2 comes from the opencv-python-headless wheel (services/seg/pyproject.toml and uv.lock, see
 # deploy/patches/seg-pyproject.patch): it needs neither libGL.so.1 nor libglib2.0-0, so this stage
 # installs no apt packages and the image carries no X11 or mesa libraries. OPENCV_GUI_LIBS=1 is a
-# legacy fallback for a checkout without the patch, whose lock still has the full opencv-python wheel:
+# fallback for a checkout without the patch, whose lock still has the full opencv-python wheel:
 # it installs those two libraries. Leave it at 0. The smoke test below fails the build if cv2 does not
 # import.
 ARG OPENCV_GUI_LIBS=0
@@ -120,7 +120,7 @@ ENV PATH=/opt/venv/bin:$PATH \
 # `--no-dev` should have left out). The last test: nothing under /models may be writable for the
 # service user.
 USER 10001:10001
-RUN python -c "import importlib.util, decimer_seg.app, decimer_service, decimer_segmentation, pystow, cv2, tensorflow as tf; from decimer_seg.model import weights_file; p = weights_file(); assert p.is_file(), p; agpl = [m for m in ('pymupdf', 'fitz') if importlib.util.find_spec(m)]; assert not agpl, ('PyMuPDF (AGPL, D10) is in the image', agpl); print('tensorflow', tf.__version__, 'cv2', cv2.__version__, 'decimer-segmentation', decimer_segmentation.__version__, 'weights', p)" \
+RUN python -c "import importlib.util, decimer_seg.app, decimer_service, decimer_segmentation, pystow, cv2, tensorflow as tf; from decimer_seg.model import weights_file; p = weights_file(); assert p.is_file(), p; agpl = [m for m in ('pymupdf', 'fitz') if importlib.util.find_spec(m)]; assert not agpl, ('PyMuPDF (AGPL) is in the image', agpl); print('tensorflow', tf.__version__, 'cv2', cv2.__version__, 'decimer-segmentation', decimer_segmentation.__version__, 'weights', p)" \
     && test -r /models/DECIMER-Segmentation_model/mask_rcnn_molecule.h5 \
     && test -r /models/README.md \
     && find /models -type f -exec head -c 1 {} + > /dev/null \
@@ -131,8 +131,8 @@ EXPOSE 8001
 # /readyz runs a real inference (a small page with one structure; about 1 to 4 s of CPU): the cached
 # pass lasts 30 s, so an idle service would pay that on every check. Hence a check every 120 s once
 # running, and a fast one (every 5 s) during start-up, so that depends_on service_healthy does not wait
-# a whole interval after the model is up (about 10 s). --start-interval needs Docker 25 or newer
-# (28.4 on the VM); an older engine would reject this line.
+# a whole interval after the model is up (about 10 s). --start-interval needs Docker 25 or newer;
+# an older engine would reject this line.
 HEALTHCHECK --interval=120s --timeout=25s --start-period=120s --start-interval=5s --retries=3 \
     CMD ["python", "/usr/local/bin/healthcheck.py", "8001", "/readyz", "20"]
 CMD ["python", "-m", "decimer_seg"]

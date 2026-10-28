@@ -1,5 +1,5 @@
 #!/bin/sh
-# The edge's error log and how long it lives (TODO, the privacy review).
+# The edge's error log and how long it lives.
 #
 # nginx's error log is the only place where the edge writes a client's IP address. A line holds the
 # address, the request line (so a job id), the host and the referrer: "connect() failed ... client:

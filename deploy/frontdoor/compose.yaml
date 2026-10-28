@@ -1,20 +1,19 @@
-# The front door as a container of its own: for AFTER legacy's nginx is retired, when the container that
-# publishes host port 8080 today (decimer_web-nginx-1) goes away with the legacy stack. Until then the front door is
-# legacy's own container with this file's rendered config in it (deploy/cutover/cutover.sh) and this is unused.
-# Same rendered file, same behaviour; the difference is that the container is ours, has `restart: unless-stopped`
-# (legacy's has `on-failure`, which does not bring it back after a reboot) and does not depend on legacy's compose project.
+# The front door as a container of its own: a small nginx that publishes host port 8080 (FRONTDOOR_PORT) and relays
+# everything to the stack's edge over the `public` network. Your TLS-terminating reverse proxy forwards to this port;
+# deploy/README.md, "Reverse proxy and TLS", says when you need it at all. It has `restart: unless-stopped`, so it
+# comes back after a reboot.
 #
 # Not part of deploy/compose.yaml on purpose: the stack's `$DC down` must never take the public port with it, and
 # this project does not own the network, it only joins the stack's `public` one.
 #
 #   cd /opt/decimer
-#   deploy/frontdoor/render.sh > deploy/frontdoor/conf.d/default.conf        (mkdir -p deploy/frontdoor/conf.d first)
+#   mkdir -p deploy/frontdoor/conf.d && deploy/frontdoor/render.sh > deploy/frontdoor/conf.d/default.conf
 #   FD="docker compose -p decimer-frontdoor -f deploy/frontdoor/compose.yaml"
-#   $FD config -q && $FD up -d            (needs host port 8080 free: stop decimer_web-nginx-1 first, a few seconds)
+#   $FD config -q && $FD up -d            (needs host port 8080 free)
 #
-# FRONTDOOR_CONF_DIR (default ./conf.d next to this file) is where the rendered default.conf lives; the rehearsal uses a scratch one.
+# FRONTDOOR_CONF_DIR (default ./conf.d next to this file) is where the rendered default.conf lives.
 # The directory is mounted, not a single file, so an edit by `render.sh >` or by an editor that replaces the file
-# reaches the container (a single-file bind mount keeps the old inode: the trap legacy's compose has).
+# reaches the container (a single-file bind mount keeps the old inode when the file is replaced).
 # After a re-render: `docker exec decimer-frontdoor nginx -t && docker exec decimer-frontdoor nginx -s reload`.
 services:
   frontdoor:

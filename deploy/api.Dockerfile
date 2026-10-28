@@ -1,4 +1,4 @@
-# decimer.ai job API, worker and TTL sweep: ONE image, three commands. Python 3.12, no
+# decimer.ai job API, worker and TTL sweep: ONE image, several commands. Python 3.12, no
 # TensorFlow, no JVM.
 #
 # The build context is the REPOSITORY ROOT:
@@ -53,7 +53,7 @@ LABEL org.opencontainers.image.title="decimer-api" \
 
 # uid/gid 10001. /data/jobs is DATA_DIR (the job volume, shared with the worker, the sweep and, read
 # only, the edge), /data/reports is the private problem-report volume and /scratch is the
-# ingest sidecar's own volume (TODO; the same image runs it, and the api's other containers never
+# ingest sidecar's own volume (the same image runs it, and the api's other containers never
 # mount it). A new named volume takes the ownership of these directories on its first mount.
 # Unpinned like the other images: the versions come from Debian trixie at build time.
 # hadolint ignore=DL3008

@@ -1,19 +1,16 @@
 # decimer-front-door
-# THE PUBLIC FRONT DOOR OF decimer.ai AFTER THE CUTOVER (TODO, P5-07; D22: no /beta, one switch).
+# THE FRONT DOOR OF A DECIMER.AI DEPLOYMENT: a small nginx between your TLS-terminating reverse proxy and the edge.
 # Do not edit the rendered copy: edit this template and render it (deploy/frontdoor/render.sh); the first
-# line above is how deploy/cutover/*.sh tell this file from legacy's default.conf.
+# line above marks a rendered file as this template's output.
 #
-# WHERE THIS RUNS AND HOW TLS WORKS (read from the VM, 2026-10-23)
-#   Public https://decimer.ai terminates at the campus proxy (the university's reverse proxy, which holds the
-#   certificate). It forwards plain http to this VM, host port 8080. Nothing on the VM holds a certificate or
-#   listens on 80/443 (no /etc/letsencrypt, no host nginx; `ss -ltn` shows ssh, 8080, 127.0.0.1:8090 and 9090). Port 8080 is
-#   published by legacy's nginx container (decimer_web-nginx-1, nginx 1.27.0, container port 80). Cutover does
-#   not move any port and does not touch the proxy: this file REPLACES legacy's conf.d/default.conf inside that
-#   same container, which then relays everything to the new stack's edge over the docker network
-#   decimer-next_public (`docker network connect`, done by deploy/cutover/cutover.sh). After legacy is retired
-#   the same file runs in deploy/frontdoor/compose.yaml and takes over host port 8080.
+# WHERE THIS RUNS AND HOW TLS WORKS
+#   Public https terminates at a reverse proxy of yours (or a load balancer), which holds the certificate. It
+#   forwards plain http to the host port that this file's container publishes (8080 in deploy/frontdoor/compose.yaml).
+#   Nothing here holds a certificate or listens on 443. This file relays everything to the stack's edge over the
+#   docker network `decimer-next_public` (the stack's `public` network, which holds the edge alone). It can also be
+#   loaded into the conf.d of an nginx container you already run, if that container is attached to that network.
 #
-#   client -- https --> campus proxy -- http --> VM:8080 = THIS FILE -- http --> edge:8080 -- http --> api:8000
+#   client -- https --> your proxy -- http --> host port 8080 = THIS FILE -- http --> edge:8080 -- http --> api:8000
 #
 # WHAT THIS FILE DOES NOT DO, ON PURPOSE
 #   * No security headers, no CSP, no cache headers of its own: the edge sets them (deploy/nginx/security-headers.conf
@@ -21,31 +18,32 @@
 #     proxy_pass hands them on untouched. Adding any here would double or contradict them.
 #   * No compression (`gzip off`): the edge compresses (gzip_static, application/wasm included); a second layer
 #     would only cost CPU and could not make 11.8 MB of WASM smaller than the edge already does.
-#   * No HSTS: whoever terminates TLS (the campus proxy) owns it.
-#   * No normal access log. Job ids in /api/ URLs are bearer tokens and legacy's http-level access_log would record the URI and the
-#     client address. The edge keeps the scrubbed log (`docker logs decimer-next-edge-1`). What this file logs instead is ONE short
-#     line for a refusal or a failure only: `<time> <status> <request_time> <upstream_status>` for status 429 or 5xx (a 502/503/504
-#     of the front door, a 413, the edge's 429s), to stderr, which is legacy's docker log. No address, no URI, no header: a line
+#   * No HSTS: whoever terminates TLS owns it.
+#   * No normal access log. Job ids in /api/ URLs are bearer tokens, and an http-level access_log of the including
+#     nginx.conf would record the URI and the client address. The edge keeps the scrubbed log
+#     (`docker logs decimer-next-edge-1`). What this file logs instead is ONE short line for a refusal or a failure
+#     only: `<time> <status> <request_time> <upstream_status>` for status 429 or 5xx (a 502/503/504 of the front door,
+#     a 413, the edge's 429s), to stderr, which is the container's docker log. No address, no URI, no header: a line
 #     cannot identify anyone, so it needs no retention rule beyond docker's rotation.
-#   * No client address in an error log either: `error_log stderr crit`. nginx's error level writes "client: <address>, request:
-#     <line with the job id>" for every failed proxying and every refused upload, into a docker json-file log that nothing ages out
-#     (the edge's own error log is rotated daily and deleted after seven days, deploy/README.md, "Error log"). At crit nothing
-#     request-specific is logged, so the seven-day promise holds here too; the one-line access log above says THAT and WHEN
-#     something failed, the edge's log says why. To debug, set `error` here, render, apply, and set `crit` again when done.
+#   * No client address in an error log either: `error_log stderr crit`. nginx's error level writes "client: <address>,
+#     request: <line with the job id>" for every failed proxying and every refused upload, into a docker json-file log
+#     that nothing ages out (the edge's own error log is rotated daily and deleted after seven days, deploy/README.md,
+#     "Logs and retention"). At crit nothing request-specific is logged, so the seven-day promise holds here too; the
+#     one-line access log above says THAT and WHEN something failed, the edge's log says why. To debug, set `error`
+#     here, render, apply, and set `crit` again when done.
 #
-# THE REAL CLIENT ADDRESS (TODO Q3: the proxy's address is still to be confirmed with its owner)
-#   TRUSTED_PROXY_CIDR (deploy/.env: the same variable the edge reads) lists the campus proxy's ADDRESS(ES), never a
+# THE REAL CLIENT ADDRESS
+#   TRUSTED_PROXY_CIDR (deploy/.env: the same variable the edge reads) lists your reverse proxy's ADDRESS(ES), never a
 #   client network: every host inside a trusted network can put any address into X-Forwarded-For and so choose the
 #   identity its limits are counted against; /0 is refused. The default is EMPTY, which is safe (nobody can
 #   choose an identity) but means every visitor is "the proxy" to the limits below the edge. Then this file
-#   enforces no limit of its own (a shared per-IP limit would throttle the whole campus) and the cutover script
-#   refuses to apply unless told `--accept-shared-limits`.
+#   enforces no limit of its own (a shared per-IP limit would throttle every visitor at once).
 #   With the proxy listed, nginx's realip module sets $remote_addr to the client taken from X-Forwarded-For
 #   (rightmost entry that is not a listed proxy), and this file passes exactly that ONE address on to the edge as
 #   X-Forwarded-For. The edge trusts this container because it sits on the `public` network (PUBLIC_SUBNET), takes
 #   that entry as the client and counts its own per-IP limits (10 r/s API, 12 uploads/min, 2 active jobs in the
 #   API) on it. What the proxy does with a client-supplied X-Forwarded-For (append, replace or send none) decides
-#   whether the client is visible at all: see docs/RUNBOOK.md, "Campus proxy and the client address".
+#   whether the client is visible at all: see deploy/README.md, "Reverse proxy and the client address".
 #
 # LIMITS
 #   The product limits (per-IP rates, upload limits, 413/429 bodies in the API's error shape) live in the edge. The
@@ -59,11 +57,12 @@
 #   With a literal host, nginx resolves the name at load time and refuses to START or RELOAD ("host not found in
 #   upstream") whenever the edge container is stopped, being recreated or the network is disconnected. With a variable
 #   the name is looked up per request through docker's resolver, a missing edge is a 502/503 for visitors only, and
-#   rollback (a reload) can never be blocked by the new stack.
+#   a reload of this file can never be blocked by the stack being down.
 #
-# This file is included inside http { } (conf.d/*.conf), as legacy's default.conf was. Legacy's nginx.conf already
-# sets limit_req_status/limit_conn_status at http level, a duplicate in the same context is an error, so the
-# per-server copies below are inside `server`. Names of zones start with fd_ (legacy has heavy_req, heavy_conn).
+# This file is included inside http { } (conf.d/*.conf). limit_req_status and limit_conn_status are set inside `server`
+# (a duplicate in the same context is an error, so they cannot clash with the same directives at http level of an
+# nginx.conf that already sets them), and the names of the zones start with fd_ so that they cannot clash with zones
+# of such an nginx.conf.
 
 log_format fd_failures '$time_iso8601 $status $request_time $upstream_status';
 map $status $fd_log_failure {
@@ -112,7 +111,7 @@ server {
     proxy_connect_timeout 5s;
     proxy_send_timeout 65s;
     # Just above the edge's own PROXY_READ_TIMEOUT_SECONDS (+ 5 s): the edge's answer for a slow request
-    # arrives before this one gives up. Legacy's http level says 300 and would otherwise be inherited.
+    # arrives before this one gives up. A larger http-level value of the including nginx.conf would otherwise be inherited.
     proxy_read_timeout @READ_TIMEOUT@s;
     proxy_buffer_size 16k;
     proxy_buffers 8 32k;

@@ -40,7 +40,7 @@ jobs:
         shell: bash # with pipefail: a failing export fails the step
         run: uv run python ../web/scripts/export-openapi.py | diff - ../web/src/api/openapi.json
 
-  # deploy/compose.yaml against the rules in deploy/README.md; "docker compose config" on a copy with dummy secrets,
+  # deploy/compose.yaml against the properties listed in deploy/check-compose.py; "docker compose config" on a copy with dummy secrets,
   # no container is started (scripts/check.sh runs the same).
   deploy:
     name: deploy (compose file checks)
@@ -50,7 +50,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: python3 -I deploy/check-compose.py
 
-  # TODO: a job through the whole API path (upload, arq worker, pipeline, poll, validate, export, delete)
+  # A job through the whole API path (upload, arq worker, pipeline, poll, validate, export, delete)
   # against fake model services, on a real Redis. The same test (api/tests/e2e) also runs in the "python (api)"
   # job above on fakeredis; here E2E_REDIS_URL points it at the service container; the test deletes only its own keys.
   api-e2e:
@@ -128,7 +128,7 @@ jobs:
       matrix:
         include:
           # api and web must stay clean; model services are frozen at TF 2.15.1,
-          # so their findings are reported but do not fail CI (ROADMAP §3).
+          # so their findings are reported but do not fail CI.
           - { path: api, exit-code: "1" }
           - { path: web, exit-code: "1" }
           - { path: services, exit-code: "0" }

@@ -7,7 +7,8 @@
 #
 #   seg    deploy/weights/seg/DECIMER-Segmentation_model/mask_rcnn_molecule.h5
 #   ocsr   deploy/weights/ocsr/DECIMER-V2/{DECIMER_model,DECIMER_HandDrawn_model}/
-#          (both: owner decision D15 keeps the hand-drawn one in the image; decimer 2.8.1 never loads it)
+#          (both: the hand-drawn one stays in the image to keep a hand-drawn option possible; decimer 2.8.1
+#          never loads it)
 #   chem   deploy/weights/chem/{opsin-cli-2.9.0-jar-with-dependencies.jar,centres-cli-1.2.1.jar,
 #          cdk-2.8.jar}
 #   cls    nothing to fetch: the weights ship inside the pip package; cls.Dockerfile checks the
@@ -16,27 +17,28 @@
 # With no service named: seg, ocsr and chem.
 #
 # Sources
-#   archive  the legacy weights archive, default $WEIGHTS_ARCHIVE or
-#            /srv/decimer/weights-archive/2026-10-22. It has seg and ocsr's DECIMER_model; it has
-#            NOT the hand-drawn model, which therefore always comes from Zenodo.
+#   archive  a local directory of earlier downloads, only when you name one with --archive DIR (or
+#            $WEIGHTS_ARCHIVE). Its layout: segmentation/mask_rcnn_molecule.h5 and
+#            decimer-transformer/DECIMER-V2/DECIMER_model/. It does not have the hand-drawn model, which
+#            therefore always comes from Zenodo.
 #   zenodo   https://zenodo.org/records/{10663579,8300489,10781330}, each download also checked
 #            against the MD5 Zenodo publishes for the file (below), the zips against the SHA-256 in
 #            services/ocsr/README.md, then every file against SHA256SUMS.
 #   github   the three chem jars, from the OPSIN, centres and CDK (cdk-2.8) releases.
-#   default  the archive where it has the files, the network for the rest. --zenodo forces Zenodo for
-#            all of seg and ocsr; --archive DIR picks another archive.
+#   default  Zenodo. With --archive DIR (or $WEIGHTS_ARCHIVE) the archive is used where it has the files and
+#            the network for the rest; --zenodo ignores the archive and uses Zenodo for all of seg and ocsr.
 # Every download is https only (also across redirects). --force fetches again even when what is there
 # already verifies.
 set -euo pipefail
 umask 022
 
 here=$(cd "$(dirname "$0")" && pwd)
-archive=${WEIGHTS_ARCHIVE:-/srv/decimer/weights-archive/2026-10-22}
+archive=${WEIGHTS_ARCHIVE:-}
 use_archive=1
 force=0
 services=()
 
-# Published by Zenodo for these files (record metadata, read 2026-10-22), and the SHA-256s of the zips
+# Published by Zenodo for these files (record metadata), and the SHA-256s of the zips
 # (services/ocsr/README.md, "Weights").
 SEG_URL='https://zenodo.org/record/10663579/files/mask_rcnn_molecule.h5?download=1'
 SEG_MD5=edd1e6e469cfff7efa6bf8c38441a529
@@ -47,7 +49,7 @@ HAND_URL='https://zenodo.org/records/10781330/files/DECIMER_HandDrawn_model.zip?
 HAND_MD5=1fece9813549417440f7c45d0c51603a
 HAND_SHA256=91c70fee79b7d64c09d433ff82e2216d16070e4d098b83da2c13d34c52439fde
 # chem: the file is checked against SHA256SUMS afterwards; the first two URLs are the releases Orthonym
-# pins, the third is the CDK 2.8 bundle that legacy uses (the same bytes: see SHA256SUMS).
+# pins, the third is the CDK 2.8 bundle that the earlier Laravel version of decimer.ai used (the same bytes: see SHA256SUMS).
 OPSIN_URL='https://github.com/dan2097/opsin/releases/download/2.9.0/opsin-cli-2.9.0-jar-with-dependencies.jar'
 CENTRES_URL='https://github.com/SiMolecule/centres/releases/download/1.2.1/centres.jar'
 CDK_URL='https://github.com/cdk/cdk/releases/download/cdk-2.8/cdk-2.8.jar'
@@ -93,7 +95,7 @@ unzip_to() { # zip dir
     python3 -I -m zipfile -e "$1" "$2"
 }
 
-have_archive() { [ "$use_archive" = 1 ] && [ -d "$archive" ]; }
+have_archive() { [ "$use_archive" = 1 ] && [ -n "$archive" ] && [ -d "$archive" ]; }
 
 # Files copied out of the (read-only) archive get ordinary permissions.
 copy_tree() { cp -R --no-preserve=mode,ownership,timestamps "$1" "$2"; }
@@ -120,7 +122,7 @@ fetch_ocsr() {
         unzip_to "$tmp/models.zip" "$dest"   # the zip's top level directory is DECIMER_model/
         rm -f "$tmp/models.zip"
     fi
-    # Not loaded by the service (decimer 2.8.1 only loads it for hand_drawn=True), but baked in: D15.
+    # Not loaded by the service (decimer 2.8.1 only loads it for hand_drawn=True), but baked in (see the header).
     download "$HAND_URL" "$tmp/hand.zip" "$HAND_MD5" "$HAND_SHA256"
     unzip_to "$tmp/hand.zip" "$dest"          # top level directory DECIMER_HandDrawn_model/
     rm -f "$tmp/hand.zip"

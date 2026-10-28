@@ -2,32 +2,35 @@
 # Uptime check for decimer.ai: one run probes the public URL the way a visitor's browser would and alerts through a
 # hook when it fails, and again when it recovers. Run it every minute from cron or a systemd timer (see below).
 #
-#   deploy/uptime/uptime-check.sh [BASE_URL]        BASE_URL defaults to https://decimer.ai
+#   deploy/uptime/uptime-check.sh [BASE_URL]        BASE_URL defaults to https://decimer.ai: pass your own site's URL
 #
 # Probes (each must answer within TIMEOUT_SECONDS). UPTIME_MODE picks the set: `new`, `legacy`, or `auto` (the default: the site is
-# legacy when GET / carries legacy's session cookie, `X-Powered-By: PHP` or its page title ("DECIMER Web Application"), so the same line in cron watches the site before the cutover, through it,
-# and after it, and the summary says which it saw: mode=legacy or mode=new).
+# the earlier Laravel version of decimer.ai ("legacy") when GET / carries its session cookie, `X-Powered-By: PHP` or its page
+# title ("DECIMER Web Application"), so the same line in cron can watch a site while it is switched from the earlier version
+# to this one, and the summary says which it saw: mode=legacy or mode=new).
 #   new:     GET /readyz       200 and {"status":"ready"}: the edge reaches the API, which reaches Redis and can write the job volume.
 #                              (The path is /readyz, not /api/readyz: the API's own routes live under /api/, its health routes do not.)
 #            GET /             200 and the app's HTML (`id="root"`): the front door and the edge serve the page.
 #            GET /api/engines  200: a real route under /api/, so the proxying of /api/ itself is covered, not only the special /readyz.
 #   legacy:  GET /            200 and "DECIMER" in the page; GET /about and GET /impressum 200 (the Laravel site has no /readyz).
-# It does NOT upload anything: the golden-set smoke (deploy/cutover/golden-smoke.sh) is the deep check, run by hand.
+# It does NOT upload anything: the golden-set smoke (golden/smoke.sh) is the deep check, run by hand.
 #
 # Alerts: after FAILS_BEFORE_ALERT failed runs in a row (default 2: one blip is not an outage) it sends ONE alert, a reminder every
-# REMIND_MINUTES (60) while it stays down, and one "recovered" message. The alert CHANNEL IS NOT DECIDED (open question), so it is a hook:
+# REMIND_MINUTES (60) while it stays down, and one "recovered" message. The alert channel differs per site, so it is a hook:
 #   ALERT_CMD         a command run as:  ALERT_CMD <event> "<subject>"   with the message body on stdin; event is
 #                     down | reminder | recovered. See alert-hook.example.sh for mail, ntfy, Matrix, a chat webhook.
-#   ALERT_EMAIL       optional: also mail this address with `mail`, if the VM has it (today it has no mail command: use the hook).
+#   ALERT_EMAIL       optional: also mail this address with `mail`, if the machine has it (otherwise use the hook).
 #   Always: a line on stderr (the journal or cron's mail) and syslog (`logger -t decimer-uptime`) when logger exists.
-#   HEARTBEAT_URL     optional dead-man's switch: GET after every successful run (healthchecks.io style). A check that runs ON the VM cannot
-#                     see the VM, the campus proxy or the network being down; an external service that expects this ping can.
-#   ERROR_DASHBOARD_URL  optional: added to every alert (the GlitchTip project page, D21; docs/RUNBOOK.md, "Errors").
+#   HEARTBEAT_URL     optional dead-man's switch: GET after every successful run (healthchecks.io style). A check that runs on the same
+#                     machine cannot see that machine, the reverse proxy in front of it or the network being down; an external
+#                     service that expects this ping can.
+#   ERROR_DASHBOARD_URL  optional: added to every alert (the GlitchTip project page; deploy/README.md, "Error reports: GlitchTip").
 # Other settings: TIMEOUT_SECONDS (10), UPTIME_MODE (auto), STATE_DIR (~/.local/state/decimer-uptime).
 # Exit code: 0 all probes passed, 1 at least one failed (alert logic aside), 2 could not run.
 #
 # cron (no root needed):   * * * * *  /opt/decimer/deploy/uptime/uptime-check.sh >> $HOME/.local/state/decimer-uptime/cron.log 2>&1
-# systemd timer: decimer-uptime.service + decimer-uptime.timer in this directory (docs/RUNBOOK.md, "Uptime check").
+# (/opt/decimer: where you cloned the repository)
+# systemd timer: decimer-uptime.service + decimer-uptime.timer in this directory (deploy/README.md, "Uptime check").
 set -uo pipefail
 
 BASE_URL=${1:-${BASE_URL:-https://decimer.ai}}
@@ -65,7 +68,7 @@ probe() {
 }
 mode=${UPTIME_MODE:-auto}
 if [ "$mode" = auto ]; then
-    # Through the campus proxy `X-Powered-By` is stripped (checked 2026-10-23), so the signs are legacy's session cookie and its page title.
+    # A reverse proxy may strip `X-Powered-By`, so the other signs are the earlier version's session cookie and its page title.
     curl -sS -m "$TIMEOUT_SECONDS" -o "$body" -D "$body.hdr" "$BASE_URL/" 2> /dev/null
     if tr -d '\r' < "$body.hdr" 2> /dev/null | grep -qiE '^(x-powered-by:.*PHP|set-cookie: decimer_session)' || grep -q 'DECIMER Web Application' "$body" 2> /dev/null; then mode=legacy; else mode=new; fi
     rm -f "$body.hdr"

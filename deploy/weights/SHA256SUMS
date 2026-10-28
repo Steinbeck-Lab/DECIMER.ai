@@ -8,16 +8,16 @@
 #
 # --- seg: DECIMER Segmentation ------------------------------------------------------------------
 # Root in the image: $PYSTOW_HOME (/models). Source: Zenodo record 10663579 (mask_rcnn_molecule.h5).
-# Evidence: the legacy weights archive (weights-archive/2026-10-22, TODO) holds the same file;
-# its MD5 edd1e6e469cfff7efa6bf8c38441a529 equals the MD5 Zenodo publishes for the record (checked
-# 2026-10-22), and `cmp` reports it identical to a fresh Zenodo download.
+# Evidence: the weights archive of the earlier Laravel version of decimer.ai holds the same file;
+# its MD5 edd1e6e469cfff7efa6bf8c38441a529 equals the MD5 Zenodo publishes for the record,
+# and `cmp` reports it identical to a fresh Zenodo download.
 329120facb69e88add819a3216db0fbfef57e9a37d6b6db0f6149819a11d46a5  seg/DECIMER-Segmentation_model/mask_rcnn_molecule.h5
 #
 # --- cls: DECIMER Image Classifier -------------------------------------------------------------
 # NOT fetched: the weights ship inside the pip package (decimer-image-classifier @ 146b00b). The path
 # is relative to site-packages/decimer_image_classifier/ and the check runs in cls.Dockerfile against
 # the installed package. Same hashes as services/cls/README.md ("Weights") and as the files in the
-# running legacy container.
+# earlier Laravel version of decimer.ai.
 4c6f6149a612a52736ecc808434645242f746c57f7b38bb9eea2851112ee3cc6  cls/model/keras_metadata.pb
 1f1f192e3a63c8985f20d8a0777a558458ef829379e5373fdad25bc0b4161978  cls/model/saved_model.pb
 d4153f669cb35242739d0b901f5b9083d31acd5fcdb8d2c46d2a3589f9d1ed5a  cls/model/variables/variables.data-00000-of-00001
@@ -28,20 +28,19 @@ bc74ce41019f517f4f766868d6b037566dbdf9da307af2414eb28ec7263680d6  cls/model/vari
 # starts, and downloads it if it is missing (the service has no network and checks for it first). The
 # hand-drawn model is never loaded or used by the service. Since 2.8.1 that costs 348 MB of disk and no
 # memory or start-up time (decimer 2.8.0 loaded both models on import: 1.9 GB and 26 s more). The
-# image carries it anyway: owner decision D15 (docs/DECISIONS.md) keeps a hand-drawn option possible
-# later. To drop it: delete its four lines below, its download in fetch.sh and its readable-check in
+# image carries it anyway, to keep a hand-drawn option possible later. To drop it: delete its four lines below, its download in fetch.sh and its readable-check in
 # ocsr.Dockerfile.
 # No .model_url marker files on purpose (the strict check refuses them): without them decimer never
 # re-downloads.
 # Sources: Zenodo record 8300489 (models.zip, DECIMER_model/) and record 10781330
-# (DECIMER_HandDrawn_model.zip). Evidence, all checked 2026-10-22: the zips' MD5s equal the ones
+# (DECIMER_HandDrawn_model.zip). Evidence: the zips' MD5s equal the ones
 # Zenodo publishes (de78c966b0d63b290cd3f70bb81a91e7 and 1fece9813549417440f7c45d0c51603a); their
 # SHA-256s equal the ones in services/ocsr/README.md (fetch.sh checks them too):
 #   models.zip                    8ebc7db18fffac7e71a2cf8487708053620d124846bc9502eddac1283b431d2b
 #   DECIMER_HandDrawn_model.zip   91c70fee79b7d64c09d433ff82e2216d16070e4d098b83da2c13d34c52439fde
 # and the extracted files equal (a) services/ocsr/README.md "Weights", (b) the files decimer 2.8.0
-# downloaded into ~/.data/DECIMER-V2 for the ocsr service and (c) for DECIMER_model, the legacy
-# archive's decimer-transformer/DECIMER-V2/DECIMER_model/.
+# downloaded into ~/.data/DECIMER-V2 for the ocsr service and (c) for DECIMER_model, the weights of the
+# earlier Laravel version of decimer.ai.
 e9b21b8f7e5bee625ee3d5dfc1cca40c7d6f9791c54dc5901441cee0a8f3e520  ocsr/DECIMER-V2/DECIMER_model/assets/max_length.pkl
 c1d579f958146bb1a948320dad92f0eecf4a51001ec9dec1f48767c7b681b43c  ocsr/DECIMER-V2/DECIMER_model/assets/tokenizer_SMILES.pkl
 d1a6e61de631e09cb347ddb47d4519732e2d000365b4f2318e5e8a1d403f9055  ocsr/DECIMER-V2/DECIMER_model/saved_model.pb
@@ -62,12 +61,12 @@ d3b124e3ad4b0ed57ff834e2c8cb8b2e3d4aee4b0546b138634d26e58979e6e5  ocsr/DECIMER-V
 #       https://github.com/dan2097/opsin/releases/download/2.9.0/opsin-cli-2.9.0-jar-with-dependencies.jar
 #   centres-cli-1.2.1.jar                      centres 1.2.1, 2,291,742 bytes; published as centres.jar
 #       https://github.com/SiMolecule/centres/releases/download/1.2.1/centres.jar
-#   cdk-2.8.jar                                CDK 2.8 bundle, 47,174,875 bytes (TODO, D4)
+#   cdk-2.8.jar                                CDK 2.8 bundle, 47,174,875 bytes (the SMILES fallback)
 #       https://github.com/cdk/cdk/releases/download/cdk-2.8/cdk-2.8.jar
-# The CDK file is the exact one legacy uses (DECIMER_Web app/Python/cdk-2.8.jar). Evidence, checked
-# 2026-10-23: a fresh https download from the cdk-2.8 release of github.com/cdk/cdk (published
-# 2022-09-14) has the same SHA-256 as the legacy file, and its size equals the asset size the GitHub
-# API reports (47,174,875 bytes). GitHub publishes no digest for the asset, so the legacy file is the
+# The CDK file is the exact one the earlier Laravel version of decimer.ai used (app/Python/cdk-2.8.jar).
+# Evidence: a fresh https download from the cdk-2.8 release of github.com/cdk/cdk (published 2022-09-14)
+# has the same SHA-256 as that file, and its size equals the asset size the GitHub API reports
+# (47,174,875 bytes). GitHub publishes no digest for the asset, so the earlier version's file is the
 # second witness. The same hash is pinned in services/chem (decimer_chem.cdk.CDK_JAR_SHA256).
 # (Orthonym writes its jars 0600; fetch.sh and chem.Dockerfile make them world-readable.)
 c2e29326c281f87b59a05d934d8589adac6e9d17b95b984931b3e739111b360f  chem/opsin-cli-2.9.0-jar-with-dependencies.jar

@@ -2,14 +2,20 @@
 # Validates the rendered front door with `nginx -t` in throwaway containers (no network, nothing running is touched):
 #   1. the pinned nginx of the edge image (deploy/web.Dockerfile NGINX_IMAGE) with its stock nginx.conf, which is what
 #      deploy/frontdoor/compose.yaml runs;
-#   2. legacy's own nginx image with legacy's real nginx.conf (read from the legacy checkout), which is what loads the
-#      file at cutover. Skipped, with a note, when the legacy checkout is not there.
+#   2. the nginx image and nginx.conf of an nginx container you already run, for the other way to use the file: loaded
+#      into that container's conf.d (the option names say "legacy": the earlier Laravel version of decimer.ai was
+#      served that way). Skipped, with a note, unless --legacy-nginx-conf (or LEGACY_NGINX_CONF) names the file.
 # Each with the proxy list empty (the default) and set, so both branches of the template parse.
 #   deploy/frontdoor/check.sh [--legacy-nginx-conf FILE] [--legacy-image IMAGE]
 set -euo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-legacy_conf=${LEGACY_NGINX_CONF:-/home/decimer/DECIMER/DECIMER_Web/docker/nginx/nginx.conf}
-legacy_image=${LEGACY_NGINX_IMAGE:-$(docker inspect -f '{{.Image}}' "${NGINX_CONTAINER:-decimer_web-nginx-1}" 2>/dev/null || echo nginx:alpine)}
+legacy_conf=${LEGACY_NGINX_CONF:-}
+# The image defaults to the one NGINX_CONTAINER runs (if that is set), else nginx:alpine.
+legacy_image=${LEGACY_NGINX_IMAGE:-}
+if [ -z "$legacy_image" ] && [ -n "${NGINX_CONTAINER:-}" ]; then
+    legacy_image=$(docker inspect -f '{{.Image}}' "$NGINX_CONTAINER" 2>/dev/null || true)
+fi
+legacy_image=${legacy_image:-nginx:alpine}
 while [ $# -gt 0 ]; do
     case $1 in
         --legacy-nginx-conf) legacy_conf=${2:?}; shift 2 ;;
@@ -37,18 +43,18 @@ run() { # label image main-conf-or-empty conf
 }
 for variant in plain proxy; do
     run "pinned nginx ($variant)" "$pinned" "" "$tmp/$variant.conf"
-    if [ -f "$legacy_conf" ]; then
-        run "legacy nginx + legacy nginx.conf ($variant)" "$legacy_image" "$legacy_conf" "$tmp/$variant.conf"
+    if [ -n "$legacy_conf" ] && [ -f "$legacy_conf" ]; then
+        run "existing nginx + its nginx.conf ($variant)" "$legacy_image" "$legacy_conf" "$tmp/$variant.conf"
     else
-        echo "skip  legacy nginx ($variant): $legacy_conf not found"
+        echo "skip  existing nginx ($variant): no nginx.conf given (--legacy-nginx-conf FILE)"
     fi
 done
 # TRUSTED_PROXY_CIDR: networks are refused (a proxy is an address), also when several add up to everyone; addresses and small groups pass.
-for entry in "0.0.0.0/0" "0.0.0.0/1,128.0.0.0/1" "10.0.0.0/8" "141.35.0.0/15" "2001:db8::/32" "1.2.3.4/" "1.2.3.4;" "a b"; do
+for entry in "0.0.0.0/0" "0.0.0.0/1,128.0.0.0/1" "10.0.0.0/8" "198.18.0.0/15" "2001:db8::/32" "1.2.3.4/" "1.2.3.4;" "a b"; do
     if TRUSTED_PROXY_CIDR="$entry" "$here/render.sh" --env-file /dev/null > /dev/null 2>&1; then echo "FAIL  render.sh accepted TRUSTED_PROXY_CIDR='$entry'"; fail=1
     else echo "ok    render.sh refuses TRUSTED_PROXY_CIDR='$entry'"; fi
 done
-for entry in "192.0.2.10" "192.0.2.10/32" "141.35.0.0/16" "192.0.2.0/24, 198.51.100.7" "2001:db8::10/128" "2001:db8::/48"; do
+for entry in "192.0.2.10" "192.0.2.10/32" "198.18.0.0/16" "192.0.2.0/24, 198.51.100.7" "2001:db8::10/128" "2001:db8::/48"; do
     # (captured first: `grep -q` closing the pipe early would make render.sh die of SIGPIPE, and pipefail would call that a failure)
     rendered=$(TRUSTED_PROXY_CIDR="$entry" "$here/render.sh" --env-file /dev/null 2> /dev/null) || rendered=
     if grep -q '^    set_real_ip_from ' <<< "$rendered"; then echo "ok    render.sh accepts TRUSTED_PROXY_CIDR='$entry'"

@@ -7,7 +7,7 @@
 #
 # What the patches do and why: see the header of each .patch (opencv-python-headless for seg and ocsr,
 # pinned build backends for seg, cls and chem). Run this before building the images. It also checks
-# that no service's runtime set (`uv export --no-dev`) contains PyMuPDF (AGPL, D10).
+# that no service's runtime set (`uv export --no-dev`) contains PyMuPDF (AGPL).
 set -eu
 cd "$(git rev-parse --show-toplevel)"
 
@@ -28,7 +28,7 @@ for service in seg ocsr cls chem; do
         echo "$service: uv export failed" >&2
         exit 1
     fi
-    # PyMuPDF is AGPL-3.0 and no image ships it (docs/DECISIONS.md D10, TODO): decimer-segmentation
+    # PyMuPDF is AGPL-3.0 and no image ships it: decimer-segmentation
     # needs it only in its `pdf` extra since 1.6.0, which nothing here installs. Also matches
     # pymupdf4llm and pymupdf-layout.
     if printf '%s\n' "$runtime" | grep -qi '^pymupdf'; then
