@@ -95,7 +95,7 @@ export const strings = {
     limits: `Up to ${LIMITS.maxUploadBytes / 1024 / 1024} MB, ${LIMITS.maxPages} PDF pages and ${LIMITS.maxStructures} structures per upload.`,
     privacy: 'No account. Uploaded files are deleted after one hour.',
     /** The inspection frame's label: the real size of the drop zone on screen. */
-    zoneLabel: (width: number, height: number) => `Drop zone · ${width} × ${height}`,
+    zoneLabel: 'Drop zone',
     /** The width dimension line's caption and the height dimension line's caption. */
     formatsLine: 'PDF · PNG · JPG · WebP · HEIC',
     sizeLimitLine: `≤ ${LIMITS.maxUploadBytes / 1024 / 1024} MB`,

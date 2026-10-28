@@ -6,7 +6,6 @@ import { describeProblem } from '../upload/problems';
 import type { Problem } from '../state/model';
 import { IconArrowUp, PillIcon } from '../ui/icons';
 import { InspectionFrame } from '../ui/InspectionFrame';
-import { useRenderedSize } from '../ui/useRenderedSize';
 
 function ProblemNotice({ problem }: { problem: Problem }) {
   const { text, detail } = describeProblem(problem);
@@ -36,9 +35,9 @@ interface Props {
  * click opens the picker). Paste is handled at document level (usePasteToUpload),
  * so react-dropzone's own paste handling is off to avoid a second submit.
  *
- * Around the pill, the inspection frame: a copper rectangle 7 px out with four corner handles, a label with the
- * zone's real size, page guides that stop at uneven lengths, and two dimension lines (the accepted formats along
- * the width, the size limit along the height). All of it is decoration (hidden from assistive technology) and is
+ * Around the pill, the inspection frame: a copper rectangle 7 px out with four corner handles, a "Drop zone"
+ * label, page guides that stop at uneven lengths, and two dimension lines (the accepted formats along the width,
+ * the size limit along the height). All of it is decoration (hidden from assistive technology) and is
  * drawn in about a second on load by home.css; the facts it prints are also in the sentence the button is
  * described by.
  */
@@ -51,8 +50,6 @@ export function UploadZone({ onFiles, problem }: Props) {
     // Files the picker's filter turned away still go to our own check, which names them.
     onDrop: (accepted, rejections) => onFiles([...accepted, ...rejections.map((r) => r.file)]),
   });
-  // The frame spans the zone exactly (it is inset: 0 inside it), so its size is the zone's.
-  const [frameRef, size] = useRenderedSize<HTMLDivElement>();
   const mac = isMacLike();
   const factsId = useId();
 
@@ -61,13 +58,12 @@ export function UploadZone({ onFiles, problem }: Props) {
       <div {...getRootProps({ className: 'dc-drop', 'data-active': isDragActive ? 'true' : 'false' })}>
         <input {...getInputProps({ 'aria-hidden': true })} />
         <InspectionFrame
-          frameRef={frameRef}
           guides={['top', 'bottom', 'left', 'right']}
           dimWidth
           dimHeight
           captionWidth={strings.upload.formatsLine}
           captionHeight={strings.upload.sizeLimitLine}
-          label={size && strings.upload.zoneLabel(size.width, size.height)}
+          label={strings.upload.zoneLabel}
         />
         <div className="dc-drop__pill">
           <div className="dc-drop__text">
