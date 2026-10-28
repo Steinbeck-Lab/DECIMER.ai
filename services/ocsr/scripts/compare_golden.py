@@ -1,4 +1,5 @@
-"""Print, for the 20 crops legacy processed, the label and the verdicts of legacy and this service.
+"""Print, for the 20 crops the earlier Laravel version of decimer.ai processed, the label and the
+verdicts of that version ("legacy" below) and this service.
 
 For each crop: whether legacy's SMILES and this service's SMILES give the labelled InChIKey (only
 crops that have a label in golden/labels.csv can be judged), the mean confidence, the time, and

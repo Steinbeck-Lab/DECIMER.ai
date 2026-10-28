@@ -3,7 +3,7 @@
     uv run python scripts/overlay.py ../../golden/zou2024_penicillium_shentong.pdf 3 \
         --out /tmp/page3.png --write-bboxes tests/fixtures/page3_bboxes.json
 
-The page is rendered with PyMuPDF at 300 DPI (the pipeline renders with pypdfium2, D10), sent
+The page is rendered with PyMuPDF at 300 DPI (the pipeline renders with pypdfium2), sent
 through `SegModel.infer` exactly as the HTTP service would, and each returned bbox is drawn with
 its index. Page numbers start at 1. Prints the PNG path, the timings and the memory use.
 """

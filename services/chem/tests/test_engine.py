@@ -499,7 +499,7 @@ def test_the_guard_can_be_lifted() -> None:
     assert out.stdout.strip() == b"2"
 
 
-# --- the CDK jar ---------------------------------------------------------------
+# --- the CDK jar -----------------------------------------------------------------------------
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -507,8 +507,9 @@ REPO = Path(__file__).resolve().parents[3]
 def test_the_cdk_jar_is_pinned_to_the_file_legacy_uses_and_the_pin_is_everywhere_it_must_be() -> (
     None
 ):
-    # Written out, not taken from the code under test: the 2.8 bundle legacy ships as
-    # app/Python/cdk-2.8.jar, which equals a fresh download of the official release asset.
+    # Written out, not taken from the code under test: the 2.8 bundle the earlier Laravel version of
+    # decimer.ai ships as app/Python/cdk-2.8.jar, which equals a fresh download of the official
+    # release asset.
     assert CDK_JAR_NAME == "cdk-2.8.jar"
     assert CDK_JAR_SHA256 == "5dff6e365ecc21020e44aa31861b36a9cce34c51ed0b8713b8d25275552239b4"
     sums = (REPO / "deploy" / "weights" / "SHA256SUMS").read_text()

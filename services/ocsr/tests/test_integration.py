@@ -1,10 +1,10 @@
 """The real DECIMER Image Transformer on real crops. Slow (TensorFlow, CPU): `pytest -m slow`.
 
-Done-when for P2-03: the crops of the golden-set paper give the labelled InChIKeys. The crops are
-the ones of the committed legacy run `golden/runs/legacy-20261022-140954` (rows 0-19 are the ones
-legacy processed, because it caps a job at 20 structures); `labels.csv` points at them through
-`legacy_segment`. Legacy's output is NOT the reference (its model code is from 2023); it is only
-reported beside ours.
+The crops of the golden-set paper give the labelled InChIKeys. The crops are the ones of the
+committed run of the earlier Laravel version of decimer.ai ("legacy" below),
+`golden/runs/legacy-20261022-140954` (rows 0-19 are the ones legacy processed, because it caps a
+job at 20 structures); `labels.csv` points at them through `legacy_segment`. Legacy's output is NOT
+the reference (its model code is from 2023); it is only reported beside ours.
 
 Tip on a shared machine: `TF_NUM_INTRAOP_THREADS=2 TF_NUM_INTEROP_THREADS=1 nice pytest -m slow`.
 Run with `-s` to see the comparison table.
@@ -37,12 +37,12 @@ module_loop = pytest.mark.asyncio(loop_scope="module")
 
 CROPS = crops()
 LABELS = labels_on_the_first_crops()
-# Crop indices whose label the model reads right: 13 of 19, the same as legacy (pinned 2026-10-26 by
-# Kohulan). A change here needs Kohulan, like any expected value of the golden set.
+# Crop indices whose label the model reads right: 13 of 19, the same as legacy (pinned after a
+# human review of the golden set). Like any expected value of the golden set, a change here needs a
+# written reason.
 READ_RIGHT = {0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 16, 17, 18}
-# Crop indices whose decode stops at the token limit: the figure with correlation arrows. Since D25
-# (owner, 2026-10-27) such a crop is answered with the cut-off SMILES and `incomplete: true`; it
-# used to be a 422.
+# Crop indices whose decode stops at the token limit: the figure with correlation arrows. Such a
+# crop is answered with the cut-off SMILES and `incomplete: true`; it used to be a 422.
 INCOMPLETE = {15}
 
 
@@ -161,7 +161,7 @@ def test_real_model_passes_its_own_selftest(model: OcsrModel) -> None:
 def test_the_crops_read_right_are_exactly_the_pinned_ones(
     reads: list[Read], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """P2-03 done-when, pinned: any change in which labels the model reads right fails."""
+    """Pinned: any change in which labels the model reads right fails."""
     with capsys.disabled():
         print("\n" + table(reads))
     right = {i for i, label in LABELS.items() if reads[i].inchikey == label.inchikey}
@@ -172,8 +172,8 @@ def test_every_crop_is_answered_and_only_the_token_limit_crop_is_flagged_incompl
     reads: list[Read],
 ) -> None:
     # Crop 15 is a figure with correlation arrows: the model never writes an end token for it. It
-    # used to be refused (422 "no complete structure"); since D25 it is a 200 with the cut-off
-    # SMILES, flagged. Changed expectation, approved by the owner on 2026-10-27.
+    # used to be refused (422 "no complete structure"); it is now a 200 with the cut-off SMILES,
+    # flagged.
     for read in reads:
         assert read.status == 200, (read.crop.path.name, read.status, read.body)
     flagged = {read.crop.index for read in reads if read.body["incomplete"]}
@@ -294,7 +294,7 @@ def _png(image: Image.Image) -> bytes:
 )
 def test_degenerate_images_are_answered_not_crashed(model: OcsrModel, name: str, make: Any) -> None:
     # Whatever the model makes of them (each takes the full 302 steps, about 45 s, and ends at the
-    # token limit), a caller gets a prediction (flagged incomplete when it was cut off, D25) or,
+    # token limit), a caller gets a prediction (flagged incomplete when it was cut off) or,
     # for a special token, a 422; never a 500.
     try:
         result = model.infer(_png(make()), {})

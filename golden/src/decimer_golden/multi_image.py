@@ -1,10 +1,11 @@
 """Multi-image check: the golden crops uploaded together, several images to a job.
 
-Legacy never segments an upload of several images: each image is read whole as one structure, and
-the result of image N is structure N. The worker copies that: a job of more than one image
-sends every image to ocsr and cls as it is, makes no seg call, numbers the structures in image
-order and reports each image as its own box. Before D23 every image of such a job went to seg, so
-an image with two structures gave two results and shifted the numbering of the images after it.
+The earlier Laravel version of decimer.ai never segments an upload of several images: each image is
+read whole as one structure, and the result of image N is structure N. The worker copies that: a job
+of more than one image sends every image to ocsr and cls as it is, makes no seg call, numbers the
+structures in image order and reports each image as its own box. Before that change every image of
+such a job went to seg, so an image with two structures gave two results and shifted the numbering
+of the images after it.
 
 This module measures that from outside, through the HTTP API, one job at a time, and deletes every
 job it made (`DELETE /api/jobs/{id}`, also when it failed). The images are the crops of a golden
@@ -104,7 +105,7 @@ class JobOutcome:
     note: str = ""
 
     def whole(self, size: int) -> bool:
-        """The job read like D23: one structure per image, in order, each the whole image."""
+        """The job was read whole: one structure per image, in order, each the whole image."""
         return (
             self.status == "done"
             and self.found == size

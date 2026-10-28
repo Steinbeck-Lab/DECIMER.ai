@@ -1,7 +1,7 @@
-"""Golden-set check for DECIMER.ai (docs/ROADMAP.md §5).
+"""Golden-set check for DECIMER.ai (see golden/README.md).
 
-uv run decimer-golden legacy --base-url http://127.0.0.1:8080   run the paper through legacy
-uv run decimer-golden next --base-url http://127.0.0.1:8090     run the paper through the new stack
+uv run decimer-golden legacy --base-url http://127.0.0.1:8080   run it through the earlier site
+uv run decimer-golden next --base-url http://127.0.0.1:8090     run the paper through this stack
 uv run decimer-golden single-image --crops runs/<run>/crops     each crop as a pasted image
 uv run decimer-golden multi-image --crops runs/<run>/crops      crops in groups of 2 and 5
 uv run decimer-golden score runs/<run>/predictions.csv          score a run against labels.csv
@@ -230,7 +230,7 @@ def _score(args: argparse.Namespace) -> int:
     # excluded labels (scored=no) do not count, so their check state does not matter here
     unchecked = [label.number for label in labels if label.scored and not label.checked]
     s = score(labels, read_predictions(Path(args.predictions)))
-    # `incomplete` (cut off at the token limit, D25) is said only when a run has any, so the line of
+    # `incomplete` (cut off at the token limit) is said only when a run has any, so the line of
     # every older run reads as it always did.
     incomplete = f" · incomplete {s.incomplete}" if s.incomplete else ""
     print(
@@ -292,7 +292,9 @@ def _project(text: str) -> str:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="decimer-golden")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    p = sub.add_parser("legacy", help="run the paper through the legacy site")
+    p = sub.add_parser(
+        "legacy", help="run the paper through the earlier Laravel version of decimer.ai"
+    )
     p.add_argument("--base-url", default="http://127.0.0.1:8080")
     p.set_defaults(func=_legacy)
     p = sub.add_parser("next", help="run the paper through the new stack's HTTP API")
@@ -322,7 +324,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="also send every image with a blank companion (a 2-image job: the rule never "
         "applies), for seg's own box and what the crop path reads; only meaningful against a "
-        "stack before D23 (a job of several images no longer calls seg: see multi-image)",
+        "stack that still segments multi-image jobs (a job of several images no longer calls "
+        "seg: see multi-image)",
     )
     p.add_argument(
         "--whole-fraction",

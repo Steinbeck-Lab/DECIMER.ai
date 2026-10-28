@@ -1,12 +1,12 @@
 """What the service says about one structure, and the rule that decides when it shows a name.
 
-Owner decision D14: the service ships Orthonym's `valid` tier, labelled, and never `best_effort`.
+The service ships Orthonym's `valid` tier, labelled, and never `best_effort`.
 `result_from_row` is the gate on every row the engine returns. It is fail-closed twice over: the
 tier must be on the tier allow-list, and the way the name was checked (`verified`) must be on the
 round-trip allow-list. A name that fails either is withheld and never shown.
 
-The CDK fallback (owner decision D4, TODO) has its own small result, `CdkResult`: a V2000
-molblock, or a decline with a reason.
+The CDK fallback has its own small result, `CdkResult`: a V2000 molblock, or a decline with a
+reason.
 """
 
 from __future__ import annotations

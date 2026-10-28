@@ -2,7 +2,7 @@
 
 Nothing here is imported by the HTTP process. Orthonym (and RDKit, and the JVM it starts through
 JPype) are imported lazily, so importing this module is cheap and the parent never pays for them.
-CDK (`cdk.py`, the D4 fallback) runs in the same JVM, which Orthonym starts.
+CDK (`cdk.py`, the fallback for SMILES RDKit rejects) runs in the same JVM, which Orthonym starts.
 """
 
 from __future__ import annotations

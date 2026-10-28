@@ -145,7 +145,7 @@ async def test_readyz_is_503_when_the_model_finds_nothing_in_its_test_image() ->
 
 
 async def test_a_probe_during_a_request_never_runs_a_second_inference() -> None:
-    # The 2026-10-23 crash loop: Docker's health check called /readyz (a selftest on the model)
+    # A crash loop seen once: Docker's health check called /readyz (a selftest on the model)
     # while the worker's /infer was running, two inferences in one process, heap corruption.
     # Production wiring (build_app: real SegModel, production limits), cold readiness cache.
     probe = OverlapProbe([rgba_crop(30, 20)], [(10, 20, 40, 40)])
