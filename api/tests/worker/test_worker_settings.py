@@ -91,7 +91,7 @@ def test_response_limits_are_per_service() -> None:
 
 def test_the_concurrency_defaults_are_per_replica_and_one() -> None:
     """The worker multiplies them by the replicas it finds, so one keeps each replica fed
-    without filling its queue. (Before P3-04b seg and cls were 2, as service totals.)"""
+    without filling its queue."""
     worker = WorkerSettings()
     assert [worker.concurrency(s) for s in ("seg", "ocsr", "cls", "chem")] == [1, 1, 1, 1]
 
@@ -102,7 +102,7 @@ def test_the_dispatching_defaults() -> None:
     assert worker.replica_cooldown_seconds == 10
     assert worker.small_first_burst == 4
     assert worker.fast_lane_rescue_seconds == 30
-    assert worker.worker_max_jobs == 4  # the beside-legacy layout (compose: 8 after cutover)
+    assert worker.worker_max_jobs == 4  # 4 suits 3 ocsr replicas (the Compose default); 8 suits 4
 
 
 @pytest.mark.parametrize(

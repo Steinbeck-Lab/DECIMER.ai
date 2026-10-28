@@ -17,16 +17,16 @@ are exactly those of running the four stages one after the other:
   exactly one structure covering at least `SINGLE_IMAGE_WHOLE_FRACTION` of the image recognises
   the whole image instead of seg's crop: the image is already a tight crop and seg's box can clip
   its edge. The result's box is then the whole image, as for the zero-structure fallback below.
-* A job of SEVERAL uploaded images never calls seg (D23, legacy's rule: it never segments such an
-  upload): each image is one structure, read whole by ocsr and cls, numbered in image order, and
-  its box is the whole image. The images are numbered by the same prefix rule (an image "settles"
-  as soon as it is in place) and by the same cap, and every image keeps its place, as in legacy:
-  one that cannot be read (or whose crop cannot be written) is a result with an empty SMILES and
-  the warning `recognition_failed`, and the images after it are not renumbered. The cap: the
-  first `MAX_STRUCTURES` images are recognised, `structuresFound` counts them all, and the warning
-  for more than that (`structures_truncated`) is raised. Such a job takes no seg slot and holds no
-  seg ticket (its segment stage is active only until the numbering is done); its crops are fitted
-  for the models like any other crop.
+* A job of SEVERAL uploaded images never calls seg (the earlier Laravel version of decimer.ai
+  never segmented such an upload): each image is one structure, read whole by ocsr and cls,
+  numbered in image order, and its box is the whole image. The images are numbered by the same
+  prefix rule (an image "settles" as soon as it is in place) and by the same cap, and every image
+  keeps its place, as in the earlier version: one that cannot be read (or whose crop cannot be
+  written) is a result with an empty SMILES and the warning `recognition_failed`, and the images
+  after it are not renumbered. The cap: the first `MAX_STRUCTURES` images are recognised,
+  `structuresFound` counts them all, and the warning for more than that (`structures_truncated`)
+  is raised. Such a job takes no seg slot and holds no seg ticket (its segment stage is active
+  only until the numbering is done); its crops are fitted for the models like any other crop.
 * The names (chem) are asked for in the same batches as before, once every structure is checked.
   So is CDK: once every structure is checked, the SMILES that RDKit refused go
   to chem's `POST /cdk` in one batch (chunks of at most 20), before the names are asked for. A
@@ -38,7 +38,7 @@ are exactly those of running the four stages one after the other:
 * The warnings are kept in the order of the stages that raise them (`_WARNING_RANK`), as they
   read when the stages ran one after the other, not in the order things happened.
 
-Contract with the API (see "Worker contract" in the project README):
+Contract with the API (see "Worker contract with the API" in the API README):
 
 * `store.mark_running` first; a job whose record is gone or already finished is skipped.
 * `store.save` whenever a stage changes state (and at least every `HEARTBEAT_SECONDS`), so the
@@ -56,19 +56,20 @@ What goes wrong, and what the user gets:
 
 * a page cannot be rendered: it is skipped, warning `page_render_failed`; no page at all: the
   job fails, `render_failed` (not for a job of several images: there every image keeps its place,
-  an unreadable one is a result that failed to be recognised, D23);
+  an unreadable one is a result that failed to be recognised);
 * seg or ocsr is unreachable or busy for good, or ocsr times out `OCSR_MAX_TIMEOUTS` times: the
-  job fails, `service_unavailable` (seg is not called for a job of several images, D23);
+  job fails, `service_unavailable` (seg is not called for a job of several images);
 * seg refuses, crashes or times out on one page (or its image cannot be fitted to seg's limits):
   that page is skipped, warning `page_segmentation_failed`; on every page: the job fails,
   `segmentation_failed`;
 * ocsr refuses, crashes or times out on one crop: that result is invalid, warning
   `recognition_failed`;
-* ocsr stopped at the model's token limit on one crop: the cut-off
-  SMILES is kept, as legacy kept it, and goes through the same checks as any other (RDKit, then CDK,
-  so `valid` and `validBy` mean what they always mean) with `incomplete=true` on the result. No name
-  is looked up for it (a checked name would read as "this is the structure in the image"); the log
-  says so, with the structure's number and no SMILES. No warning: the flag is the result's own;
+* ocsr stopped at the model's token limit on one crop (it used to be refused with a 422): the
+  cut-off SMILES is kept, as the earlier version kept it, and goes through the same checks as any
+  other (RDKit, then CDK, so `valid` and `validBy` mean what they always mean) with
+  `incomplete=true` on the result. No name is looked up for it (a checked name would read as
+  "this is the structure in the image"); the log says so, with the structure's number and no
+  SMILES. No warning: the flag is the result's own;
 * cls refuses or crashes on one crop: `isStructure` is null, warning `classification_failed`;
   cls unreachable or timing out: no more calls to it in this job, null for the crops it did not
   answer, one warning `classifier_unavailable`;
@@ -80,7 +81,7 @@ What goes wrong, and what the user gets:
   asked for either (one `names_unavailable` if there was something to name). CDK declining a SMILES
   (it cannot read it or lay it out) is not a failure: the structure is invalid, as RDKit said; nor
   is a well-formed molblock that our molfile gate will not store (too many bonds at an atom, ...);
-* the prediction had extra fragments (legacy's rule, D16): the first is kept, warning
+* the prediction had extra fragments (the earlier version's rule): the first is kept, warning
   `fragments_trimmed`;
 * anything unexpected: the job fails, `internal_error`; it runs too long: `timeout`.
 
@@ -225,7 +226,7 @@ class Page:
     path: Path
     width: int
     height: int
-    # False: the image could not be read: there is no page file
+    # False: the image could not be read (a job of several images): there is no page file
     # and no crop, and the size is unknown (0 x 0).
     readable: bool = True
 
@@ -388,7 +389,7 @@ class _Run:
         self.deps = deps
         self.worker = deps.worker
         # The calls of this job are tagged with its id and size class: when the replicas are
-        # busy, small jobs go first and jobs take turns (`replicas.py`, D18).
+        # busy, small jobs go first and jobs take turns (`replicas.py`).
         self.small = deps.settings.is_small_job(job.pages_processed)
         self.services = deps.services.for_job(job.id, self.small)
         self.folder = deps.settings.data_dir / job.id
@@ -513,7 +514,8 @@ class _Run:
         self._rendering -= 1
         if page is not None:
             self._pages[position] = page
-            self._stages.start(StageName.SEGMENT)  # also for D23: the stage ends with the numbering
+            # Also for several images: the stage ends with the numbering.
+            self._stages.start(StageName.SEGMENT)
         if self._rendering == 0:
             if not self._pages:
                 raise PipelineFailure(RENDER_FAILED)
@@ -563,8 +565,8 @@ class _Run:
             width, height = await asyncio.to_thread(work)
         except (OSError, ValueError) as error:
             if self.whole_images:
-                # D23, legacy's rule: an unreadable image keeps its place (an empty result, its
-                # warning comes when its crop is looked for). It gets no page file and no crop
+                # As in the earlier version: an unreadable image keeps its place (an empty result,
+                # its warning comes when its crop is looked for). It gets no page file and no crop
                 # (a link to bytes that are no PNG would be served as one), and its size is
                 # unknown: a zero box.
                 log.warning("job %s: image %d: %s", self.job.id, index + 1, error)
@@ -663,11 +665,11 @@ class _Run:
         )
 
     async def _read_whole(self, page: Page) -> PageParts:
-        """D23: an image of a job of several images is one structure, read whole. Nothing is read
+        """An image of a job of several images is one structure, read whole. Nothing is read
         or sent here (the crop is a link to the image); ocsr and cls get it later, under their
         slots, fitted like any crop. An image whose crop cannot be written keeps its place all the
-        same: it has no crop file, so its recognition fails (`recognition_failed`), as legacy
-        gives an image it cannot read its place with an empty SMILES."""
+        same: it has no crop file, so its recognition fails (`recognition_failed`), as the earlier
+        version gives an image it cannot read its place with an empty SMILES."""
         if page.readable:
             try:
                 return await asyncio.to_thread(self._whole_parts, page, 0)
@@ -807,7 +809,7 @@ class _Run:
         )
 
     def _without_extra_fragments(self, number: int, smiles: str) -> str:
-        """Legacy's rule. The raw prediction is in the debug log only."""
+        """The earlier version's rule. The raw prediction is in the debug log only."""
         trimmed = trim_fragments(smiles)
         if trimmed != smiles:
             log.debug(
@@ -921,7 +923,7 @@ class _Run:
         await self._publish()
 
     async def _cdk(self, chemistry: list[Chemistry]) -> dict[int, Chemistry]:
-        """D4: the structures of the job that RDKit refused, tried with CDK through chem, in ONE
+        """The structures of the job that RDKit refused, tried with CDK through chem, in ONE
         batch (a job has 20 structures at most, so one request; `chem_batch_size` per request when
         more). One call per structure would meet chem's gate (one running, a few waiting, then
         503). Returns the chemistry of the ones CDK accepted, by position. A SMILES that CDK

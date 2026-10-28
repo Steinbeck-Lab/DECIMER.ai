@@ -1,4 +1,4 @@
-"""The api's side of the ingest sidecar (TODO, `decimer_api.sidecar`): an `IngestRunner` and
+"""The api's side of the ingest sidecar (`decimer_api.sidecar`): an `IngestRunner` and
 an `Analysis` that send their work over a TCP connection instead of starting child processes.
 
 What comes back is not trusted beyond what the api can check, because the sidecar is where untrusted

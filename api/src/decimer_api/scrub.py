@@ -1,6 +1,6 @@
 """What may leave the process in an error report or a log line.
 
-Reports go to a GlitchTip on our own VM, but they are kept for 90 days, so they follow the same rule
+Reports go to a self-hosted GlitchTip, where they are kept for 90 days, so they follow the same rule
 as the logs: **no structure, no file, no address** (the privacy text promises that nothing a user
 uploads or draws outlives the hour). Two layers:
 

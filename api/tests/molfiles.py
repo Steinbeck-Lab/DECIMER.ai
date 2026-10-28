@@ -1,4 +1,4 @@
-"""Molfiles built in code for the tests of the cost gate (the reviewer's probes, P3-06 review):
+"""Molfiles built in code for the tests of the cost gate (adversarial inputs):
 graphs whose parsing alone costs seconds and gigabytes inside the byte cap."""
 
 from __future__ import annotations

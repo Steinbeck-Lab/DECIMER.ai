@@ -37,7 +37,7 @@ from decimer_api.scrub import (
 MOLFILE = analyse_smiles("CCO").molfile  # a real V2000 block, as RDKit writes it
 ASPIRIN = "CC(=O)Oc1ccccc1C(=O)O"
 CAFFEINE = "CN1C=NC2=C1C(=O)N(C(=O)N2C)C"
-CLIENT_IP = "141.35.2.10"  # a public address (University of Jena): what a client looks like
+CLIENT_IP = "141.35.2.10"  # a public address: what a client looks like
 CLIENT_IPV6 = "2001:4860:4860::8888"
 FILENAME = "my_secret_structure.pdf"
 JOB = "7a9f7a9f7a9f7a9f7a9f7a9f7a9f7a9f"
@@ -102,7 +102,7 @@ def test_ordinary_text_is_left_alone(text: str) -> None:
     assert scrub_text(text) == text
 
 
-# The probes of the Opus review (2026-10-23): a SMILES that is glued to punctuation, a quote of
+# Adversarial cases: a SMILES that is glued to punctuation, a quote of
 # another kind, a key of one letter, a query string, ... Every one used to get through; the text
 # around it must survive.
 GLUED_SMILES = [

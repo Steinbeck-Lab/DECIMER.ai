@@ -33,7 +33,7 @@ class WorkerSettings(BaseSettings):
 
     # --- concurrency ---
     # Calls in flight at once to ONE REPLICA of a service, counted over all jobs of this process
-    #. The worker finds the replicas through DNS and multiplies: a service with 3 replicas
+    # The worker finds the replicas through DNS and multiplies: a service with 3 replicas
     # takes 3 x this many calls. The model services run one inference at a time and queue a few
     # more (ocsr: 16, seg: 8), so 1 keeps a replica fed without filling its queue. ocsr is the
     # slow one (3 s for a structure, up to 55 s for an image that is not one), and its timeout
@@ -46,11 +46,11 @@ class WorkerSettings(BaseSettings):
     # Pages rendered at once, in this process. A 50 MP page needs about 0.5 GB while rendered.
     render_concurrency: int = Field(default=1, gt=0)
     # Jobs this process runs at once (arq max_jobs). Their calls share the replicas; a job needs
-    # little memory beyond the page it renders. 4 beside legacy (2 replicas of each service), 8
-    # after cutover (6/3/3).
+    # little memory beyond the page it renders. About twice the number of ocsr replicas: 4 suits 3,
+    # 8 suits 4.
     worker_max_jobs: int = Field(default=4, gt=0)
 
-    # --- replicas and fair dispatching ---
+    # --- replicas and fair dispatching (replicas.py) ---
     # The replicas of a service are looked up again this often, and at once after a call could not
     # connect.
     replica_refresh_seconds: float = Field(default=10.0, gt=0)
@@ -103,7 +103,7 @@ class WorkerSettings(BaseSettings):
     connect_retry_budget_seconds: float = Field(default=90.0, ge=0)
     # chem is optional (no chem: names are null and a warning says so), so a job does not wait for
     # it as it waits for a model it cannot do without: while chem refuses connections the check
-    # stage gives up on it after this much waiting, once per job (TODO: the worker runs with
+    # stage gives up on it after this much waiting, once per job (the worker runs with
     # chem down).
     chem_connect_retry_budget_seconds: float = Field(default=5.0, ge=0)
     connect_backoff_seconds: float = Field(default=0.5, ge=0)
@@ -147,7 +147,7 @@ class WorkerSettings(BaseSettings):
     # --- chemistry ---
     # Names are asked for in batches of at most this many structures (chem takes 20).
     chem_batch_size: int = Field(default=20, gt=0, le=20)
-    # D4 (kept, 2026-10-23): a SMILES RDKit refuses is tried with CDK 2.8 in chem (`POST /cdk`, one
+    # A SMILES RDKit refuses is tried with CDK 2.8 in chem (`POST /cdk`, one
     # batch per job). A structure only CDK accepts is shown as such (`Result.valid_by == "cdk"`).
     # Needs `chem_url`; false switches the call off.
     cdk_fallback: bool = True

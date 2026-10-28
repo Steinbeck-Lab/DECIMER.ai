@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     data_dir: Path = Path("/data/jobs")
 
-    # --- retention (ROADMAP §3) ---
+    # --- retention ---
     # A finished job (done or failed) is deleted this long after it ends.
     job_ttl_seconds: int = Field(default=3600, gt=0)
     # A queued job's record lives this long. It must outlast the longest plausible wait in the
@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     # The sweep never touches a folder younger than this (an upload may still be in flight).
     sweep_grace_seconds: int = Field(default=900, gt=0)
 
-    # --- limits (ROADMAP §3) ---
+    # --- limits ---
     max_pdf_pages: int = Field(default=10, gt=0)
     max_structures: int = Field(default=20, gt=0)  # applied by the worker
     max_upload_mb: int = Field(default=100, gt=0)

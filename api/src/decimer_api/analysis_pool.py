@@ -1,4 +1,4 @@
-"""Reading a client's molfile with RDKit, in a child process (TODO, review).
+"""Reading a client's molfile with RDKit, in a child process.
 
 The text gate (`molfile.py`) keeps out what it can recognise as too big, but a gate is a copy of a
 parser, and RDKit can cost seconds and gigabytes that no count of the text predicts. So molfiles are

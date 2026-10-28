@@ -1,5 +1,5 @@
-"""Request and response bodies of the endpoints that work on a finished job's results: validate
-, export, report and engines. The job record and its view are in `models`.
+"""Request and response bodies of the endpoints that work on a finished job's results: validate,
+export, report and engines. The job record and its view are in `models`.
 
 Requests refuse unknown fields: nothing the client adds is ever used, so it is better told.
 """

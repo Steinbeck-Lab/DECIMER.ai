@@ -1,4 +1,4 @@
-"""A job its owner deletes is stopped by the worker (TODO, `worker/cancel.py`)."""
+"""A job its owner deletes is stopped by the worker (`worker/cancel.py`)."""
 
 from __future__ import annotations
 

@@ -161,7 +161,7 @@ def refused(text: str) -> str:
 
 
 @pytest.mark.parametrize("count", [44, 60])
-def test_the_reviewers_graphs_are_refused_before_rdkit_is_asked(
+def test_adversarial_graphs_are_refused_before_rdkit_is_asked(
     count: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Complete graphs of R# atoms: 15 KB and 36 KB, 5.7 s / 484 MB and 46 s / 2.6 GB to parse."""

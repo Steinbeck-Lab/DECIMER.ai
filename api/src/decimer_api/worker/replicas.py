@@ -1,4 +1,4 @@
-"""Replicas of a model service: discovery, least-busy routing, a fair dispatcher (P3-04b, D18).
+"""Replicas of a model service: discovery, least-busy routing, a fair dispatcher.
 
 One `ReplicaPool` per service (seg, ocsr, cls, chem), shared by every job of the worker process.
 

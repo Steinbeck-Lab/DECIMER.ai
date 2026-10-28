@@ -81,7 +81,7 @@ async def test_a_crop_is_read_only_when_it_has_an_ocsr_slot(
 async def test_an_image_of_several_is_read_only_when_it_has_an_ocsr_slot(
     make_rig: Callable[..., Rig], prepares: dict[str, int]
 ) -> None:
-    """D23: a job of several images has no seg page to prepare, and its images (the crops) are
+    """A job of several images has no seg page to prepare, and its images (the crops) are
     read, as every crop is, only once ocsr has a slot for them."""
     go = asyncio.Event()
 

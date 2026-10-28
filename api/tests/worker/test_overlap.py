@@ -880,9 +880,9 @@ async def test_the_structure_count_and_the_end_of_segment_are_stored_as_soon_as_
 async def test_a_job_that_fails_on_ocsr_before_seg_is_through_has_no_structure_count(
     make_rig: RigFactory,
 ) -> None:
-    """What a failed job's record holds now that the stages overlap (README, "A failed job"): what
-    was known when it failed. Pages 1 and 2 are still with seg, so nothing is known about the
-    structures of the job: no count, no cap warning, no warning about those pages."""
+    """What a failed job's record holds now that the stages overlap (README, "When something goes
+    wrong"): what was known when it failed. Pages 1 and 2 are still with seg, so nothing is known
+    about the structures of the job: no count, no cap warning, no warning about those pages."""
     release = asyncio.Event()  # never set
 
     async def hold_later_pages(parts: dict[str, bytes]) -> None:
