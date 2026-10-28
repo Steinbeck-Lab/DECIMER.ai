@@ -5,14 +5,15 @@ inside the package) when `DecimerImageClassifier()` is built. This module theref
 inside `ClsModel.load()`, so importing the service module stays fast and the pure logic can be
 tested with an injected `score_fn` and no TensorFlow at all.
 
-Decision rule (identical to legacy, which calls `is_chemical_structure(img=path)`): the library
+Decision rule (identical to the earlier Laravel version of decimer.ai, which calls
+`is_chemical_structure(img=path)`): the library
 computes `score = sigmoid(logit)` and the image is a structure when `score <= THRESHOLD`. The score
 is therefore a *non-structure* probability: low means "structure".
 
-Intentional deviations from legacy, both in `_flatten`: images with transparency are composited
-onto white here instead of by the library (identical pixels for RGBA, but without the library's
-write of "caffeine_mod.png" into the working directory), and LA, palette-with-transparency and tRNS
-images get the same treatment instead of having their alpha channel dropped.
+Intentional deviations from the earlier version, both in `_flatten`: images with transparency are
+composited onto white here instead of by the library (identical pixels for RGBA, but without the
+library's write of "caffeine_mod.png" into the working directory), and LA, palette-with-transparency
+and tRNS images get the same treatment instead of having their alpha channel dropped.
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ from PIL import Image, ImageDraw
 # installed library still has this default.
 THRESHOLD = 0.000089
 
-# Largest image, in pixels, that is decoded: D11, the most the API accepts per image. The
+# Largest image, in pixels, that is decoded: the most the API accepts per image. The
 # single-image fallback sends the whole upload to `cls`, so a lower number would answer 422 for a
 # valid 48 MP phone photo. Decoding and preprocessing 50 MP takes about 0.43 GB on top of the
 # resident model (README: "Memory"). Crops from `seg` are far smaller.
@@ -95,13 +96,13 @@ def _decode(data: bytes) -> Image.Image:
 def _flatten(image: Image.Image) -> Image.Image:
     """Composite anything with transparency onto white; hand every other image over untouched.
 
-    INTENTIONAL DEVIATION FROM LEGACY. The library does this for RGBA only, and by saving
-    "caffeine_mod.png" into the working directory as it goes (not thread-safe, and a write into
-    whatever the cwd is). Doing it here, the same way (paste with the alpha channel as mask), gives
-    the library only opaque images and keeps its own grayscale conversion for them; for RGBA the
-    pixels are identical to what legacy fed the network (a test compares them to the library's own
-    recipe). LA, palette and tRNS images get the same treatment instead of showing their
-    transparent pixels' hidden colour, which is where this differs from legacy.
+    INTENTIONAL DEVIATION FROM THE EARLIER VERSION. The library does this for RGBA only, and by
+    saving "caffeine_mod.png" into the working directory as it goes (not thread-safe, and a write
+    into whatever the cwd is). Doing it here, the same way (paste with the alpha channel as mask),
+    gives the library only opaque images and keeps its own grayscale conversion for them; for RGBA
+    the pixels are identical to what the earlier version fed the network (a test compares them to
+    the library's own recipe). LA, palette and tRNS images get the same treatment instead of showing
+    their transparent pixels' hidden colour, which is where this differs from the earlier version.
     """
     if not image.has_transparency_data:
         return image

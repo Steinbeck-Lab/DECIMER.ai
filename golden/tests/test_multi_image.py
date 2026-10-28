@@ -22,7 +22,7 @@ def row(smiles: str, index: int, page: int, bbox: tuple[int, int, int, int]) -> 
 
 
 def whole_job(*smiles: str) -> dict[str, Any]:
-    """A job as D23 makes it: one result per image, in order, each the whole image."""
+    """A job as the worker makes it: one result per image, in order, each the whole image."""
     results = [row(s, n, n, (0, 0, *SIZE)) for n, s in enumerate(smiles)]
     return job_json("done", results=results, found=len(smiles))
 
@@ -188,7 +188,7 @@ def test_the_table_lists_a_job_per_line_with_the_signs_of_d23(tmp_path: Path) ->
     lines = text.splitlines()
     assert lines[1].split()[:6] == ["2x1", "done", "0.0", "2", "2", "yes"]
     assert "S1*" in lines[1] and "S1*!" in lines[2]  # the second job is wrong on both
-    assert "groups of 2: 2 jobs, 4 images, right 2/4 scored, D23-shaped 2/2 jobs" in text
+    assert "groups of 2: 2 jobs, 4 images, right 2/4 scored, whole-image 2/2 jobs" in text
     assert multi_image.unchecked(rows) == ["S1"]
 
 
@@ -211,7 +211,7 @@ def test_before_and_after_are_compared_per_image_and_per_job(tmp_path: Path) -> 
     after = table(whole_job(CAFFEINE, BENZENE), "after")
     text = multi_image.compare(before, after)
     assert "now right: 00_crop-0.png (x2), 01_crop-1.png (x2); now wrong: -" in text
-    assert "groups of 2 D23-shaped: 0 jobs before, 1 after" in text
+    assert "groups of 2 whole-image: 0 jobs before, 1 after" in text
 
 
 # --- the command ---------------------------------------------------------------------------------
@@ -251,7 +251,7 @@ def test_the_command_runs_pairs_and_a_group_of_five_and_writes_its_files(
     ]  # fmt: skip
     assert (run_dir / "run.json").is_file()
     out = capsys.readouterr().out
-    assert "groups of 5: 1 jobs, 5 images" in out and "D23-shaped 1/1 jobs" in out
+    assert "groups of 5: 1 jobs, 5 images" in out and "whole-image 1/1 jobs" in out
     assert len(api.uploads) == 3 and not api.live and not api.overlap
 
 

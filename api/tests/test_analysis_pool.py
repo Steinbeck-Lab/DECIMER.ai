@@ -237,8 +237,9 @@ async def test_the_child_has_an_address_space_limit_and_no_files_to_write(
     limits = (await pool.analyse(molfile_of("CCO"))).svg
     space = re.search(r"Max address space\s+(\d+)\s+(\d+)", limits)
     assert space is not None and space.group(1) == space.group(2)
-    # baseline of an RDKit process + 300 MB: not unlimited, not a gigabyte over. The baseline is about 520 MB on the VM
-    # and the Mac, about 270 MB on GitHub's runners (573 MB in all there), so the floor is the budget itself.
+    # baseline of an RDKit process + 300 MB: not unlimited, not a gigabyte over. The baseline is
+    # about 520 MB on a typical host, about 270 MB on GitHub's runners (573 MB in all there), so
+    # the floor is the budget itself.
     assert 300 * 1024**2 < int(space.group(1)) < 1100 * 1024**2
     fsize = re.search(r"Max file size\s+(\d+)\s+(\d+)", limits)
     assert fsize is not None and fsize.group(1) == fsize.group(2) == "0"

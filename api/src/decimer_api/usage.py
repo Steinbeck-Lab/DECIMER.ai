@@ -1,7 +1,7 @@
 """The usage counter: per day, how many jobs, of what kind and size, how many pages and
-structures, how many failures. It replaces the legacy site's TSV files
-(`decimer_segmentation_log.tsv`: time, pages, structures) and, like them, answers "how much is the
-service used" for a report or a grant.
+structures, how many failures. It replaces the TSV files of the earlier Laravel version of
+decimer.ai (`decimer_segmentation_log.tsv`: time, pages, structures) and, like them, answers
+"how much is the service used" for a report or a grant.
 
 What is counted, and what is never stored:
 

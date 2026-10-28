@@ -1,5 +1,5 @@
 /**
- * What may leave the browser in an error report. The reports go to our own GlitchTip, but they are
+ * What may leave the browser in an error report The reports go to a self-hosted GlitchTip, but they are
  * kept for 90 days, so they follow the rule of the privacy text: no structure, no file, no address. The API has the
  * same scrubber in Python (api/src/decimer_api/scrub.py); the two are kept in step on purpose.
  *

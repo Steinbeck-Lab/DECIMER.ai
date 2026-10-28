@@ -144,7 +144,7 @@ test('starting over while the upload is in flight ignores the late answer', asyn
   expect(controller.store.getState().jobId).toBeNull();
 });
 
-// ---- starting over deletes the job on the server ----------------------
+// ---- starting over deletes the job on the server ------------------------------
 
 test('starting over mid-job deletes the job, so its slot is free at once', async () => {
   const api = fakeApi({ getJob: async () => runningJob('job-1') });
@@ -281,7 +281,7 @@ test('reset cancels a pending validation', async () => {
   expect(controller.store.getState().edits[2]).toBeUndefined();
 });
 
-// ---- the service says "busy": try once more after Retry-After (review 3) -----------------------
+// ---- the service says "busy": try once more after Retry-After ------------------------------
 
 const busy = (retryAfterMs: number | null) => new ApiError(503, 'busy', 'The service is busy.', retryAfterMs);
 
@@ -489,7 +489,7 @@ test('what comes out of the export is in result order with each edit on its own 
   ]);
 });
 
-test('an edit still sitting in the editor is committed before the export reads the edits (the legacy race)', async () => {
+test('an edit still sitting in the editor is committed before the export reads the edits (the race of the earlier version)', async () => {
   const api = fakeApi();
   const { controller } = await inResults(api);
   // The editor's own change event has not fired yet: the canvas holds a molfile the store does not know.

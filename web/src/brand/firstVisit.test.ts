@@ -77,7 +77,7 @@ test('a flag left in local storage by the old behaviour does not stop the animat
   expect(isFirstVisit()).toBe(true);
 });
 
-test('forgetOldFlags removes this app\'s old note and the legacy site\'s flag from local storage, and leaves the tab\'s flag', () => {
+test('forgetOldFlags removes this app\'s old note and the earlier version\'s flag from local storage, and leaves the tab\'s flag', () => {
   localStorage.setItem('decimer.visited', '1');
   localStorage.setItem('visited', 'true');
   localStorage.setItem('ketcher-settings', 'kept'); // not ours to touch

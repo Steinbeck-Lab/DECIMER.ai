@@ -2,7 +2,7 @@
 # Local mirror of .github/workflows/ci.yml: run before every commit.
 # Usage: scripts/check.sh [--no-e2e] [--release] [--live]
 #   --release  also runs the release gate (web/src/release.test.ts): it fails while any [CONFIRM: ...] marker is
-#              left in the copy (web/src/strings.ts) or in the built web/dist/. For the cutover, not for every commit.
+#              left in the copy (web/src/strings.ts) or in the built web/dist/. For a release, not for every commit.
 #   --live     also runs the live spec (web/e2e/live) against a stack that is already running, one job at a time:
 #              LIVE_BASE_URL (default http://127.0.0.1:8090). Opt-in; never part of CI or of the default run.
 set -euo pipefail
@@ -40,7 +40,7 @@ step "deploy: compose file checks (deploy/check-compose.py)"
 python3 -I deploy/check-compose.py
 
 if [[ $E2E == 1 ]]; then
-  # TODO: the API end to end (upload, arq worker, pipeline, poll, validate, export, delete) against fake model
+  # The API end to end (upload, arq worker, pipeline, poll, validate, export, delete) against fake model
   # services, on a real Redis: a throwaway container of the release deploy/compose.yaml runs, on a free port of
   # 127.0.0.1, removed when this step ends. (The api step above ran the same test on fakeredis.) Skipped by --no-e2e.
   step "api: end-to-end (fake models, real Redis in a throwaway container)"

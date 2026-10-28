@@ -1,5 +1,6 @@
-# systemd alternative to cron (docs/RUNBOOK.md, "Uptime check"). Copy to /etc/systemd/system/ (root) or ~/.config/systemd/user/ (a user
+# systemd alternative to cron (deploy/README.md, "Uptime check"). Copy to /etc/systemd/system/ (root) or ~/.config/systemd/user/ (a user
 # unit needs `loginctl enable-linger $USER` to run while nobody is logged in; then drop User= and use `systemctl --user`).
+# Adjust User= and the ExecStart path below to your server: any unprivileged user, and the directory the repository is cloned to.
 [Unit]
 Description=decimer.ai uptime check
 After=network-online.target

@@ -11,12 +11,12 @@ What goes in, for each structure and in the order of the job's results (never th
 * **a structure without a molfile** (the recognition failed, or the SMILES is not valid) has no
   `.mol` file and no SDF record; it is still in the SMILES file and the CSV, so that the lists
   have every structure and the gaps are visible.
-* **a structure that only CDK accepted** (RDKit refused its SMILES, CDK read it: D4, TODO)
+* **a structure that only CDK accepted** (RDKit refused its SMILES, CDK read it)
   does have a molfile, CDK's, and so a `.mol` file and an SDF record (with `VALID` = `cdk`). Its
   SMILES is the one DECIMER wrote, its InChIKey and name are empty, and the CSV column `valid`
   says `cdk`.
 
-* **an incomplete structure** (the model stopped at its token limit and its SMILES is cut off: D25)
+* **an incomplete structure** (the model stopped at its token limit and its SMILES is cut off)
   is exported like any other, whatever RDKit and CDK made of it; the CSV column `incomplete` says
   `true` and the SDF record has `INCOMPLETE` = `true`, so that a cut-off SMILES is never taken for
   a reading. It has no name. A structure the user edited is no longer the cut-off text: it is
@@ -27,7 +27,8 @@ structure: `valid` is `true` (RDKit accepts the structure), `cdk` (RDKit does no
 above) or `false` (neither); `edited` and `incomplete` are `true` or `false`. An edited structure
 is judged by RDKit alone (the molfile comes from the editor), so its `valid` is `true` or `false`,
 never `cdk`. Like `VALID` in the SDF, which is written only for `cdk`, `INCOMPLETE` is written only
-for `true`; the SMILES file has no room for either (it keeps legacy's columns).
+for `true`; the SMILES file has no room for either (it keeps the columns of the earlier Laravel
+  version of decimer.ai).
 * text from outside (a SMILES that OCSR made up, a name from chem) is put on one line and cleaned
   of what could end an SDF record or start a spreadsheet formula.
 
@@ -177,8 +178,8 @@ def one_line(text: str | None) -> str:
 
 
 def smiles_text(rows: Sequence[Row]) -> str:
-    """`<image>\\t<SMILES>\\t<IUPAC name>`, one line per structure (the legacy file had the first
-    two columns)."""
+    """`<image>\\t<SMILES>\\t<IUPAC name>`, one line per structure (the earlier version's file had
+    the first two columns)."""
     return "".join(
         f"{file_stem(row.number, len(rows))}.png\t{one_line(row.smiles)}\t{one_line(row.name)}\n"
         for row in rows
@@ -258,7 +259,7 @@ class Entry:
 def zip_entries(rows: Sequence[Row], crops: Sequence[BinaryIO | None]) -> list[Entry]:
     """Image, then molfile, of each structure in order; the SMILES list last. `crops[i]` is the
     open crop file of `rows[i]`, or None for a structure that has none (an image of a job of
-    several images that could not be read, D23): its image is left out, the rest stays."""
+    several images that could not be read): its image is left out, the rest stays."""
     entries: list[Entry] = []
     for row, crop in zip(rows, crops, strict=True):
         stem = file_stem(row.number, len(rows))

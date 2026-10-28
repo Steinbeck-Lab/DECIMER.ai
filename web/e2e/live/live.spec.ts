@@ -5,7 +5,7 @@ import { editorPanel, downloadButton, layoutOnCanvas, waitForEditor, watchProble
 import { markReturningTab } from '../returning';
 import { parseCsv, readZip } from './zip';
 
-// The thin slice against the real stack (TODO, and the VM half of P4-08): the production build under the edge's
+// The thin slice against the real stack: the production build under the edge's
 // CSP, the real API, workers and models. One journey, one job at a time, one page shared by the steps (serial: a step
 // that fails ends the run, the later ones depend on its state). Run with `npm run e2e:live`; see e2e/live/README.md.
 //

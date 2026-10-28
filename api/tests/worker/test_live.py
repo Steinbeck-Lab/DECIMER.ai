@@ -10,7 +10,7 @@ It renders page 3 of the golden paper (Figure 2, 12 numbered structures; LIVE_PA
 other 1-based pages) with the production renderer (a child process at 300 DPI), runs seg, ocsr
 and cls over HTTP, and checks the answers against `golden/labels.csv`. The count of labelled
 structures recovered is printed, not asserted beyond "some": the pass rule of the golden-set
-check (docs/ROADMAP.md §5) is the place for thresholds.
+check (`golden/README.md`) is the place for thresholds.
 """
 
 from __future__ import annotations

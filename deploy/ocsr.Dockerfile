@@ -1,4 +1,4 @@
-# DECIMER Image Transformer (OCSR) model service (TODO, service TODO). Python 3.11,
+# DECIMER Image Transformer (OCSR) model service. Python 3.11,
 # TensorFlow 2.15.1, decimer 2.8.1, CPU only.
 #
 # The build context is the REPOSITORY ROOT (path dependency on services/common). Fetch the weights
@@ -10,9 +10,9 @@
 # the service starts, and never touches DECIMER_HandDrawn_model (the service cannot ask for it). Both
 # are baked in all the same (about 650 MB on disk, shared by all replicas) and checked against the ocsr/
 # lines of deploy/weights/SHA256SUMS with `verify.sh --strict` (exactly those nine files, nothing else):
-# owner decision D15 keeps a hand-drawn option possible later, and since 2.8.1 the hand-drawn model
-# costs no memory or start-up time (services/ocsr/README.md), only 348 MB of disk. Dropping it is the
-# owner's call (SHA256SUMS says what to remove). There are no .model_url marker files on purpose:
+# this keeps a hand-drawn option possible later, and since 2.8.1 the hand-drawn model
+# costs no memory or start-up time (services/ocsr/README.md), only 348 MB of disk. Dropping it saves
+# that disk space (SHA256SUMS says what to remove). There are no .model_url marker files on purpose:
 # without them decimer never re-downloads.
 #
 # Before building, apply deploy/patches/apply-pyproject-patches.sh to services/ocsr (opencv-python-
@@ -123,7 +123,7 @@ EXPOSE 8002
 # also loaded the hand-drawn one; services/ocsr/README.md), and longer when the box is busy: 180 s of
 # start period, left as it was. Once running, a check every 120 s (an idle service pays the selftest on
 # each one); during start-up one every 5 s, so depends_on service_healthy does not wait a whole interval.
-# --start-interval needs Docker 25 or newer (28.4 on the VM).
+# --start-interval needs Docker 25 or newer.
 HEALTHCHECK --interval=120s --timeout=40s --start-period=180s --start-interval=5s --retries=3 \
     CMD ["python", "/usr/local/bin/healthcheck.py", "8002", "/readyz", "35"]
 CMD ["python", "-m", "decimer_ocsr"]

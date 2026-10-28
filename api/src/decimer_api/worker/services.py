@@ -4,7 +4,7 @@ What this layer promises:
 
 * One `httpx.AsyncClient` for everything, no environment proxies (the services are on the
   internal network), no redirects.
-* A service is a set of replicas found through DNS (`replicas.py`, D18). A call goes to the
+* A service is a set of replicas found through DNS (`replicas.py`). A call goes to the
   least-busy healthy replica, at most `<SERVICE>_CONCURRENCY` calls in flight PER REPLICA,
   counted over every job of this process; when all are busy the calls wait in a fair queue
   (small jobs first, jobs taking turns, see `replicas.py`). The slot is held while a call waits

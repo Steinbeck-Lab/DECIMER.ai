@@ -1,4 +1,4 @@
-"""Molfiles built in code for the tests of the cost gate (the reviewer's probes, P3-06 review):
+"""Molfiles built in code for the tests of the cost gate (adversarial inputs):
 graphs whose parsing alone costs seconds and gigabytes inside the byte cap."""
 
 from __future__ import annotations
@@ -82,7 +82,7 @@ SMALL_V3000_BLOCK = (
 
 
 def version_confusion(count: int = 44) -> str:
-    """The re-review's attack: a counts line that ends `V2000 V3000`, a complete graph of `count`
+    """A bypass found earlier: a counts line that ends `V2000 V3000`, a complete graph of `count`
     R# atoms in V2000 lines, and a one-atom V3000 block after the bonds. RDKit reads the V2000
     graph (the version field is `V2000`); a gate that looks for `V3000` anywhere on the line counts
     the tiny block instead (5.5 s and 669 MB for 44 atoms)."""
@@ -92,7 +92,7 @@ def version_confusion(count: int = 44) -> str:
 
 
 def complete_graph_of_dummies(count: int) -> str:
-    """K_n of R# atoms: no valence limit, so RDKit takes it all in (the review's 44 and 60)."""
+    """K_n of R# atoms: no valence limit, so RDKit takes it all in (44 and 60 atoms)."""
     atoms = [(math.cos(i), math.sin(i)) for i in range(count)]
     bonds = [(i + 1, j + 1, 1) for i in range(count) for j in range(i + 1, count)]
     return molfile(atoms, bonds, lambda _i: "R#")
@@ -128,7 +128,7 @@ UNICODE_SPACES = [
 
 
 def whitespace_confusion(count: int, space: str) -> str:
-    """The third review's attack: the bond lines of a V3000 molfile separate their fields with
+    """Another bypass: the bond lines of a V3000 molfile separate their fields with
     `space`, a Unicode space that Python's `str.split` splits at and RDKit does not. RDKit reads
     `<index> <type><space><p> <q> <r>` as the bond (q, r), and builds the complete graph of
     `count` atoms; a gate that splits at `space` reads (p, q) and sees a forest of small stars."""

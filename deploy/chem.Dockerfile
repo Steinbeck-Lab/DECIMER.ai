@@ -1,5 +1,5 @@
-# DECIMER chem service: IUPAC names from Orthonym and the CDK 2.8 layout
-# fallback (TODO, D4). Python 3.12, an Eclipse Temurin 21 JRE, Orthonym's two jars (OPSIN, centres)
+# DECIMER chem service: IUPAC names from Orthonym and the CDK 2.8 fallback for SMILES that RDKit refuses.
+# Python 3.12, an Eclipse Temurin 21 JRE, Orthonym's two jars (OPSIN, centres)
 # and the CDK 2.8 jar. The only image with a JVM. No TensorFlow.
 #
 # The build context is the REPOSITORY ROOT. Fetch the jars first (deploy/weights/fetch.sh chem), apply
@@ -46,7 +46,7 @@ RUN apt-get update \
 # cache when the wheel is built, i.e. during `uv sync`, in a build step nobody meant to give network
 # access to and for files that are baked in separately. services/chem sets it for uv through
 # [tool.uv.extra-build-variables]; it is exported here as well, for any build path that does not read
-# that table (services/chem/README.md, "the P2-05 trap").
+# that table (see services/chem/README.md).
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never \

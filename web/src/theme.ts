@@ -1,7 +1,7 @@
 import { createTheme, type CSSVariablesResolver, type MantineColorsTuple } from '@mantine/core';
 
 /**
- * The whole visual world in one place (direction contract: .impeccable/surfaces/web-src-app-tsx.md): a calm, flat
+ * The whole visual world in one place: a calm, flat
  * egg-nog page, velvet-forest ink, and a copper inspection frame. CSS reads these as `--dc-*` variables (see
  * `cssVariablesResolver`); nothing else hard-codes a colour. Surfaces are flat: no gradients, no dark mode.
  *

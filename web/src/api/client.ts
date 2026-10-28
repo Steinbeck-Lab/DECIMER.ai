@@ -23,7 +23,7 @@ export interface ApiClient {
    */
   deleteJob(id: string, signal?: AbortSignal): Promise<void>;
   /**
-   * `POST /api/jobs/{id}/results/{n}/validate` (decision D12) where `n` is the 0-based `Result.index`, not
+   * `POST /api/jobs/{id}/results/{n}/validate` where `n` is the 0-based `Result.index`, not
    * the display number: canonical SMILES, InChIKey, SVG and name for an edited molfile. The request is
    * aborted when a newer edit of the same result supersedes it.
    */

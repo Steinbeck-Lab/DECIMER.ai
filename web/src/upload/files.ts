@@ -46,7 +46,7 @@ export function kindOf(file: FileLike): FileKind | null {
   return null;
 }
 
-/** Legacy rules (ROADMAP §3, §6 item 4): one PDF or some images, never both; 100 MB in total. */
+/** The upload rules of the earlier Laravel version of decimer.ai: one PDF or some images, never both; 100 MB in total. */
 export function checkSelection(files: readonly File[]): Selection {
   if (files.length === 0) return { ok: false, error: { code: 'none' } };
   if (files.length > LIMITS.maxUploadFiles) {

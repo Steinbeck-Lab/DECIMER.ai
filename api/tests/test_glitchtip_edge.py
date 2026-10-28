@@ -3,8 +3,8 @@ for the api and the workers, and the one setting of the entrypoint that opens th
 
 These are the nginx configuration files themselves, read as text: nginx is not in this environment,
 and what has to stay true is a short list of lines that a careless edit could delete. (The behaviour
-was tried against a real nginx and a real GlitchTip, see deploy/README.md, "Observability".) Inside
-the monorepo a missing file FAILS (see test_engines.py).
+was tried against a real nginx and a real GlitchTip, see deploy/README.md, "Error reports:
+GlitchTip".) Inside the monorepo a missing file FAILS (see test_engines.py).
 
 What they hold, in short: the privacy page says an error report never holds an IP address. GlitchTip
 reads a client address from `X-Forwarded-For`, `X-Real-IP`, `Client-IP`, `X-Forwarded`,

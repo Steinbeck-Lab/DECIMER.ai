@@ -133,7 +133,7 @@ async def test_a_page_image_job_is_copied_as_page_n(make_rig: RigFactory) -> Non
     assert png_size(rig.file(job, "page-0.png").read_bytes()) == (300, 200)
     assert png_size(rig.file(job, "page-1.png").read_bytes()) == (250, 120)
     assert [r.page_index for r in job.results] == [0, 1]
-    assert [r.bbox for r in job.results] == [(0, 0, 300, 200), (0, 0, 250, 120)]  # read whole, D23
+    assert [r.bbox for r in job.results] == [(0, 0, 300, 200), (0, 0, 250, 120)]  # read whole
     assert job.status is JobStatus.DONE
 
 

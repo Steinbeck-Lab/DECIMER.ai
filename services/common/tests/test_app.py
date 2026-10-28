@@ -147,8 +147,8 @@ async def test_bad_input_from_model_is_422(model: StubModel, client: httpx.Async
 async def test_model_crash_is_500_and_service_stays_up(
     model: StubModel, client: httpx.AsyncClient
 ) -> None:
-    # The legacy socket servers died on the first bad request; one failure must not take the
-    # service down.
+    # The socket servers of the earlier Laravel version of decimer.ai died on the first bad
+    # request; one failure must not take the service down.
     model.infer_error = RuntimeError("tensor shape mismatch")
     r = await client.post("/infer", files={"image": ("p.png", b"x", "image/png")})
     assert r.status_code == 500

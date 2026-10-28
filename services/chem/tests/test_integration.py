@@ -52,7 +52,8 @@ TIERS = {"pin_verified", "pin_unverified", "systematic_verified"}
 # The jars Orthonym pins (also in README.md: the image build bakes exactly these).
 OPSIN_SHA256 = "c2e29326c281f87b59a05d934d8589adac6e9d17b95b984931b3e739111b360f"
 CENTRES_SHA256 = "6c5d5cafa9393ed7b667a2340222348cd15a9bbdd0d1b92518229f26cc5e87fb"
-CDK_SHA256 = "5dff6e365ecc21020e44aa31861b36a9cce34c51ed0b8713b8d25275552239b4"  # legacy's CDK 2.8
+# The CDK 2.8 bundle that the earlier Laravel version of decimer.ai ships.
+CDK_SHA256 = "5dff6e365ecc21020e44aa31861b36a9cce34c51ed0b8713b8d25275552239b4"
 
 RDLogger.DisableLog("rdApp.*")
 
@@ -153,7 +154,7 @@ def inchikey(smiles: str) -> str:
     return Chem.MolToInchiKey(mol)
 
 
-# Orthonym's `valid` tier names all 12 (owner decision D14). The six that the default tier declines
+# Orthonym's `valid` tier names all 12. The six that the default tier declines
 # (1, 2, 4, 5, 6, 7) come back as OPSIN-checked systematic names that are not preferred names, and
 # say so in their tier. Both sets are Orthonym 1.0.8's behaviour at the pinned commit: a bump that
 # changes them fails here so that the change is looked at.
@@ -244,7 +245,7 @@ async def test_no_tier_wider_than_valid_is_used(client: httpx.AsyncClient, smile
     assert body["reason"]
 
 
-# The reviewer's cases. At Orthonym's *default* tier all three are shipped as `pin_unverified` with
+# The carve-out cases. At Orthonym's *default* tier all three are shipped as `pin_unverified` with
 # `verified: "unverified"` (no round trip); at the `valid` tier two are declined and the third gets
 # a different, OPSIN-checked name.
 CARVE_OUTS = {

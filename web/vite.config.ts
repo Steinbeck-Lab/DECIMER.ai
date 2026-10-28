@@ -20,7 +20,7 @@ export const CONTENT_SECURITY_POLICY = [
 ].join('; ');
 
 export default defineConfig({
-  // Relative base: the same build serves /beta/ and / (ROADMAP §3).
+  // Relative base: the same build can be served from / or from a sub-path.
   base: './',
   plugins: [react()],
   // Ketcher's bundle still references Node's `global`, and its `util` polyfill reads `process.env.NODE_DEBUG`
@@ -30,8 +30,8 @@ export default defineConfig({
   server: process.env.VITE_API_PROXY ? { proxy: { '/api': process.env.VITE_API_PROXY } } : {},
   preview: {
     headers: { 'Content-Security-Policy': CONTENT_SECURITY_POLICY },
-    // e2e/matomo.spec.ts opens the built app under this name, because the counter starts only on a real host.
-    allowedHosts: ['decimer.test'],
+    // e2e/matomo.spec.ts opens the built app as decimer.ai, because the counter starts only there.
+    allowedHosts: ['decimer.ai'],
   },
   test: {
     environment: 'jsdom',

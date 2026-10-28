@@ -104,9 +104,9 @@ def test_cli_writes_a_run_that_scores_like_a_legacy_run(
     assert (failed.valid, failed.inchikey) == (False, None)
     assert (cut.segment, cut.valid) == ("", None)  # the rows for what the cap cut
 
-    # Scored like a legacy run: caffeine and benzene match (the classifier's "not a structure"
-    # does not matter to scoring, as for legacy), the failed recognition is a refusal (not an
-    # invalid SMILES), CCO is an extra, and the two structures the cap cut count as dropped.
+    # Scored like a `legacy` run: caffeine and benzene match (the classifier's "not a structure"
+    # does not matter to scoring, as for the earlier version), the failed recognition is a refusal
+    # (not an invalid SMILES), CCO is an extra, and the two structures the cap cut count as dropped.
     labels = [
         Label("1", 3, to_inchikey(CAFFEINE) or "", CAFFEINE, True),
         Label("2", 4, to_inchikey(BENZENE) or "", BENZENE, True),
@@ -491,7 +491,7 @@ def test_the_inchikey_is_the_one_the_scorer_computes_and_differences_are_reporte
 
 
 def test_the_apis_incomplete_flag_reaches_the_predictions_and_the_score() -> None:
-    # D25: ocsr stopped at its token limit, the API says so; a result without the field (an API
+    # ocsr stopped at its token limit, the API says so; a result without the field (an API
     # from before) is complete.
     job = next_stack.parse_job(
         job_json(

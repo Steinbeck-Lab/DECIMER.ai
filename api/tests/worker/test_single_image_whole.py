@@ -1,11 +1,11 @@
-"""A pasted image that is already a tight crop is recognised whole (user decision, 2026-10-23).
+"""A pasted image that is already a tight crop is recognised whole.
 
 seg's box is grown from its mask and can clip the edge of a drawing (the methoxy group of
 shentonin A), so for a job made of exactly one uploaded image where seg finds exactly ONE
 structure covering at least `SINGLE_IMAGE_WHOLE_FRACTION` (0.6) of the image, ocsr and cls get the
 whole image and the reported box is the whole image. Several structures, a small structure in a big
 image and PDFs keep seg's crops; zero structures keep the older fallback. A job of several images
-never calls seg at all.
+never calls seg at all (`test_multi_image_whole.py`).
 
 The fake seg answers every page with the boxes a test lists (in pixels of the image it was sent).
 The crop it returns is a white PNG of the box's size, so a crop and the whole image are told apart

@@ -106,7 +106,7 @@ One job runs through three model services and a chemistry service, behind a smal
 
 ## Run your own
 
-You need Docker with about 24 GB of memory, [uv](https://docs.astral.sh/uv/) and Node 24. The model weights are not in git.
+You need Docker with about 24 GB of memory (for the default layout; `deploy/README.md` shows how to size it), [uv](https://docs.astral.sh/uv/) and Node 24. The model weights are not in git.
 
 ```bash
 git clone https://github.com/Steinbeck-Lab/DECIMER.ai && cd DECIMER.ai

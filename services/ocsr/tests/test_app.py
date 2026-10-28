@@ -221,7 +221,7 @@ async def test_readyz_does_not_rerun_the_selftest_after_a_token_limit_answer() -
             fake.answer = cut_off()  # decoding stopped at the token limit
 
             r = await c.post("/infer", files={"image": ("crop.png", CROP, "image/png")})
-            assert r.status_code == 200  # D25: answered, flagged incomplete (was a 422)
+            assert r.status_code == 200  # answered, flagged incomplete (was a 422)
             assert r.json()["incomplete"] is True
 
             ready = await c.get("/readyz")
@@ -326,7 +326,8 @@ async def test_an_idle_model_is_not_decoding_on_every_probe(fake: FakePredictor)
 async def test_a_decode_at_the_token_limit_is_a_200_with_the_cut_off_smiles_flagged_incomplete(
     client: httpx.AsyncClient, fake: FakePredictor
 ) -> None:
-    # D25 (owner, 2026-10-27): like legacy, the cut-off SMILES is passed on; the answer says so.
+    # Like the earlier Laravel version of decimer.ai, the cut-off SMILES is passed on; the answer
+    # says so.
     # The library's pairs lack the last token; it comes back with confidence 0.0 ("not reported").
     fake.answer = cut_off("Cl", head=[("C", 0.5), ("C", 0.25)])
 

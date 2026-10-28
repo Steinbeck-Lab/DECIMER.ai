@@ -8,8 +8,8 @@ slot), so the other slots stay available to others.
 
 This is per API process. With several API processes behind one proxy, each would run its own
 gate, so a client could use one slot per process; a Redis counter per client hash (INCR with an
-expiry, released in a `finally`) would make the limit global. One process is the plan,
-so it is not built.
+expiry, released in a `finally`) would make the limit global. The API is meant to run as one
+process, so it is not built.
 """
 
 from __future__ import annotations

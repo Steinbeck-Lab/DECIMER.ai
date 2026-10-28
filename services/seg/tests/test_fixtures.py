@@ -16,7 +16,8 @@ def load(path: Path) -> dict[str, Any]:
 
 def test_there_are_fixtures_for_the_figure_pages_and_a_text_only_page() -> None:
     by_page = {load(p)["page_index"]: load(p) for p in FIXTURES}
-    assert {2, 3, 6} <= set(by_page)  # pages 3, 4 and 7: the pages where legacy found crops
+    # pages 3, 4 and 7: the pages where the earlier Laravel version of decimer.ai found crops
+    assert {2, 3, 6} <= set(by_page)
     assert len(by_page[2]["bboxes"]) == 12  # Figure 2
     assert any(f["bboxes"] == [] for f in by_page.values())  # a page without structures
 

@@ -49,7 +49,7 @@ DENDRIMER = (
     "C(CN(CCC(=O)NCCN(CCC(=O)OC)CCC(=O)OC)CCC(=O)NCCN(CCC(=O)OC)CCC(=O)OC)N(CCC(=O)NCCN(CCC(=O)OC)"
     "CCC(=O)OC)CCC(=O)NCCN(CCC(=O)OC)CCC(=O)OC"
 )
-# CDK (POST /cdk, TODO): DECIMER writes at most 302 tokens, so the service lays out 300 atoms
+# CDK (POST /cdk): DECIMER writes at most 302 tokens, so the service lays out 300 atoms
 # at most. The chain of 300 and `C(C)(C)` x100 (which DECIMER cannot write) are the slowest allowed;
 # the rest are declined after the parse (855 atoms would take 19 s, a chain of 999 8 s, 2000 44 s).
 CDK_PATHOLOGICAL = {

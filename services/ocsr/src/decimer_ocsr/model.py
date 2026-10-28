@@ -29,9 +29,10 @@ Response of `infer` (always exactly these four keys, all plain Python types):
   answers "end" at once) is `{"smiles": "", "token_confidence": [], "mean_confidence": 0.0,
   "incomplete": false}`.
 - `incomplete` is true only when decoding stopped at the model's token limit (302) without an end
-  token: `smiles` is then cut off in the middle, as legacy returned it, and the caller is
-  told so. The library does not report the confidence of the last token in that case; the
-  pair for it is `[token, 0.0]` ("not reported"), so the tokens still concatenate to `smiles`.
+  token: `smiles` is then cut off in the middle, as the earlier Laravel version of decimer.ai
+  returned it, and the caller is told so. The library does not report the confidence of the last
+  token in that case; the pair for it is `[token, 0.0]` ("not reported"), so the tokens still
+  concatenate to `smiles`.
 """
 
 from __future__ import annotations
@@ -64,7 +65,7 @@ PredictFn = Callable[[Array], Prediction]
 # has the measurements). Crops from `seg` are a few hundred pixels on a side; the single-image
 # fallback can send a whole upload.
 #  - MAX_PIXELS: A3 at 300 DPI is 17.4 Mpx. A rendered page of this size costs 0.3 to 0.45 GB on
-#    top of the resident model; a 50 Mpx one (the D11 upload cap) costs 0.9 GB. DECIMER reads a
+#    top of the resident model; a 50 Mpx one (the API's upload cap) costs 0.9 GB. DECIMER reads a
 #    512 x 512 thumbnail, so the worker can downscale a larger single image without losing any.
 #  - MAX_SIDE: DECIMER pads the image to a square of 1.2 x its longest side before it shrinks it, so
 #    memory follows the square of the longest side, not the pixel count: a 100,000 x 100 strip is
@@ -91,7 +92,7 @@ SUPPORTED_MODES = frozenset({"1", "L", "LA", "P", "PA", "RGB", "RGBA", "CMYK", "
 # downloads again, after deleting the directory, when the file says something else. Only the
 # printed-structure model is listed: the library does not look at the hand-drawn directory unless
 # `hand_drawn=True` is asked for, which this service never does (the image still carries those
-# weights, D15, but nothing checks or reads them).
+# weights, so that a hand-drawn option stays possible, but nothing checks or reads them).
 MODEL_URLS = {
     "DECIMER_model": "https://zenodo.org/record/8300489/files/models.zip",
 }
@@ -230,7 +231,7 @@ SPECIAL_TOKENS = frozenset(
 
 
 # The detail of the 422 for a decode that stopped at the token limit, which `_result` no longer
-# raises (D25: such a prediction is returned, flagged `incomplete`). The selftest still refuses it.
+# raises (such a prediction is returned, flagged `incomplete`). The selftest still refuses it.
 TOKEN_LIMIT_DETAIL = f"{NO_STRUCTURE}: too long or not a structure"
 
 # The model decodes at most this many tokens (`assets/max_length.pkl`; README "The token limit"). A
@@ -273,10 +274,10 @@ def _result(smiles: object, pairs: Sequence[tuple[str, float]]) -> dict[str, Any
             raise RuntimeError(f"tokens do not add up to the SMILES {smiles!r}")
         # decimer 2.8.1 drops the last token's confidence when decoding stops at the model's
         # token limit (302) without an end token, so the pairs are the SMILES minus its last
-        # token. Such a SMILES is cut off in the middle: no structure was read to the end. Legacy
-        # kept it and let CDK and RDKit judge it, so it is returned, flagged `incomplete`,
-        # with the dropped token put back at confidence 0.0 (not reported) so that the tokens
-        # still concatenate to the SMILES.
+        # token. Such a SMILES is cut off in the middle: no structure was read to the end. The
+        # earlier Laravel version of decimer.ai kept it and let CDK and RDKit judge it, so it is
+        # returned, flagged `incomplete`, with the dropped token put back at confidence 0.0 (not
+        # reported) so that the tokens still concatenate to the SMILES.
         last = smiles[len(joined) :]
         if last in SPECIAL_TOKENS:  # the token the pairs lack is not checked above
             raise ValueError(f"{NO_STRUCTURE}: the model wrote a special token ({last})")
@@ -346,7 +347,7 @@ class OcsrModel:
 
     def selftest(self) -> None:
         # /readyz must not queue behind a decode: one that ends at the token limit holds the model
-        # for 38-55 s (and answers 200 with an `incomplete` prediction since D25, which says
+        # for 38-55 s (and answers 200 with an `incomplete` prediction, which says
         # nothing about the model being right); a selftest that waited for it would time out and
         # the container would turn unhealthy. But it must not take "busy" or "a request
         # completed" for "correct" either.

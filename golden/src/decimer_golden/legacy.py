@@ -1,4 +1,4 @@
-"""Runs a PDF through the legacy Laravel site the way its browser form does.
+"""Runs a PDF through the earlier Laravel version of decimer.ai the way its browser form does.
 
 The site keeps state in the session plus hidden form fields: upload, then segmentation,
 then OCSR, each answered by a redirect back to "/" whose page carries the next fields.
@@ -15,7 +15,7 @@ from pathlib import Path
 
 import httpx
 
-# Laravel builds https URLs behind the campus proxy; without this the redirects break.
+# Laravel builds https URLs behind a TLS-terminating proxy; without this the redirects break.
 HEADERS = {"X-Forwarded-Proto": "https"}
 STEP_TIMEOUT = 600.0
 

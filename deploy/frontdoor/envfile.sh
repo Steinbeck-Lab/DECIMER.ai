@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# Sourced by render.sh and by deploy/cutover/lib.sh. Reads single settings of deploy/.env (DECIMER_ENV_FILE) with grep: the
+# Sourced by render.sh. Reads single settings of deploy/.env (DECIMER_ENV_FILE) with grep: the
 # file holds secrets (IP_HASH_SECRET, REDIS_PASSWORD, ...), so it is never sourced and never printed.
 #   env_value NAME DEFAULT   the environment's NAME if set, else the env file's last NAME=..., else DEFAULT.
 # Surrounding quotes and a trailing " # comment" are dropped, as docker compose's parser does.

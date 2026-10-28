@@ -166,7 +166,7 @@ async def test_a_job_goes_from_the_api_through_arq_to_done(
     await enqueuer.aclose()
 
 
-# --- the queues -------------------------------------------------------------
+# --- the queues (the fast lane) -------------------------------------------------------------
 
 FAST = "decimer:fast"
 DEFAULT = "arq:queue"

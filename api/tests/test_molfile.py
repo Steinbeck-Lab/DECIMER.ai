@@ -147,7 +147,7 @@ def test_a_v3000_molfile_is_read() -> None:
     assert analyse_molfile(clean_molfile(v3000)).smiles == "Oc1ccccc1"
 
 
-# --- the cost gate: what is refused from the text alone (review finding 1) -----------------------
+# --- the cost gate: what is refused from the text alone ----------------------------------------
 
 
 def refused(text: str) -> str:
@@ -161,7 +161,7 @@ def refused(text: str) -> str:
 
 
 @pytest.mark.parametrize("count", [44, 60])
-def test_the_reviewers_graphs_are_refused_before_rdkit_is_asked(
+def test_adversarial_graphs_are_refused_before_rdkit_is_asked(
     count: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Complete graphs of R# atoms: 15 KB and 36 KB, 5.7 s / 484 MB and 46 s / 2.6 GB to parse."""
@@ -331,7 +331,7 @@ def test_a_molfile_this_service_wrote_is_not_gated_because_it_is_only_written_to
         clean_molfile(big)  # bounded by default
 
 
-# --- the version is read the way RDKit reads it (re-review: the V2000 V3000 bypass) ---------------
+# --- the version is read the way RDKit reads it (the V2000 V3000 bypass) ---------------
 
 
 def test_the_re_reviews_file_is_refused_in_microseconds_and_rdkit_is_not_asked(
@@ -512,7 +512,7 @@ def test_a_continuation_that_never_ends_is_refused() -> None:
     assert "continued" in refused(text)
 
 
-# --- non-ASCII whitespace (third review): Python splits where RDKit does not --------------------
+# --- non-ASCII whitespace: Python splits where RDKit does not --------------------
 
 
 @pytest.mark.parametrize("space", molfiles.UNICODE_SPACES)

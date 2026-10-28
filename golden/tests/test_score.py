@@ -51,7 +51,7 @@ def incomplete_pred(i: int, smiles: str) -> Prediction:
 
 
 def test_a_cut_off_prediction_is_incomplete_not_invalid_extra_or_correct() -> None:
-    # D25 (owner 2026-10-27): the text is cut off at the token limit, so it is not a reading,
+    # The text is cut off at the token limit, so it is not a reading,
     # whatever RDKit says of it: an unclosed ring (RDKit rejects it) and a chain (RDKit reads it)
     # both go to `incomplete`, and a label they sit on stays unmatched.
     labels = [label("1", CAFFEINE), label("2", BENZENE)]
@@ -77,17 +77,17 @@ def test_the_flag_on_an_empty_smiles_changes_nothing() -> None:
     assert (s.refused, s.incomplete, s.invalid) == (1, 0, 0)
 
 
-def test_the_newest_committed_run_read_as_the_owner_accepted_it_under_d25() -> None:
-    """Owner, 2026-10-27: a cut-off prediction of an excluded label is "incomplete", not a new
-    failure; it was a refusal before. The committed run `next-20261026-151657` has the
+def test_the_newest_committed_run_reads_a_cut_off_excluded_label_as_incomplete() -> None:
+    """A cut-off prediction of an excluded label is "incomplete", not a new failure; before the
+    `incomplete` flag it was a refusal. The committed run `next-20261026-151657` has the
     token-limit crop at index 12, the `1 (Fig 3)` drawing, which is excluded from scoring and was
-    refused (empty SMILES). Built after D25 it carries a cut-off SMILES that RDKit and CDK 2.8
-    both reject (measured 2026-10-27; here a short unclosed-ring SMILES stands in for its 302
+    refused (empty SMILES). Built with the flag it carries a cut-off SMILES that RDKit and CDK 2.8
+    both reject (here a short unclosed-ring SMILES stands in for its 302
     characters, which does not change what RDKit says). Read the two ways:
 
-    - without the flag it is one more invalid SMILES: invalid 2 against legacy's 1;
-    - with it, as the API sends it: `invalid 1 · incomplete 1`, correct 13/24 = legacy, the pass
-      rule's invalid count 1 against legacy's 1.
+    - without the flag it is one more invalid SMILES: invalid 2 against the earlier version's 1;
+    - with it, as the API sends it: `invalid 1 · incomplete 1`, correct 13/24 = the earlier
+      version, the pass rule's invalid count 1 against its 1.
     """
     labels = read_labels(GOLDEN / "labels.csv")
     run = GOLDEN / "runs" / "next-20261026-151657" / "predictions.csv"
@@ -145,14 +145,14 @@ def test_order_of_predictions_does_not_matter() -> None:
 
 def test_an_empty_smiles_is_refused_when_the_stack_says_it_tried_and_dropped_otherwise() -> None:
     tried = Prediction(index=0, smiles="", inchikey=None, valid=False)
-    cut = Prediction(index=1, smiles="", inchikey=None)  # legacy's empty rows have valid=None
+    cut = Prediction(index=1, smiles="", inchikey=None)  # an empty row with valid=None
     s = score([], [tried, cut])
     assert (s.invalid, s.refused, s.dropped) == (0, 1, 1)
 
 
 @pytest.mark.parametrize("valid", [True, False])
 def test_an_empty_smiles_the_stack_returned_is_refused_whatever_its_verdict(valid: bool) -> None:
-    # Kohulan 2026-10-23 (ROADMAP §5: Invalid is "SMILES that RDKit rejects"): a recognition that
+    # Invalid means "SMILES that RDKit rejects": a recognition that
     # declined to answer (the new stack's 422) is a refusal, reported apart from invalid. Only the
     # padding rows for what the cap cut (valid=None) are "cut"; a result the stack reported, even
     # a contradictory one (empty SMILES, valid=True), is neither invalid nor a cut structure.
@@ -193,7 +193,7 @@ def test_predictions_round_trip_through_csv(tmp_path: Path) -> None:
     ]
     write_predictions(tmp_path / "p.csv", rows)
     assert read_predictions(tmp_path / "p.csv") == rows
-    assert (tmp_path / "p.csv").read_text().splitlines()[0] == PREDICTIONS_HEADER_D25
+    assert (tmp_path / "p.csv").read_text().splitlines()[0] == PREDICTIONS_HEADER_WITH_INCOMPLETE
 
 
 @pytest.mark.parametrize(("text", "flag"), [("True", True), ("False", False), ("", False)])
@@ -201,7 +201,7 @@ def test_the_incomplete_column_reads_true_false_or_empty(
     tmp_path: Path, text: str, flag: bool
 ) -> None:
     path = tmp_path / "p.csv"
-    path.write_text(f"{PREDICTIONS_HEADER_D25}\n0,,C1CC,,,1,False,,,,{text}\n")
+    path.write_text(f"{PREDICTIONS_HEADER_WITH_INCOMPLETE}\n0,,C1CC,,,1,False,,,,{text}\n")
     (p,) = read_predictions(path)
     assert p.incomplete is flag
 
@@ -211,7 +211,7 @@ def test_any_other_incomplete_value_is_an_error_not_a_silent_false(
     tmp_path: Path, text: str
 ) -> None:
     path = tmp_path / "p.csv"
-    path.write_text(f"{PREDICTIONS_HEADER_D25}\n0,,C1CC,,,1,False,,,,{text}\n")
+    path.write_text(f"{PREDICTIONS_HEADER_WITH_INCOMPLETE}\n0,,C1CC,,,1,False,,,,{text}\n")
     with pytest.raises(ValueError, match="incomplete"):
         read_predictions(path)
 
@@ -224,8 +224,8 @@ def test_a_run_from_before_the_column_reads_as_complete(tmp_path: Path) -> None:
 
 
 PREDICTIONS_HEADER = "index,segment,smiles,inchikey,classifier,page,valid,confidence,name,name_tier"
-# What `write_predictions` writes since D25: the same columns and `incomplete`.
-PREDICTIONS_HEADER_D25 = PREDICTIONS_HEADER + ",incomplete"
+# What `write_predictions` writes: the same columns and `incomplete`.
+PREDICTIONS_HEADER_WITH_INCOMPLETE = PREDICTIONS_HEADER + ",incomplete"
 
 
 @pytest.mark.parametrize(("text", "valid"), [("True", True), ("False", False), ("", None)])
@@ -262,16 +262,16 @@ def test_legacy_runs_still_read_and_score() -> None:
 
 
 def test_the_committed_legacy_run_scores_exactly_as_the_baseline_against_the_real_labels() -> None:
-    """Pins the oracle: the scoring rules and labels.csv together must keep giving the legacy
-    baseline of the README (13/24 correct, 6 extra, 1 invalid, 0 refused, 12 cut by the cap).
-    Change either only with a written reason.
+    """Pins the oracle: the scoring rules and labels.csv together must keep giving the earlier
+    version's baseline of the README (13/24 correct, 6 extra, 1 invalid, 0 refused, 12 cut by the
+    cap). Change either only with a written reason.
 
-    Moved 2026-10-23 from 13/26 to 13/24: the two Figure 3 drawings are excluded from scoring
-    (Kohulan's label review: "Difficult", correlation arrows over the bonds; labels.csv
+    The count is 13/24, not 13/26: the two Figure 3 drawings are excluded from scoring
+    (the label review marked them "Difficult", correlation arrows over the bonds; labels.csv
     `scored=no`). Evidence: the decision is the primary source; an independent scorer that does
     not import decimer_golden gives 13/24, 6, 1, 12 and 0 predictions on the excluded labels for
     this run (and 13/24 for every committed next run); reverting the exclusion fails this test.
-    Legacy has no refusals: its only empty SMILES are the 12 cut rows (valid empty).
+    The earlier version has no refusals: its only empty SMILES are the 12 cut rows (valid empty).
     What would make it wrong: a stack that reads a Figure 3 copy correctly while missing the
     Figure 2 one is scored correct (multisets cannot tell the drawings apart)."""
     labels = read_labels(GOLDEN / "labels.csv")
@@ -291,25 +291,26 @@ def test_the_committed_legacy_run_scores_exactly_as_the_baseline_against_the_rea
 def test_the_committed_new_stack_run_scores_exactly_as_the_baseline_against_the_real_labels(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Pins the new stack's baseline (run `next-20261023-121537`, main after P3-04d): 13/24
+    """Pins the new stack's baseline (run `next-20261023-121537`): 13/24
     correct, 5 extra, 1 invalid, 1 refused, 12 cut by the cap, 0 on an excluded label.
 
-    Evidence (2026-10-23): a scorer written apart from this one, which does not import
+    Evidence: a scorer written apart from this one, which does not import
     decimer_golden (RDKit InChIKey multisets from labels.csv, the two `scored=no` labels as
     uncounted spares, empty SMILES split by the `valid` column), gives exactly these numbers for
-    this run, and the same for the four other committed next runs.
+    this run, and the same for the other committed next runs.
 
     Which rows they are. The one refusal is index 12: the `1 (Fig 3)` drawing (compound 1 with
     correlation arrows, the crop was looked at), the very drawing that is excluded from scoring.
     The classifier called it "not a structure", the OCSR declined it (empty SMILES, `valid=False`,
-    the job's `recognition_failed` warning for structure 13). Legacy read the same crop as a valid
-    but wrong SMILES (an extra). The one invalid is index 13, a structure with no label whose
-    SMILES RDKit rejects; legacy's one invalid is index 15, the `3 (Fig 3)` drawing.
+    the job's `recognition_failed` warning for structure 13). The earlier version read the same
+    crop as a valid but wrong SMILES (an extra). The one invalid is index 13, a structure with no
+    label whose SMILES RDKit rejects; the earlier version's one invalid is index 15, the
+    `3 (Fig 3)` drawing.
 
     What the rule changes at the gate. Under the old rule (a refusal is invalid) the new stack had
-    2 invalid against legacy's 1, so P2-08 failed only because of a refusal on an excluded
-    drawing. With refusals counted apart (Kohulan 2026-10-23; ROADMAP §5: Invalid is "SMILES that
-    RDKit rejects") it is 1 against 1, and with the excluded drawings left out entirely it would
+    2 invalid against the earlier version's 1, which would fail only because of a refusal on an
+    excluded drawing. With refusals counted apart (Invalid is "SMILES that RDKit rejects") it is 1
+    against 1, and with the excluded drawings left out entirely it would
     also be 1 against 1. Counting the refusal as invalid again gives 2 and 0 and fails this test.
 
     The whole `score` output is pinned too: the line, the exact missing list (the scored labels

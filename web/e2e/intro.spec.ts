@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
-// The logo animation (PRODUCT.md, Brand Commitments): DECIMER.gif, 1.9 MB, once per browser tab (owner decision
-// 2026-10-26: the flag is in the tab's session storage). These tests use the plain `test`, not ./returning.ts, so each
+// The logo animation: DECIMER.gif, 1.9 MB, once per browser tab (the flag is in the tab's session storage).
+// These tests use the plain `test`, not ./returning.ts, so each
 // one starts in a fresh tab with nothing stored, like a visitor who has just opened the site.
 
 const GIF = /\/decimer-intro-[^/]*\.gif$/;

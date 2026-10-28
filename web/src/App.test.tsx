@@ -64,7 +64,7 @@ test('the footer links are Contact, Privacy and Impressum, and not About or GitH
   expect(within(footer).queryByRole('link', { name: /GitHub/ })).toBeNull();
 });
 
-test('the credit in the middle: built with a cup by Kohulan.R at the Steinbeck Lab, Friedrich Schiller University Jena, each name a link', () => {
+test('the credit in the middle: built with a cup by the author at the Steinbeck Lab, Friedrich Schiller University Jena, each name a link', () => {
   renderApp();
   const { made, footer } = footerRow();
   const c = strings.shell.credit;
@@ -101,7 +101,7 @@ test('the footer is the compact one on the empty screen only', async () => {
   expect(screen.getByRole('contentinfo').getAttribute('data-compact')).toBe('false');
 });
 
-test("the footer carries legacy's copyright line, with the current year", () => {
+test("the footer carries the earlier version's copyright line, with the current year", () => {
   vi.useFakeTimers({ toFake: ['Date'] });
   try {
     vi.setSystemTime(new Date('2031-03-04T12:00:00Z'));

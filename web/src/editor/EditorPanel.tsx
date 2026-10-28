@@ -124,7 +124,7 @@ function Reasons({ view }: { view: ResultView }) {
  * full-screen sheet on phones (CSS only, so there is one DOM and one Ketcher).
  * It traps Tab while a structure is open and puts focus back on the structure's
  * tile when it closes. Ketcher mounts on the first selection and then stays
- * mounted: closing only hides it.
+ * mounted (one editor per page): closing only hides it.
  */
 export function EditorPanel({ visible, sheet }: { visible: boolean; sheet: boolean }) {
   const state = useAppState();

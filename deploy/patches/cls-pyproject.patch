@@ -11,7 +11,7 @@ Prebuilding and hashing wheels was the alternative; it would take the git depend
 uv.lock, which is worse. uv.lock records the constraints in its [manifest], so `uv sync --locked`
 needs the lock refreshed after the patch: apply-pyproject-patches.sh does it.
 Here: decimer-image-classifier (git, setup.py) is built with setuptools. wheel is not pinned: a setup.py-only
-project never requests it under the fallback backend (the Opus review of the first build).
+project never requests it under the fallback backend.
 
 --- a/services/cls/pyproject.toml
 +++ b/services/cls/pyproject.toml

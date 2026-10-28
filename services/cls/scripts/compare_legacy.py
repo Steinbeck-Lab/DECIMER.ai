@@ -1,8 +1,10 @@
-"""Print, for the 20 crops legacy classified, legacy's flag, this service's flag and the raw score.
+"""Print, for the 20 crops the earlier Laravel version of decimer.ai classified, its flag, this
+service's flag and the raw score.
 
-Also calls the library exactly as legacy does (`get_classifier_score(path)`, from an empty temporary
-working directory because the library writes caffeine_mod.png there) and shows whether the score
-this service computes is the same number. Prints load time, per-crop time and process memory.
+Also calls the library exactly as the earlier version does (`get_classifier_score(path)`, from an
+empty temporary working directory because the library writes caffeine_mod.png there) and shows
+whether the score this service computes is the same number. Prints load time, per-crop time and
+process memory.
 
     TF_NUM_INTRAOP_THREADS=2 TF_NUM_INTEROP_THREADS=1 uv run python scripts/compare_legacy.py
 """
@@ -42,7 +44,8 @@ def main() -> None:
 
     from decimer_image_classifier import DecimerImageClassifier
 
-    library = DecimerImageClassifier()  # a second copy, only to call it the way legacy does
+    # a second copy, only to call it the way the earlier version does
+    library = DecimerImageClassifier()
 
     print(f"threshold {THRESHOLD}: structure when score <= threshold\n")
     print(COLUMNS.format("crop", "legacy", "service", "score", "x thr", "lib score", "ms"))

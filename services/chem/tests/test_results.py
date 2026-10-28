@@ -1,4 +1,4 @@
-"""The policy that turns an Orthonym row into what the service ships (owner decision D14).
+"""The policy that turns an Orthonym row into what the service ships.
 
 The expected sets below are written out literally, on purpose: the sets in `decimer_chem.results`
 are the code under test and must not be their own oracle.
@@ -77,7 +77,7 @@ def test_pin_unverified_is_shipped_only_with_an_allowed_check() -> None:
     assert (withheld.name, withheld.reason) == (None, "not_round_tripped")
 
 
-# The three carve-out rows the review found at Orthonym's default tier: shipped as pin_unverified,
+# The three carve-out rows found at Orthonym's default tier: shipped as pin_unverified,
 # "unverified", with no round trip. (Copied from real `name_tiered` output.)
 REAL_CARVE_OUT_ROWS = [
     {"name": "scyllo-inositol", "tier": "pin_unverified", "verified": "unverified"},
@@ -204,7 +204,7 @@ def test_as_dict_is_plain_strs_whatever_the_result_holds() -> None:
         assert type(value) is str
 
 
-# --- the CDK result (owner decision D4, TODO) ----------------------------------------
+# --- the CDK result -------------------------------------------------------------------------
 
 
 def test_the_cdk_reason_words_and_limits() -> None:

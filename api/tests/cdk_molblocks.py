@@ -1,10 +1,10 @@
 """Molblocks as CDK 2.8 writes them, for the tests of the CDK fallback.
 
-Generated 2026-10-23 with `cdk-2.8.jar` (the file legacy ships, sha256 5dff6e36...) through
-JPype, with the same `SmilesParser`, `StructureDiagramGenerator` and `MDLV2000Writer` calls as the
-chem service's `POST /cdk`: the text is CDK's, unchanged, including its blank title line and
-the timestamp line (`  CDK     10232608012D`). RDKit refuses the SMILES of the first (a carbon
-with five bonds fails sanitization); CDK lays it out as drawn.
+Generated with `cdk-2.8.jar` (the jar the earlier Laravel version of decimer.ai ships, sha256
+5dff6e36...) through JPype, with the same `SmilesParser`, `StructureDiagramGenerator` and
+`MDLV2000Writer` calls as the chem service's `POST /cdk`: the text is CDK's, unchanged, including
+its blank title line and the timestamp line (`  CDK     10232608012D`). RDKit refuses the SMILES
+of the first (a carbon with five bonds fails sanitization); CDK lays it out as drawn.
 """
 
 from __future__ import annotations

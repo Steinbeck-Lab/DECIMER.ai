@@ -211,7 +211,7 @@ def test_pages_beyond_the_page_cap_are_not_inspected(tmp_path: Path) -> None:
 
 
 def test_a_self_referencing_page_tree_is_a_corrupt_file(tmp_path: Path) -> None:
-    """Found in review: /Kids [2 0 R] inside object 2 with /Count 2147483647."""
+    """A hostile input: /Kids [2 0 R] inside object 2 with /Count 2147483647."""
     error = refusal(tmp_path, ("loop.pdf", make_self_referencing_pdf()))
     assert (error.status, error.code) == (400, "corrupt_file")
 

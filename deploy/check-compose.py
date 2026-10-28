@@ -8,10 +8,10 @@ runs `docker compose config --format json` there (nothing is built or started, n
 the result, twice: with an .env that holds only the secrets (so every default in compose.yaml is what is checked) and
 with .env.example plus the secrets (so the documented settings are too). With `--env FILE` it checks that file, once.
 Exit 0 and "ok" when every check holds, 1 and the list of problems otherwise. COMPOSE="/usr/libexec/docker/cli-plugins/
-docker-compose" (or any other command) picks another Compose; both the VM's v2.3.3 and v2.39.2 print the same JSON for
+docker-compose" (or any other command) picks another Compose; Compose v2.3.3 and v2.39.2 print the same JSON for
 these fields.
 
-What it keeps true (TODO, D18, D21):
+What it keeps true:
   * the worker and the fast worker need chem to have STARTED, never to be healthy: they run with chem down;
   * the only published ports are the edge's two, on 127.0.0.1; GlitchTip and its Postgres publish nothing;
   * the only network with a route out is `public`, and only the edge is on it;
@@ -230,7 +230,7 @@ def check(config: dict[str, Any], *, defaults: bool = True) -> list[str]:
         need(volume.get("read_only") is True, "glitchtip mounts only read-only files")
     need(
         memory(glitchtip) + memory(database) <= GLITCHTIP_MEMORY_LIMIT,
-        f"glitchtip and its Postgres together may take {GLITCHTIP_MEMORY_LIMIT // MIB} MiB (D21: about 0.5 GB), "
+        f"glitchtip and its Postgres together may take {GLITCHTIP_MEMORY_LIMIT // MIB} MiB (about 0.5 GB), "
         f"they have {(memory(glitchtip) + memory(database)) // MIB}",
     )
     need(

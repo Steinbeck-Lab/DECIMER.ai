@@ -1,6 +1,6 @@
 """CDK 2.8 in the naming process's JVM: a SMILES to a V2000 molblock with CDK's own 2D layout.
 
-The fallback for SMILES RDKit rejects (owner decision D4, TODO). It does what legacy does
+The fallback for SMILES RDKit rejects. It does what the earlier Laravel version of decimer.ai does
 (`app/Python/check_smiles_validity.py`): `SmilesParser(SilentChemObjectBuilder)`, then
 `StructureDiagramGenerator` for the 2D coordinates, then `MDLV2000Writer`; a SMILES CDK cannot
 read is a decline, not an error. Nothing here is imported by the HTTP process.
@@ -12,10 +12,10 @@ own CDK (`SmilesParser` among them, a different build from the one in cdk-2.8.ja
 jar bundles log4j: a cdk-2.8.jar appended to that class path would be shadowed by them (the
 `SmilesParser` that ran would not be 2.8's), and one put in front of them would change the CDK that
 centres runs on. So `cdk-2.8.jar` is opened by a `URLClassLoader` whose parent is the platform
-loader: it sees the JDK and the jar and nothing else, exactly as in legacy (a JVM started with
-`-Djava.class.path=cdk-2.8.jar`), and OPSIN and centres are left as they were. `start` proves it:
-the `SmilesParser` it binds must come from the jar file the hash was checked on, and
-`CDK.getVersion()` must say 2.8.
+loader: it sees the JDK and the jar and nothing else, exactly as in the earlier version (a JVM
+started with `-Djava.class.path=cdk-2.8.jar`), and OPSIN and centres are left as they were.
+`start` proves it: the `SmilesParser` it binds must come from the jar file the hash was checked
+on, and `CDK.getVersion()` must say 2.8.
 
 **The soft deadline.** A call into the JVM does not return to Python until Java is done, so the
 signal-based limit that Orthonym uses for names cannot interrupt it, and a Java thread cannot be
@@ -53,9 +53,9 @@ from .results import (
     looks_like_molfile,
 )
 
-#: The jar legacy uses: the CDK 2.8 bundle from
+#: The jar the earlier version uses: the CDK 2.8 bundle from
 #: https://github.com/cdk/cdk/releases/download/cdk-2.8/cdk-2.8.jar (release `cdk-2.8` of
-#: github.com/cdk/cdk, 2022-09-14), 47,174,875 bytes. The hash is that of the legacy copy
+#: github.com/cdk/cdk, 2022-09-14), 47,174,875 bytes. The hash is that of the earlier version's copy
 #: (`app/Python/cdk-2.8.jar`) and of a fresh download; deploy/weights/SHA256SUMS lists the same.
 CDK_JAR_NAME = "cdk-2.8.jar"
 CDK_JAR_SHA256 = "5dff6e365ecc21020e44aa31861b36a9cce34c51ed0b8713b8d25275552239b4"
@@ -247,7 +247,7 @@ class CdkLayout:
             self.needs_new_process = True
             raise
         if molecule is None:
-            return CdkResult(None, INVALID_SMILES_REASON)  # legacy: any exception is "invalid"
+            return CdkResult(None, INVALID_SMILES_REASON)  # as before: any exception is "invalid"
         if molecule.getAtomCount() == 0:
             return CdkResult(None, INVALID_SMILES_REASON)
         if molecule.getAtomCount() > MAX_ATOMS or molecule.getBondCount() > MAX_BONDS:

@@ -1,16 +1,13 @@
-# decimer.ai, new stack. Runs BESIDE the legacy stack on the production VM:
-# a separate Compose project, so nothing here touches decimer_web-*.
+# decimer.ai: the whole stack as one Compose project (edge, job API, workers, model services, GlitchTip).
 #
 #   DC="docker compose -p decimer-next -f deploy/compose.yaml --env-file deploy/.env"
 #   $DC build && $DC up -d            # see deploy/README.md for the whole procedure
 #
 # Always pass the project name (-p decimer-next): it names the networks and volumes
-# (decimer-next_public, decimer-next_jobs, ...) and keeps the project apart from the legacy one.
+# (decimer-next_public, decimer-next_jobs, ...), which the commands in deploy/README.md use.
 #
-# Written for the Compose that `docker compose` runs on the VM: v2.3.3 (2022), from
-# ~/.docker/cli-plugins, which shadows the system's v2.39.2 (/usr/libexec/docker/cli-plugins). So: no
-# `name:`, no `!reset`, no `required: false`, no healthcheck start_interval here. The file parses with
-# both (checked); deploy/README.md says how to run the newer one.
+# Written to parse with an old Compose as well as a current one (v2.3.3 and v2.39.2 print the same configuration), so:
+# no `name:`, no `!reset`, no `required: false`, no healthcheck start_interval here.
 #
 # Configuration: deploy/.env (copy deploy/.env.example; never committed; holds IP_HASH_SECRET and
 # REDIS_PASSWORD). It is read twice: for ${VAR} below and, as env_file, into the api, worker and
@@ -18,8 +15,8 @@
 # editing this file. Values given under `environment:` win over env_file.
 #
 # Model-service replicas. seg, ocsr and cls run as N identical containers each, N from deploy/.env
-# (SEG_REPLICAS, OCSR_REPLICAS, CLS_REPLICAS; chem is always 1): 2/3/2 while legacy runs on the same VM
-# (the default), 6/4/3 after cutover (legacy's layout plus one ocsr; D18 amended 2026-10-23). `deploy.replicas` is how: Compose creates N
+# (SEG_REPLICAS, OCSR_REPLICAS, CLS_REPLICAS; chem is always 1): 2/3/2 by default, 6/4/3 for an 8-core server
+# (deploy/.env.example has both). `deploy.replicas` is how: Compose creates N
 # containers (decimer-next-seg-1 ... -N) and the SERVICE NAME resolves, on the `models` network, to the
 # addresses of all of them (Docker's embedded DNS answers with every replica's A record, in rotating
 # order). That is the whole discovery contract for the worker, and nothing else is promised:
@@ -37,8 +34,8 @@
 #   public   the edge alone, with a pinned subnet and the only published ports (127.0.0.1:8090 for the site and
 #            127.0.0.1:8091 for GlitchTip's UI, both on the host's loopback). Docker cannot publish a port from
 #            an internal network, so this is the one network with a route out, and nothing but nginx is on it.
-#            The legacy nginx can be attached to it for the beta (nginx/beta-front-door.conf.example); the edge
-#            trusts this subnet's X-Forwarded-For (see TRUSTED_PROXY_CIDR below).
+#            The front door (deploy/frontdoor/) joins it; the edge trusts this subnet's X-Forwarded-For (see
+#            TRUSTED_PROXY_CIDR below).
 #   app      internal: edge + api, with a pinned subnet. The api sees the edge's address here, so this
 #            subnet is the API's TRUSTED_PROXY_CIDR (derived from APP_SUBNET: one variable, no copy). The edge
 #            and the api share NO other network: with two shared networks docker's DNS could answer `api` with
@@ -56,8 +53,8 @@
 #   glitchtip-edge  internal: the edge, the gate and GlitchTip: the browsers' reports (the edge passes one
 #                   endpoint) and the operator's UI listener.
 #   glitchtip-db    internal: GlitchTip and its Postgres.
-#   There is no network with egress for the api or worker: error reports go to GlitchTip on this VM, so nothing
-#   needs one. (GlitchTip's alert e-mails would: it sends none, `EMAIL_URL=consolemail://`; see deploy/README.md.)
+#   There is no network with egress for the api or worker: error reports go to the GlitchTip of this stack, so
+#   nothing needs one. (GlitchTip's alert e-mails would: it sends none, `EMAIL_URL=consolemail://`; see deploy/README.md.)
 
 x-logging: &logging
   driver: json-file
@@ -66,13 +63,14 @@ x-logging: &logging
     max-file: "5"
 
 # No `init: true` for the api: it must be PID 1 itself (see api.Dockerfile). The sweep has it (below).
-# oom_score_adj 300: if the VM ever runs out of memory, the kernel takes the new stack before legacy.
-# That is the container; the ingest and render CHILDREN would need to lower their own score in code
-# (TODO, API side: write 1000 to /proc/self/oom_score_adj; compose cannot set it per process).
-# cpu_shares 512: half the default weight (1024) of the legacy container. The `cpus` limits below cap each
-# container but are not reservations, and they sum to more than the 8 cores (deploy/README.md, "Threads and
-# CPU"); the weight decides who gets the CPU when both stacks want it at once, in legacy's favour. It is
-# per container, so it shifts the split, it does not make legacy win against every new container together.
+# oom_score_adj 300: if the host ever runs out of memory, the kernel takes this stack's containers before
+# other workloads on the host. That is the container; the ingest and render CHILDREN would need to lower their
+# own score in code (write 1000 to /proc/self/oom_score_adj; compose cannot set it per process).
+# cpu_shares 512: half the default weight (1024). The `cpus` limits below cap each container but are not
+# reservations, and they sum to more than the host's cores (deploy/README.md, "Replicas, threads and memory"); the weight
+# decides who gets the CPU when this stack and another workload on the same host both want it at once, in the
+# other workload's favour. It is per container, so it shifts the split, it does not make the other workload
+# win against every container of this stack together.
 x-service: &service
   restart: unless-stopped
   logging: *logging
@@ -138,9 +136,8 @@ x-no-glitchtip-secrets: &no-glitchtip-secrets
 # What the two workers (worker, worker-fast) have in common. SEG/OCSR/CLS_CONCURRENCY are PER REPLICA:
 # the worker finds the replicas of a service by itself (see the header) and multiplies, so 1 keeps every
 # replica busy with one inference at a time and does not fill its queue, whether the layout is 2/3/2
-# or 6/4/3. They do NOT follow the replica counts any more; leave them at 1 unless a replica is shown to
-# have idle time with one call (the services queue a few more, ocsr 16, seg 8). A lone 10-page job then
-# takes about 70 s beside legacy and 46 s after cutover (deploy/README.md), legacy 95.3 s.
+# or 6/4/3. They do NOT follow the replica counts; leave them at 1 unless a replica is shown to
+# have idle time with one call (the services queue a few more, ocsr 16, seg 8).
 x-worker-env: &worker-env
   <<: [*reporting-env, *no-glitchtip-secrets]
   REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in deploy/.env (openssl rand -hex 24)}@redis:6379/0
@@ -153,7 +150,7 @@ x-worker-env: &worker-env
   # `-` and not `:-`: the default applies only when CHEM_URL is unset, so `CHEM_URL=` in .env really is
   # empty, which switches names off.
   CHEM_URL: ${CHEM_URL-http://chem:8004}
-  # D4 (kept): the SMILES RDKit refuses go to chem's POST /cdk, one batch per job (needs CHEM_URL). `false` = no call.
+  # The SMILES RDKit refuses go to chem's POST /cdk (CDK 2.8), one batch per job (needs CHEM_URL). `false` = no call.
   CDK_FALLBACK: ${CDK_FALLBACK:-true}
   # One pasted image, one structure covering at least this fraction of it: the whole image goes to ocsr and cls.
   SINGLE_IMAGE_WHOLE_FRACTION: ${SINGLE_IMAGE_WHOLE_FRACTION:-0.6}
@@ -225,7 +222,7 @@ services:
   # ingest and render children get a minimal environment without it, so the one thing that stops a
   # parser exploit from talking to Redis is that password (the ingest sidecar in deploy/README.md is
   # the other half). It is handed to Redis on stdin, not in the command line (argv is readable by every
-  # user of the VM in the host's process table), and to redis-cli through REDISCLI_AUTH for the
+  # user of the host in its process table), and to redis-cli through REDISCLI_AUTH for the
   # healthcheck. Use a hex password (`openssl rand -hex 24`): it goes into a URL and a config line.
   # The image's entrypoint (which starts as root) is replaced, so the container runs as the `redis`
   # user from the start and needs no capabilities.
@@ -350,18 +347,16 @@ services:
     # PER REPLICA. About 1 GB resident, 1.9 GB worst case, and RSS grows 57-100 KB per request
     # (services/cls/README.md): the restart policy turns an OOM kill into a short outage. A crop takes
     # about 0.1 s, so one thread is plenty and a replica is idle almost all the time.
-    # TODO: soak test of a few thousand requests, then confirm or change this limit.
     mem_limit: 2560m
     memswap_limit: 2560m
     cpus: ${CLS_CPUS:-1.5}
     pids_limit: 256
 
-  # Both DECIMER models are in the image (owner decision D15: the printed one that the service uses and the
-  # hand-drawn one that it never loads, 348 MB of disk), but since decimer 2.8.1 only the printed one is in
-  # memory. services/ocsr/README.md: about 3.0 GB resident (2.65 after load and selftest, 3.05 after the
+  # Both DECIMER models are in the image (the printed one that the service uses and the hand-drawn one that it
+  # never loads, 348 MB of disk), but since decimer 2.8.1 only the printed one is in memory.
+  # services/ocsr/README.md: about 3.0 GB resident (2.65 after load and selftest, 3.05 after the
   # worst-case request), about 0.46 GB for that request, 0.1 GB of request bodies: 3.6 GB at the very worst
-  # PER REPLICA. The limit is 4 GB: 0.4 GB above that worst case, the margin decimer 2.8.0
-  # had under its 6 GB (5.6 GB at the very worst, both models loaded). Start-up is about 25 s.
+  # PER REPLICA. The limit is 4 GB: 0.4 GB above that worst case. Start-up is about 25 s.
   ocsr:
     <<: *model-service
     image: localhost/decimer-next/ocsr:${DECIMER_TAG:-local}
@@ -390,7 +385,7 @@ services:
   # ORTHONYM_ALLOW_REDUCED, ORTHONYM_OPSIN_JAR, ORTHONYM_CENTRES_JAR or ORTHONYM_DISABLE_JPYPE is set,
   # so none is set here. services/chem/README.md: about 360 MB for the naming process (JVM included)
   # and 50 MB for the web process, flat over 1000 names; the heap cap is ORTHONYM_JVM_XMX (512m, in the
-  # image). The valid tier is a setting of the service's code, not of the image. One replica: it names
+  # image). The `valid` tier of Orthonym's names is a setting of the service's code, not of the image. One replica: it names
   # about 20 structures per job in tens of milliseconds each.
   chem:
     <<: *model-service
@@ -413,7 +408,7 @@ services:
   # (api/README.md). Never `deploy.replicas`, `--scale api=2` or uvicorn --workers.
   # The command is the exec form, so python is PID 1 and holds the only copy of the environment (it
   # makes itself non-dumpable so its children, same user, cannot read it).
-  # UPLOADS AND MOLFILES ARE PARSED IN THE INGEST SIDECAR (service `ingest`, TODO): INGEST_SIDECAR_URL
+  # UPLOADS AND MOLFILES ARE PARSED IN THE INGEST SIDECAR (service `ingest`): INGEST_SIDECAR_URL
   # makes the api send them over the `ingest` network instead of starting child processes of its own, so
   # the api itself is about 0.5 GB (about 100 MB resident, the request bodies it spools, and the Python
   # of the routes): API_MEM_LIMIT, 1g. The in-process fallback (development, or a deployment that does not
@@ -438,7 +433,7 @@ services:
       MEDIA_STREAM_DIRECT: "false"
       MEDIA_ACCEL_PREFIX: /_protected/jobs
       # The API's peer is the edge, on the app network: that subnet is all it trusts (it believes the
-      # one X-Forwarded-For entry the edge sets). The campus proxies are the EDGE's business, not the API's.
+      # one X-Forwarded-For entry the edge sets). The reverse proxies are the EDGE's business, not the API's.
       TRUSTED_PROXY_CIDR: ${APP_SUBNET:-172.29.80.16/28}
       # The same two values the edge uses (edge-entrypoint.sh): proxy_read_timeout and the upload limit.
       PROXY_READ_TIMEOUT_SECONDS: ${PROXY_READ_TIMEOUT_SECONDS:-60}
@@ -491,7 +486,7 @@ services:
     cpus: 2
     pids_limit: 256
 
-  # The ingest sidecar (TODO, the API review's "run ingest in a sidecar"): the api's untrusted-file work in
+  # The ingest sidecar: the api's untrusted-file work in
   # a container of its own. It runs `python -m decimer_api.sidecar`, which starts the same children the api used to
   # (one process per upload with a deadline and hard limits, `INGEST_CONCURRENCY` at a time; a pool of
   # `MAX_CONCURRENT_ANALYSES` long-lived RDKit children for molfiles), so a compromised parser sees one upload
@@ -545,23 +540,23 @@ services:
     <<: *worker
     environment:
       <<: *worker-env
-      # Jobs this process runs at once, so that several jobs' crops interleave on the replicas (D18; a small
+      # Jobs this process runs at once, so that several jobs' crops interleave on the replicas (a small
       # job's calls go first and jobs take turns, see api/src/decimer_api/worker/replicas.py). About twice
-      # the ocsr slots: 4 beside legacy (2 replicas), 8 after cutover (3 replicas). With the fast lane off
+      # the ocsr slots: 4 with the default layout (2 to 3 ocsr replicas), 8 for 6/4/3. With the fast lane off
       # this is also how many big PDFs can be running before a small job has to wait for a place.
       WORKER_MAX_JOBS: ${WORKER_MAX_JOBS:-4}
     # Up to WORKER_MAX_JOBS jobs; a PDF page is rendered in a child process of about 0.5 GB (a 50 MP page)
-    # and up to RENDER_MEMORY_MB (2 GB) of address space, RENDER_CONCURRENCY of them at once. 2 GB beside
-    # legacy, 3 GB after cutover (more jobs, two renders at once). TODO: measure on the golden paper.
+    # and up to RENDER_MEMORY_MB (2 GB) of address space, RENDER_CONCURRENCY of them at once. 2 GB with the
+    # default layout, 3 GB for 6/4/3 (more jobs, two renders at once).
     mem_limit: ${WORKER_MEM_LIMIT:-2g}
     memswap_limit: ${WORKER_MEM_LIMIT:-2g}
     cpus: ${WORKER_CPUS:-2}
     pids_limit: 256
 
-  # The fast lane (TODO, D18): a second worker on its own arq queue for small jobs (one pasted image
+  # The fast lane: a second worker on its own arq queue for small jobs (one pasted image
   # or a single small upload, at most one page: SMALL_JOB_MAX_PAGES), so that a small job never waits for a
   # worker place (WORKER_MAX_JOBS) behind 10-page PDFs in the default queue. It is part of the default start
-  # (1 GB limit, deploy/README.md "Memory"); to run without it: `$DC up -d --scale worker-fast=0` or
+  # (1 GB limit, deploy/README.md "Replicas, threads and memory"); to run without it: `$DC up -d --scale worker-fast=0` or
   # `$DC stop worker-fast`. Either is safe: the api sends a job to the fast queue only while this worker is
   # alive (its health-check key is in Redis), so without it small jobs take the default queue and the
   # default worker; a job still WAITING on its queue when it dies is moved to the default queue by the default
@@ -609,14 +604,14 @@ services:
     cpus: 0.5
     pids_limit: 64
 
-  # --- error reports: GlitchTip, self-hosted ------------------------------------
-  # Crash reports from the api, the worker and the web app go to a GlitchTip on this VM, through the standard
-  # Sentry SDKs, so no report leaves Jena. What a report may carry is decimer_api/scrub.py and
+  # --- error reports: GlitchTip, self-hosted ------------------------------------------------------
+  # Crash reports from the api, the worker and the web app go to the GlitchTip of this stack, through the standard
+  # Sentry SDKs, so no report leaves your server. What a report may carry is decimer_api/scrub.py and
   # web/src/observability/scrub.ts (no SMILES, molfile, file name or IP address; tests prove it).
   # GlitchTip 6 needs only itself and Postgres: one container runs the web server and the task worker
   # (`GLITCHTIP_EMBED_WORKER`, a documented mode that GlitchTip's own compose file uses), and with `VALKEY_URL`
   # empty Postgres is the task queue, the cache and the session store (documented: "Set to empty string to
-  # disable VALKEY and utilize Postgres"), so there is no Redis in this stack for it. Measured on 2026-10-23 with
+  # disable VALKEY and utilize Postgres"), so there is no Redis in this stack for it. Measured with
   # these settings: 125 MiB resident idle, 169 MiB after 100 events; Postgres 53 and 74 MiB.
   #   * Not public: GlitchTip is on internal networks only. The browsers' reports reach it through one
   #     POST-only location of the edge (one project id, no IP-naming header, 64 KB, no Content-Encoding); the api
@@ -625,7 +620,7 @@ services:
   #     (EMAIL_URL=consolemail://) and does no uptime checks.
   #   * Registration is off, and the first account exists before the web server starts (see `glitchtip` below).
   #   * Retention: GLITCHTIP_RETENTION_DAYS, 90 (its banner at start says "Event retention: 90 days").
-  #   * Memory, about 0.5 GB as D21 said: 384m + 160m. GRANIAN_WORKERS_MAX_RSS is set because GlitchTip derives
+  #   * Memory, about 0.5 GB: 384m + 160m. GRANIAN_WORKERS_MAX_RSS is set because GlitchTip derives
   #     it from the container limit with a floor of 1 GiB, which is above this limit: a web worker above 224 MiB is
   #     replaced (granian starts the new one before it stops the old, about 130 MiB each: 354 MiB < 384).
   glitchtip-db:
@@ -770,17 +765,17 @@ services:
   # nginx: the app, /api/ to the api, job media from the job volume (read-only here), rate limits, and for
   # GlitchTip the endpoint the browsers' error reports go to (/glitchtip/api/<project>/envelope/, POST only)
   # and a second listener with GlitchTip's own UI.
-  # Two published ports, both on the loopback interface only (8080 is the legacy site's): the site on
+  # Two published ports, both on the loopback interface only: the site on
   # 127.0.0.1:8090, and GlitchTip's UI on 127.0.0.1:8091 (EDGE_PORT, GLITCHTIP_PORT): the UI listener is
   # `nginx/glitchtip-ui.conf`, a server of its own that the front door of the public site never forwards to.
   # /var/cache/nginx is a disk-backed volume because the edge buffers uploads (up to 100 MB each) there
   # (proxy_request_buffering stays on); /tmp is RAM and holds only the pid file and a generated include.
   # /var/log/nginx is the edge-logs volume: nginx's ERROR LOG, the one place the edge writes a client address, is
   # a file there (not docker's json-file log, which is bounded by size and not by age) that edge-logs.sh rotates
-  # daily and deletes after seven days (nginx/edge-logs.sh; deploy/README.md, "Error log"): the image's
+  # daily and deletes after seven days (nginx/edge-logs.sh; deploy/README.md, "Logs and retention"): the image's
   # HEALTHCHECK runs it every 15 s, so keep the healthcheck. A stopped edge prunes nothing (the next start does,
   # or the one-liner in the README). The access log has no address and goes to stdout as before.
-  # The edge reaches the api over `app`; clients and the legacy nginx reach the edge over `public`; GlitchTip
+  # The edge reaches the api over `app`; clients and the front door reach the edge over `public`; GlitchTip
   # over `glitchtip-edge`. It does not wait for GlitchTip: the name is looked up per request.
   edge:
     <<: *service
@@ -803,8 +798,8 @@ services:
       # for any other, and for all of them while this is empty (edge-entrypoint.sh).
       GLITCHTIP_WEB_PROJECT_ID: ${GLITCHTIP_WEB_PROJECT_ID:-}
       # The proxies whose X-Forwarded-For the edge believes: the public network (the host side of the
-      # published port, and the legacy nginx if it is attached) plus the campus proxies from deploy/.env
-      # (TODO Q3: empty until their addresses are known; the trailing comma is harmless).
+      # published port, and the front door if it is attached) plus the reverse proxies from deploy/.env
+      # (empty until their addresses are known; the trailing comma is harmless).
       # PROXY ADDRESSES, NOT CLIENT NETWORKS.
       TRUSTED_PROXY_CIDR: ${PUBLIC_SUBNET:-172.29.80.0/28},${TRUSTED_PROXY_CIDR:-}
       PROXY_READ_TIMEOUT_SECONDS: ${PROXY_READ_TIMEOUT_SECONDS:-60}
@@ -821,7 +816,7 @@ services:
       - /tmp:size=16m,mode=1777
     networks:
       public:
-        # The name other containers (the legacy nginx, see nginx/beta-front-door.conf.example) use.
+        # The name other containers (the front door, deploy/frontdoor/) use.
         aliases:
           - decimer-next-edge
       app: {}
@@ -871,13 +866,13 @@ volumes:
   jobs: {}
   # Problem reports: private, mounted into the api only, never into the edge. Deleted by hand once
   # analysed, and by the api itself when older than REPORTS_MAX_AGE_DAYS (364, hourly). IN NO BACKUP, on purpose: the
-  # privacy page says so (TODO must leave this volume out; deploy/README.md, "Backups and retention").
+  # privacy page says so (deploy/README.md, "Backups and retention").
   reports: {}
   edge-cache: {}
   # The edge's error log and its rotated days (at most seven): see the edge service. Not a backup candidate either.
   edge-logs: {}
   # The usage counter's append-only file: small, and the only thing here worth backing up
-  #; losing it loses the history of the counts, not the service.
+  # (deploy/README.md, "Backups and retention"); losing it loses the history of the counts, not the service.
   usage-data: {}
   # GlitchTip's Postgres (error reports of the last 90 days). Not personal data by construction (the scrubber),
   # not worth a backup either; `docker volume rm decimer-next_glitchtip-pgdata` starts a fresh GlitchTip.

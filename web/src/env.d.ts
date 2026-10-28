@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  /** Which backend the app talks to: `http` (the job API) or `mock` (the default until P3-12 makes `http` the default). */
+  /** Which backend the app talks to: `http` (the job API) or `mock` (the default when unset; the production image builds with `http`). */
   readonly VITE_API?: 'mock' | 'http';
   /**
    * Put in front of the API's `/api` paths: empty (the default: the page's own origin), a path such as `/beta`,
@@ -13,7 +13,7 @@ interface ImportMetaEnv {
   /** Quiet time after the last canvas change before an edit is reported (ms). Tests lengthen it; unset in production. */
   readonly VITE_EDIT_DEBOUNCE_MS?: string;
   /**
-   * Where the browser's error reports go (GlitchTip, D21): `https://<public key>@<this site's host>/glitchtip/<project id>`.
+   * Where the browser's error reports go (a self-hosted GlitchTip): `https://<public key>@<this site's host>/glitchtip/<project id>`.
    * Unset or empty (the default): no reports. The edge proxies `/glitchtip/api/<project id>/envelope/` to GlitchTip, so the
    * reports use the page's own origin and the CSP (`connect-src 'self'`) needs no entry. A DSN on another origin, or one
    * that is not a DSN, is refused at start-up with a console warning (src/observability/sentry.ts): the page runs without

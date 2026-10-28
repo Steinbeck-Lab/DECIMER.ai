@@ -1,4 +1,4 @@
-"""Legacy's fragment filter, reproduced exactly.
+"""The fragment filter of the earlier Laravel version of decimer.ai, reproduced exactly.
 
 The oracle below is the condition of `app/Python/decimer_predictor_server.py` (DECIMER_Web,
 lines 64-67), copied as it stands:
@@ -21,7 +21,7 @@ import pytest
 from decimer_api.worker.fragments import trim_fragments
 
 
-def legacy(SMILES: str) -> str:  # noqa: N803  (the name legacy uses)
+def legacy(SMILES: str) -> str:  # noqa: N803  (the parameter name the earlier version uses)
     if len(SMILES.split(".")) > 4 or len(SMILES.split(".")[0]) < sum(
         len(part) for part in SMILES.split(".")[1:]
     ):
@@ -58,8 +58,8 @@ def test_equal_length_is_kept() -> None:
 
 
 def test_it_works_on_text_not_on_chemistry() -> None:
-    """Lengths are of the strings, as in legacy: [Na+].[Cl-] has first fragment 5 characters and
-    the other 5, so it is kept; a salt with a short cation is not."""
+    """Lengths are of the strings, as in the earlier version: [Na+].[Cl-] has first fragment 5
+    characters and the other 5, so it is kept; a salt with a short cation is not."""
     assert trim_fragments("[Na+].[Cl-]") == "[Na+].[Cl-]"
     assert trim_fragments("[K+].[Cl-]") == "[K+]"  # 4 < 5
 
@@ -69,7 +69,7 @@ def test_odd_dots_follow_the_same_rule(smiles: str) -> None:
     assert trim_fragments(smiles) == legacy(smiles)
 
 
-def test_it_agrees_with_legacy_on_every_small_prediction() -> None:
+def test_it_agrees_with_the_earlier_version_on_every_small_prediction() -> None:
     """Every list of one to six fragments, each one to five characters long (19,530 cases)."""
     cases = 0
     for count in range(1, 7):

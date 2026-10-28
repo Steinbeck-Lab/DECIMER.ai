@@ -1,4 +1,4 @@
-// All user-facing text lives here (ROADMAP §3: English only, one module).
+// All user-facing text lives here (English only, one module).
 import { LIMITS } from './api/contract';
 import type { ApiErrorCode, StageName } from './api/contract';
 import type { Status } from './state/model';
@@ -33,7 +33,7 @@ const STAGE_SHORT = {
 
 export const strings = {
   appName: 'DECIMER.ai',
-  /** Brand tagline, exact wording (PRODUCT.md, Brand Commitments). */
+  /** Brand tagline, exact wording. */
   tagline: 'Extract chemical structures from PDFs and images',
   editorLoading: 'Loading the structure editor…',
   startupFailed: 'DECIMER.ai could not start. Reload the page, and if this keeps happening, contact us.',
@@ -49,7 +49,7 @@ export const strings = {
     github: 'GitHub',
     githubUrl: 'https://github.com/Steinbeck-Lab/DECIMER.ai',
     footerNav: 'Footer',
-    /** The middle of the footer: "Built with [cup] by Kohulan.R at the Steinbeck Lab, Friedrich Schiller University Jena". */
+    /** The middle of the footer: "Built with [cup] by <author> at the Steinbeck Lab, Friedrich Schiller University Jena". */
     credit: {
       at: 'at the',
       group: 'Steinbeck Lab',
@@ -60,7 +60,7 @@ export const strings = {
     /** The footer's first link on the right. */
     contact: 'Contact',
     contactUrl: 'mailto:kohulan.rajan@uni-jena.de,christoph.steinbeck@uni-jena.de',
-    /** The legacy footer's line, as it worded it ("© 2025 DECIMER Project. All rights reserved."), with the current year. */
+    /** The footer line of the earlier Laravel version of decimer.ai, as it worded it ("© 2025 DECIMER Project. All rights reserved."), with the current year. */
     copyright: (year: number) => `© ${year} DECIMER Project. All rights reserved.`,
     builtWith: 'Built with',
     builtWithIcon: 'coffee',
@@ -181,7 +181,7 @@ export const strings = {
     queuedLabel: 'In queue',
     stoppedLabel: 'Stopped',
     sourcePreview: (name: string) => `Preview of ${name}`,
-    /** The toggle under the working screen's numbers, and the document it opens below them (legacy's wording, as on the results). */
+    /** The toggle under the working screen's numbers, and the document it opens below them (the earlier version's wording, as on the results). */
     document: {
       show: 'Display uploaded document',
       hide: 'Hide uploaded document',
@@ -294,7 +294,7 @@ export const strings = {
       ),
     } satisfies Record<string, (numbers: readonly number[]) => string>,
     document: {
-      /** Legacy's label for the same control. */
+      /** The earlier version's label for the same control. */
       toggle: 'Display uploaded document',
       region: (pages: number) =>
         pages === 1 ? 'Uploaded document, 1 page' : `Uploaded document, ${pages} pages. Scroll sideways to see them all.`,
@@ -332,11 +332,11 @@ export const strings = {
     /** Where the original crop should be and the picture is not there (an image that could not be read has none). */
     noPicture: 'No picture',
     /**
-     * A structure RDKit refused and CDK read (decision D4: CDK is kept as a fallback, as legacy used it). The flag is
+     * A structure RDKit refused and CDK read (CDK is kept as a fallback reader, as the earlier version used it). The flag is
      * the short form on the tile; the hover has the whole sentence, and says who could not read it.
      */
     cdkOnlyFlag: 'Accepted by CDK only',
-    /** The tile's flag for a structure the model cut off at its length limit (decision D25), until it is edited. */
+    /** The tile's flag for a structure the model cut off at its length limit, until it is edited. */
     incompleteFlag: 'Incomplete',
     cdkOnlyHover: 'Accepted by CDK only (RDKit could not read it)',
     /**
@@ -345,7 +345,7 @@ export const strings = {
      * an invalid SMILES, or where the tier is not shipped.
      */
     noNameHover: 'No verified name',
-    /** The name's kind (Orthonym's tier) and how it was checked (`verified`), decision D14. */
+    /** The name's kind (Orthonym's tier) and how it was checked (`verified`). */
     tierPreferred: 'Preferred IUPAC name',
     tierPreferredUncertified: 'Name in preferred IUPAC form; its preferred status is not certified',
     tierSystematic: 'Systematic name (not the preferred IUPAC name)',
@@ -440,10 +440,11 @@ export const strings = {
   // ---------------------------------------------------------------------------------------------
   // The static pages: About, Privacy and Impressum. Kept apart from the rest so that merges stay small.
   //
-  // Carried over from the legacy views (about, privacy_policy and impressum blade templates), then updated: Orthonym
+  // Carried over from the views of the earlier Laravel version of decimer.ai (about, privacy_policy and impressum blade
+  // templates), then updated: Orthonym
   // replaces STOUT, Google Analytics is gone, and the privacy text describes this stack (api/README.md, deploy/nginx).
   //
-  // `[CONFIRM: ...]` marks a statement that the repository and the legacy site could not confirm. The page shows it
+  // `[CONFIRM: ...]` marks a statement that the repository and the earlier version could not confirm. The page shows it
   // highlighted (pages/Rich.tsx) until someone who knows decides. A marker never contains a closing bracket. None may
   // remain at a release: `RELEASE=1 npm test` (scripts/check.sh --release) fails while one is left in the copy or the build.
   //
@@ -504,7 +505,7 @@ export const strings = {
       ],
       citeTitle: 'Cite us',
       citeLead: 'If our toolkit helped your work, please cite our publications.',
-      // The five DECIMER citations are the legacy list, word for word (journal in italics, volume in bold, as there).
+      // The five DECIMER citations are the earlier version's list, word for word (journal in italics, volume in bold, as there).
       // The one fix: a missing comma after "Agea, I.A." in the first one. Dropped: the STOUT paper. Added: the Orthonym
       // preprint (title, authors, date and DOI as Crossref records them).
       citations: [

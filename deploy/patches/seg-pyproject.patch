@@ -25,8 +25,8 @@ That code runs at install time with network access, so an unpinned backend makes
 non-reproducible, although uv.lock pins every runtime package. [tool.uv] build-constraint-dependencies
 pins uv-build, the projects' own backend, to the version CI uses (0.13.5). uv.lock records the
 constraints in its [manifest], so `uv sync --locked` needs the lock refreshed after the patch:
-apply-pyproject-patches.sh does it. Until the P2-02b re-pin this list also pinned setuptools 84.0.0 for
-the git build of decimer-segmentation (a setup.py project, built from source at install time); 1.6.0 is
+apply-pyproject-patches.sh does it. While decimer-segmentation was a git dependency this list also pinned
+setuptools 84.0.0 for its build (a setup.py project, built from source at install time); 1.6.0 is
 a wheel from PyPI, so no third-party backend runs for seg any more and that pin is gone. cls and chem
 still have git dependencies and still pin theirs (cls-pyproject.patch, chem-pyproject.patch).
 

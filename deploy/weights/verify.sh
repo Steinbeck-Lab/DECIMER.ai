@@ -11,7 +11,7 @@
 # empty directory, no symlink, no dot-file). Used for seg, ocsr and chem, whose build-context
 # directory holds nothing but the baked files. Without it only the top-level directories of the listed
 # paths are scanned: cls checks the installed pip package, which holds much else besides model/.
-# Exit 2: SHA256SUMS has no lines for the service (its entries are still a TODO).
+# Exit 2: SHA256SUMS has no lines for the service (the service is not listed).
 #
 # POSIX sh plus GNU coreutils' sha256sum (Debian images, the host). Used by:
 #   fetch.sh                  after it has put files in deploy/weights/<service>/
@@ -48,7 +48,7 @@ trap 'rm -rf "$tmp"' EXIT
 # This service's entries, with the "<service>/" prefix taken off the path.
 sed -n "s#^\([0-9a-f]\{64\}\)  ${service}/#\1  #p" "$sums" > "$tmp/entries"
 if [ ! -s "$tmp/entries" ]; then
-    echo "verify: no checksums for '$service' in $sums (a TODO there?)" >&2
+    echo "verify: no checksums for '$service' in $sums (is the service listed?)" >&2
     exit 2
 fi
 sed 's#^[0-9a-f]\{64\}  ##' "$tmp/entries" | sort > "$tmp/listed"

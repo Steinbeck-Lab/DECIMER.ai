@@ -20,7 +20,8 @@ from PIL import Image, ImageOps
 from decimer_cls import model as model_module
 from decimer_cls.model import ClsModel
 
-# The library's own default in `DecimerImageClassifier.is_chemical_structure` (see README).
+# The library's own default in `DecimerImageClassifier.is_chemical_structure` (see README), as
+# used by the earlier Laravel version of decimer.ai.
 LEGACY_THRESHOLD = 0.000089
 
 
@@ -56,7 +57,8 @@ def test_threshold_is_the_legacy_default() -> None:
         (0.0, True),
         (3.5e-12, True),  # a typical depiction in the golden run
         (0.00008, True),
-        (LEGACY_THRESHOLD, True),  # legacy: `score <= threshold`, so the boundary is a structure
+        # the earlier version: `score <= threshold`, so the boundary is a structure
+        (LEGACY_THRESHOLD, True),
         (0.00009, False),
         (0.0109, False),  # a typical non-structure in the golden run
         (0.5, False),
@@ -293,7 +295,8 @@ def test_a_palette_png_with_a_transparent_colour_is_composited_onto_white() -> N
 
 @pytest.mark.parametrize(("mode", "color"), [("RGB", (9, 8, 7)), ("L", 77)])
 def test_opaque_images_are_passed_through_untouched(mode: str, color: Any) -> None:
-    # The library converts to grayscale itself; touching the pixels here would drift from legacy.
+    # The library converts to grayscale itself; touching the pixels here would drift from the
+    # earlier version.
     scorer = FakeScorer()
     classify(scorer, image_bytes(5, 5, mode=mode, color=color))
     (seen,) = scorer.calls

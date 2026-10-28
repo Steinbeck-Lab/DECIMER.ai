@@ -1,4 +1,4 @@
-"""Render one PDF page to a PNG at exactly 300 DPI (D10: pypdfium2).
+"""Render one PDF page to a PNG at exactly 300 DPI (with pypdfium2).
 
 Two ways to run `render_page`, both behind the `Renderer` protocol:
 

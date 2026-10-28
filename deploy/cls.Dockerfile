@@ -60,8 +60,8 @@ RUN sh /tmp/verify/verify.sh cls /opt/venv/lib/python3.11/site-packages/decimer_
 
 # TF_NUM_*: the classifier is small; 2 + 1 gives about 100 ms per crop (services/cls/README.md).
 # MALLOC_ARENA_MAX=2: the service's resident set grows 57-100 KB per request (README "Memory", not
-# explained yet). Fewer glibc arenas keeps the growth from also being fragmentation. The soak test of
-# a few thousand requests decides whether the 2.5 GB limit and the restart policy hold.
+# explained). Fewer glibc arenas keeps the growth from also being fragmentation. The 2.5 GB limit and the
+# restart policy are the safety net for that growth.
 # HOME is /tmp, a tmpfs under compose's read_only (Keras makes ~/.keras on import).
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \

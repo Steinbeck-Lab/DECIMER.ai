@@ -4,18 +4,18 @@ import { expect, test, type Page, type Route } from '@playwright/test';
 import { readZip } from '../live/zip';
 import { CROP, dir, dragEvents, duplicateIds, Facts, fileFrom, overflowX, pasteFile, shot } from './shared';
 
-// The legacy half of the parity sign-off (TODO, ROADMAP §6): how https://decimer.ai does each item, as
-// screenshots and recorded facts. READ-ONLY and LIGHT: it is production.
+// The earlier-version half of the parity check: how the earlier Laravel version of decimer.ai (PARITY_LEGACY_URL)
+// does each item, as screenshots and recorded facts. READ-ONLY and LIGHT: it is meant for a production site.
 //   - ONE real job: the one small image (e2e/live/fixtures/00_crop-0.png), through the file picker. Set
 //     PARITY_LEGACY_UPLOAD=1 for it; without it the run only loads pages and exercises the page's own scripts.
 //   - Everything else that would upload (paste, drop) is held and answered with 204 before it reaches the server: the page's
 //     reaction (preview, status text, auto-submit) is what is observed. The format error is one request that carries the
 //     same image under a `.txt` name (the server refuses it by name before it stores or processes anything).
-//   - No PDF is ever sent (the legacy 10-page and 20-structure warnings, the page toggle and "No structures were
+//   - No PDF is ever sent (the earlier version's 10-page and 20-structure warnings, the page toggle and "No structures were
 //     detected" are read from the blade view that the site serves, whose HTML is checked against the repository's).
 //   - The problem report is held and answered with 204 (it would put a test report in the maintainers' data); the analytics
 //     scripts (Google, Matomo) are blocked, so this run does not count as a visit.
-// Run: PARITY_LEGACY_URL=https://decimer.ai PARITY_LEGACY_UPLOAD=1 npx playwright test --config e2e/parity/parity.config.ts --project legacy
+// Run: PARITY_LEGACY_URL=<URL of the earlier version> PARITY_LEGACY_UPLOAD=1 npx playwright test --config e2e/parity/parity.config.ts --project legacy
 
 const UPLOAD = process.env.PARITY_LEGACY_UPLOAD === '1';
 const ANALYTICS = /googletagmanager\.com|google-analytics\.com|matomo\.nfdi4chem\.de/;
@@ -29,7 +29,7 @@ test.describe.configure({ mode: 'serial' });
 
 /**
  * Every text the page puts in its status line (`#loading_text`), kept in sessionStorage across the page loads of a job
- * (legacy navigates for every stage). `window.name` is not used: the page's own scripts do not touch either.
+ * (the earlier version navigates for every stage). `window.name` is not used: the page's own scripts do not touch either.
  */
 const STATUS_LOG = () => {
   document.addEventListener('DOMContentLoaded', () => {

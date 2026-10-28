@@ -114,9 +114,9 @@ def test_a_non_finite_confidence_is_an_error_not_a_json_crash(bad: float) -> Non
 def test_a_decode_cut_off_at_the_token_limit_is_returned_flagged_incomplete() -> None:
     # decimer 2.8.1 returns the whole SMILES (302 tokens) but the confidences of all tokens except
     # the last when decoding hits the token limit (golden crop 15 of the legacy crops, and crop 12
-    # of the full-pipeline runs, do). The SMILES is cut off mid-structure. D25 (owner, 2026-10-27):
-    # like legacy it is passed on, not refused, and the answer says so; the caller (the API, then
-    # CDK and RDKit) judges it.
+    # of the full-pipeline runs, do). The SMILES is cut off mid-structure. Like the earlier Laravel
+    # version of decimer.ai, it is passed on, not refused, and the answer says so; the caller (the
+    # API, then CDK and RDKit) judges it.
     result = read(FakePredictor(cut_off()))
 
     assert result["smiles"] == "C" * 302
@@ -390,8 +390,8 @@ def test_a_16_bit_grayscale_png_is_scaled_not_clipped_to_white() -> None:
 
 
 def test_exif_orientation_is_not_applied() -> None:
-    # The API applies it at upload; legacy did not either, and the pixels given to DECIMER
-    # must stay the ones in the file.
+    # The API applies it at upload; the earlier Laravel version of decimer.ai did not either, and
+    # the pixels given to DECIMER must stay the ones in the file.
     array = seen_by_predictor(jpeg_with_exif_orientation(30, 10, 6))
     assert array.shape == (10, 30, 4)
 

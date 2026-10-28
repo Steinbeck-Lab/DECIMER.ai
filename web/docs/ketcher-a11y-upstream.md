@@ -1,6 +1,6 @@
 # Ketcher accessibility issues: text for an upstream report (EPAM, `epam/ketcher`)
 
-Status: draft, not posted. Posting is the owner's decision. Our workarounds are `web/src/editor/labels.ts` (items 1 and 2:
+Status: draft, not posted. Our workarounds are `web/src/editor/labels.ts` (items 1 and 2:
 the labels; item 4: the tab order of the scroll arrows) and `web/src/editor/focusKeys.ts` (item 5: Shift+Tab); delete
 the part for each item when Ketcher fixes it.
 

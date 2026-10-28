@@ -10,8 +10,7 @@
  * a twist that rolls the strip about its long axis, a flutter at the tail and occasional gusts from smooth noise; the
  * pointer adds a gust from its own side and can grab the strip and pull it.
  *
- * The look (colours, light, the fold over the top edge) is ported from the approved prototype
- * (.impeccable/mocks/decision/home-1.html); the shading is per pixel from interpolated vertex normals, so no facets show.
+ * The look (colours, light, the fold over the top edge) is ported from the design prototype; the shading is per pixel from interpolated vertex normals, so no facets show.
  */
 
 export interface Particle {

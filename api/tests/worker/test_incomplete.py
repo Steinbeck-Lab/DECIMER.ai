@@ -1,7 +1,8 @@
 """A prediction that stopped at the model's token limit: ocsr answers 200 with the cut-off
-SMILES and `incomplete: true` (it used to refuse with a 422). The worker keeps it as legacy kept
-it, sends it through the same RDKit and CDK checks as any other SMILES, and puts `incomplete` on
-the result. No name is looked up for it, and the log says so without writing the SMILES."""
+SMILES and `incomplete: true` (it used to refuse with a 422). The worker keeps it, as the earlier
+Laravel version of decimer.ai did, sends it through the same RDKit and CDK checks as any other
+SMILES, and puts `incomplete` on the result. No name is looked up for it, and the log says so
+without writing the SMILES."""
 
 from __future__ import annotations
 

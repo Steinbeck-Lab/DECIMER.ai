@@ -21,7 +21,7 @@ class H(http.server.BaseHTTPRequestHandler):
             if mode == "legacy-broken": ok.pop("/about")
             body = ok.get(self.path, b"not found"); code = 200 if self.path in ok else 404
             self.send_response(code)
-            if mode == "legacy-proxied": self.send_header("Set-Cookie", "decimer_session=x; path=/")   # the campus proxy strips X-Powered-By
+            if mode == "legacy-proxied": self.send_header("Set-Cookie", "decimer_session=x; path=/")   # a reverse proxy may strip X-Powered-By
             else: self.send_header("X-Powered-By", "PHP/8.3.36")
             self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body); return
         if self.path == "/ping": body, code = b"pong", 200
@@ -71,7 +71,7 @@ echo html-only > "$tmp/mode"; run; run
 t "one failing probe out of three is an outage too (engines=FAIL(502))" bash -c "[ $(alerts down) = 2 ] && grep -q 'engines=FAIL(502)' $tmp/alerts && grep -q 'readyz=200' $tmp/alerts"
 echo ok > "$tmp/mode"; run
 
-echo "legacy mode (before the cutover: no /readyz, X-Powered-By: PHP)"
+echo "legacy mode (the earlier Laravel version of decimer.ai: no /readyz, X-Powered-By: PHP)"
 echo legacy > "$tmp/mode"; rm -rf "$tmp/state" "$tmp/alerts"
 t "auto-detects legacy and passes: mode=legacy home=200 about=200 impressum=200, no alert" bash -c "'$here/uptime-check.sh' http://127.0.0.1:$port 2>&1 | grep -q ' OK .* mode=legacy home=200.*about=200.*impressum=200' && [ ! -e $tmp/alerts ]"
 echo legacy-proxied > "$tmp/mode"; rm -rf "$tmp/state"

@@ -915,7 +915,7 @@ async def test_exports_are_rate_limited_per_client(
     assert (await export(one, job.id, "csv")).status_code == 200
 
 
-# --- the cost gate and the namer's patience, through the export (review 1 and 3) ---------
+# --- the cost gate and the namer's patience, through the export -----------------------
 
 
 @pytest.mark.parametrize("count", [44, 60])
