@@ -77,7 +77,9 @@ class Gate:
 
 def create_app(model: Model, limits: Limits | None = None) -> FastAPI:
     limits = limits or Limits()
-    ready = {"at": 0.0}
+    # -inf, not 0: monotonic() counts from boot, so on a host up for less than
+    # ready_cache_seconds a 0 would read as a fresh pass and skip the selftest.
+    ready = {"at": float("-inf")}
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:

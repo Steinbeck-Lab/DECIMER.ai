@@ -82,6 +82,16 @@ async def test_readyz_503_when_selftest_fails(model: StubModel) -> None:
         assert "weights missing" in r.json()["detail"]
 
 
+async def test_readyz_runs_the_selftest_on_a_host_that_booted_moments_ago(
+    model: StubModel, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # time.monotonic() counts from boot: 5 s after boot is still inside the 30 s cache window of 0.
+    monkeypatch.setattr("decimer_service.app.time.monotonic", lambda: 5.0)
+    model.selftest_error = RuntimeError("weights missing")
+    async for client in client_for(model):
+        assert (await client.get("/readyz")).status_code == 503
+
+
 async def test_successful_infer_counts_as_a_selftest_pass(
     model: StubModel, client: httpx.AsyncClient
 ) -> None:
