@@ -607,7 +607,7 @@ def test_build_app_serves_through_a_process_namer_by_default() -> None:
     assert isinstance(app.state.namer, ProcessNamer)
 
 
-# --- /cdk (owner decision D4, TODO) -----------------------------------------------------
+# --- /cdk -----------------------------------------------------------------------------------
 
 
 def declines(reason: str, only: str | None = None) -> Any:

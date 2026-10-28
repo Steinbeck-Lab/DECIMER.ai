@@ -44,7 +44,7 @@ def result_json(
     name_tier: str | None = None,
     inchikey: str | None = None,
     crop_url: str | None = None,
-    incomplete: bool | None = None,  # None: the field is left out, as an API before D25 does
+    incomplete: bool | None = None,  # None: the field is left out, as an API without the flag does
 ) -> dict[str, Any]:
     key = to_inchikey(smiles)
     result: dict[str, Any] = {

@@ -1,6 +1,6 @@
 {
   "description": "Hand-checked bboxes [x0, y0, x1, y1] of the 12 structures of Figure 2 on page 3 (page_index 2) of the golden paper, rendered with PyMuPDF at 300 DPI.",
-  "checked": "2026-10-22: overlay inspected by eye - exactly one box per Figure 2 structure, nothing else on the page boxed; every box encloses its whole structure including atom labels except the small atom number '12' under compound 2, which the model leaves out (the legacy crop is cut at the same place). Crop sizes also match legacy crops 0-11 (golden/runs/legacy-20261022-140954) to within 1 px.",
+  "checked": "2026-10-22: overlay inspected by eye - exactly one box per Figure 2 structure, nothing else on the page boxed; every box encloses its whole structure including atom labels except the small atom number '12' under compound 2, which the model leaves out (the crop of the earlier Laravel version of decimer.ai is cut at the same place). Crop sizes also match its crops 0-11 (golden/runs/legacy-20261022-140954) to within 1 px.",
   "produced_by": "scripts/overlay.py with decimer-segmentation 6914cac (TF 2.15.1, CPU)",
   "pdf": "zou2024_penicillium_shentong.pdf",
   "page_index": 2,

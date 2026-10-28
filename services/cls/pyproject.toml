@@ -53,7 +53,7 @@ markers = [
 
 [tool.uv]
 # decimer-image-classifier 1.0.1 declares tensorflow==2.12.0 and ipyplot (a notebook-only plotting
-# helper that the library never imports). The legacy image installs it with `pip --no-deps`; this
+# helper that the library never imports). The earlier Laravel version of decimer.ai installs it with `pip --no-deps`; this
 # is the uv equivalent: swap in our TensorFlow pin and drop ipyplot via a marker that never matches.
 override-dependencies = [
     "tensorflow==2.15.1",
@@ -63,7 +63,7 @@ override-dependencies = [
 # install time (setup.py, setuptools), in an isolated environment. Without this uv takes
 # the newest setuptools on PyPI that day and runs it (wheel is not pinned: a setup.py-only
 # project never requests it under the fallback backend). Versions: the newest releases
-# that were two weeks old on 2026-10-22. uv-build is the project's own backend (CI uses 0.13.5).
+# that were at least two weeks old when pinned. uv-build is the project's own backend (CI uses 0.13.5).
 build-constraint-dependencies = [
     "setuptools==84.0.0",
     "uv-build==0.13.5",

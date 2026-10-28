@@ -1,30 +1,30 @@
 """Scores a stack's predictions for the golden-set paper against hand-checked labels.
 
-Matching rule (ROADMAP §5): within the paper, compare the multiset of labelled InChIKeys
+Matching rule: within the paper, compare the multiset of labelled InChIKeys
 with the multiset of predicted InChIKeys. Each prediction can match at most one label.
 
 A label with `scored=no` in labels.csv (the two Figure 3 drawings with correlation arrows over
-the bonds, excluded 2026-10-23) is not counted: a prediction first matches a scored label, and
+the bonds) is not counted: a prediction first matches a scored label, and
 only when none is left may it use up an excluded one, which counts as neither correct nor extra.
 
-What a prediction without a usable structure counts as (ROADMAP §5: "Invalid: SMILES that RDKit
-rejects"; decided by Kohulan 2026-10-23, gate P2-08 passes as §5 words it):
+What a prediction without a usable structure counts as ("Invalid" means a SMILES that RDKit
+rejects):
 - invalid: a non-empty SMILES that RDKit rejects;
 - refused: an empty SMILES that the stack returned (`valid` is True or False, not None): it
   tried and its recognition declined to answer, e.g. the new stack's 422 "no complete structure"
   (a special token in the output). It is reported apart from invalid, so it never counts
   against the pass rule's invalid limit;
 - incomplete: a non-empty SMILES the stack flagged `incomplete`: the model stopped at its
-  token limit, so the text is cut off. Legacy kept such a string and scored it as any SMILES (its
-  one invalid is one); the new stack used to refuse it (a 422, so "refused"). The owner accepted
-  (2026-10-27) a cut-off prediction of a label excluded from scoring as "incomplete", not as a
-  new failure. It is reported apart, like a refusal: whatever RDKit says of the text it is
+  token limit, so the text is cut off. The earlier Laravel version of decimer.ai kept such a string
+  and scored it as any SMILES (its one invalid is one); this stack used to refuse it (a 422, so
+  "refused"). A cut-off prediction of a label excluded from scoring counts as "incomplete", not
+  as a new failure. It is reported apart, like a refusal: whatever RDKit says of the text it is
   neither correct, extra nor invalid, and the label it sits on stays unmatched (or, if that label
   is excluded from scoring, uncounted). Every flagged prediction is counted, so none hides; the
   pass rule's invalid limit is read on `invalid` alone, `incomplete` is printed beside it
-  (`invalid 1 · incomplete 1`), and the cutover gate caps it (`GOLDEN_MAX_INCOMPLETE`);
+  (`invalid 1 · incomplete 1`), and `golden/smoke.sh` caps it (`GOLDEN_MAX_INCOMPLETE`);
 - cut: an empty SMILES with `valid` None, the padding rows for structures beyond the 20-structure
-  cap (legacy writes its cut rows the same way).
+  cap (the earlier version writes its cut rows the same way).
 """
 
 from __future__ import annotations
@@ -52,8 +52,8 @@ class Label:
 
 @dataclass(frozen=True)
 class Prediction:
-    """One row of a run's predictions.csv. The first five fields are what the legacy runner
-    writes; the rest are filled by stacks that report them (`next`) and stay empty for legacy."""
+    """One row of a run's predictions.csv. The first five fields are what the `legacy` runner
+    writes; the rest are filled by stacks that report them (`next`) and stay empty for it."""
 
     index: int
     smiles: str
@@ -102,7 +102,7 @@ def score(labels: list[Label], predictions: list[Prediction]) -> Score:
             if p.valid is not None:
                 refused += 1  # a result the stack returned (valid either way) with no SMILES
             else:
-                dropped += 1  # padding beyond the 20-structure cap (valid=None; legacy: "")
+                dropped += 1  # padding beyond the 20-structure cap (valid=None; `legacy` runs: "")
         elif p.incomplete:
             incomplete += 1  # a cut-off text is not a reading, whatever RDKit makes of it
         elif p.inchikey is None:
@@ -210,7 +210,7 @@ def read_predictions(path: Path) -> list[Prediction]:
 
 
 def _optional[T](row: dict[str, str], column: str, convert: Callable[[str], T]) -> T | None:
-    """A column that older runs (the legacy runner's) do not have, or that is left empty."""
+    """A column that older runs (the `legacy` runner's) do not have, or that is left empty."""
     text = row.get(column)
     return convert(text) if text else None
 

@@ -1,8 +1,8 @@
 """The real EfficientNet classifier on real crops. Slow (TensorFlow, CPU): `pytest -m slow`.
 
-Done-when for P2-04: the flags agree with the legacy site when both are given the SAME crops. The
-crops and legacy's flags are the committed run `golden/runs/legacy-20261022-140954` (rows 0-19 have
-a flag; rows 20-31 were not classified because legacy caps a job at 20 structures).
+The flags agree with the earlier Laravel version of decimer.ai when both are given the SAME crops.
+The crops and its flags are the committed run `golden/runs/legacy-20261022-140954` (rows 0-19 have
+a flag; rows 20-31 were not classified because the earlier version caps a job at 20 structures).
 """
 
 import csv
@@ -46,7 +46,7 @@ def _legacy_crops() -> list[LegacyCrop]:
         for row in csv.DictReader(handle):
             flag = row["classifier"]
             if flag == "":
-                continue  # not classified by legacy
+                continue  # not classified by the earlier version
             assert flag in ("True", "False"), row
             crops.append(LegacyCrop(int(row["index"]), RUN / row["segment"], flag == "True"))
     return crops

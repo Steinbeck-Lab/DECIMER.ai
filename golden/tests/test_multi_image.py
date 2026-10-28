@@ -22,7 +22,7 @@ def row(smiles: str, index: int, page: int, bbox: tuple[int, int, int, int]) -> 
 
 
 def whole_job(*smiles: str) -> dict[str, Any]:
-    """A job as D23 makes it: one result per image, in order, each the whole image."""
+    """A job as the worker makes it: one result per image, in order, each the whole image."""
     results = [row(s, n, n, (0, 0, *SIZE)) for n, s in enumerate(smiles)]
     return job_json("done", results=results, found=len(smiles))
 

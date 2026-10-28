@@ -1,8 +1,8 @@
 """Single-image check: images uploaded one at a time as a pasted image, scored per image.
 
 A pasted image that is already a tight crop goes through seg again, and seg's box can clip the
-drawing's edge (shentonin A loses its OMe). The worker's rule (`SINGLE_IMAGE_WHOLE_FRACTION`, 0.6,
-D20): a job of one uploaded image where seg finds exactly ONE structure covering at least that
+drawing's edge (shentonin A loses its OMe). The worker's rule (`SINGLE_IMAGE_WHOLE_FRACTION`, 0.6):
+a job of one uploaded image where seg finds exactly ONE structure covering at least that
 fraction of the image sends the whole image to ocsr and cls, and reports the whole image as its box.
 
 This module measures that from outside, through the HTTP API, one job at a time, and deletes every
@@ -16,10 +16,10 @@ job it made (`DELETE /api/jobs/{id}`, also when it failed). Two sets of images:
   the labels each image contains.
 
 `--also-without-rule` repeats every image as a job of TWO images (the image and a blank one):
-the rule never applies to such a job, so on a stack BEFORE D23 it gives what seg's crop path reads
-and seg's own box, to compare with the single-image job. From D23 on a job of several images never
-calls seg (every image is read whole), so against such a stack these columns are the whole-image
-reading, not seg's: use `multi-image` for that, and this option only to judge a stack before D23.
+the rule never applies to such a job, so on a stack that still segments multi-image jobs it gives
+what seg's crop path reads and seg's own box, to compare with the single-image job. Where a job of
+several images never calls seg (every image is read whole), these columns are the whole-image
+reading, not seg's: use `multi-image` for that, and this option only to judge an older stack.
 Scores are by FULL InChIKey: an image is right when every label it contains is among its results.
 
 Run it before and after a change of the worker and compare with `--before`. The box a job reports

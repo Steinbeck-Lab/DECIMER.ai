@@ -15,9 +15,10 @@ whole service with it. So the engine, and the one JVM it starts, live in a child
 * the JVM is started once per child, when the child starts, never per request.
 
 The child does two things, for two kinds of request: it names a structure (Orthonym, `name`) and it
-lays a structure out for a molblock (CDK, `cdk`, the D4 fallback). Both run one at a time on the
-same pipe, under the same deadlines, with the same failure rules: whatever goes wrong with one
-structure is that structure's result, and a killed, crashed or retired child is replaced.
+lays a structure out for a molblock (CDK, `cdk`, the fallback for SMILES RDKit rejects). Both run
+one at a time on the same pipe, under the same deadlines, with the same failure rules: whatever
+goes wrong with one structure is that structure's result, and a killed, crashed or retired child
+is replaced.
 
 The parent and child talk over a pipe, one message each way per structure. **The messages are
 JSON, never pickle**: a pickle imports whatever class it names, and Orthonym's names can be `str`

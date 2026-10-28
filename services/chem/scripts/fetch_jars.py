@@ -5,8 +5,9 @@ Docker image does the same once, at build time, and bakes them in; `deploy/weigh
 fetches the same three files into the build context).
 
 * OPSIN and centres: through Orthonym's own downloader, with Orthonym's pinned checksums.
-* CDK 2.8 (`cdk-2.8.jar`, the D4 fallback): from the cdk-2.8 release of github.com/cdk/cdk, https
-  only (also across redirects), refused unless its SHA-256 is the one the service pins.
+* CDK 2.8 (`cdk-2.8.jar`, the fallback for SMILES RDKit rejects): from the cdk-2.8 release of
+  github.com/cdk/cdk, https only (also across redirects), refused unless its SHA-256 is the one the
+  service pins.
 
     CHEM_JARS_DIR=/some/dir uv run python scripts/fetch_jars.py   # default: Orthonym's cache dir
 """

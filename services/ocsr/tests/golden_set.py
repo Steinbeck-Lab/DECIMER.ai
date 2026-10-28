@@ -1,4 +1,5 @@
-"""The golden-set paper as data: legacy's crops and predictions, and the hand-checked labels.
+"""The golden-set paper as data: the crops and predictions of the earlier Laravel version of
+decimer.ai ("legacy" below), and the hand-checked labels.
 
 Used by the slow tests and by `scripts/compare_golden.py`. Needs RDKit (a dev dependency): the
 service itself never turns SMILES into InChIKeys, the worker does.

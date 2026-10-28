@@ -1,4 +1,4 @@
-"""The policy that turns an Orthonym row into what the service ships (owner decision D14).
+"""The policy that turns an Orthonym row into what the service ships.
 
 The expected sets below are written out literally, on purpose: the sets in `decimer_chem.results`
 are the code under test and must not be their own oracle.
@@ -204,7 +204,7 @@ def test_as_dict_is_plain_strs_whatever_the_result_holds() -> None:
         assert type(value) is str
 
 
-# --- the CDK result (owner decision D4, TODO) ----------------------------------------
+# --- the CDK result -------------------------------------------------------------------------
 
 
 def test_the_cdk_reason_words_and_limits() -> None:

@@ -1,4 +1,4 @@
-"""CDK 2.8 for real: the fallback for SMILES RDKit rejects (owner decision D4, TODO).
+"""CDK 2.8 for real: the fallback for SMILES RDKit rejects.
 
 Slow: `pytest -m slow tests/test_cdk_integration.py`. Needs a Java 11+ runtime (JAVA_HOME or `java`
 on PATH) and the three jars in CHEM_JARS_DIR (OPSIN, centres and cdk-2.8.jar:
@@ -43,8 +43,9 @@ REPO = Path(__file__).resolve().parents[3]
 README = Path(__file__).resolve().parents[1] / "README.md"
 RDLogger.DisableLog("rdApp.*")
 
-# Written out, not taken from the code under test: legacy's app/Python/cdk-2.8.jar, which equals the
-# asset of the official release https://github.com/cdk/cdk/releases/tag/cdk-2.8.
+# Written out, not taken from the code under test: app/Python/cdk-2.8.jar of the earlier Laravel
+# version of decimer.ai, which equals the asset of the official release
+# https://github.com/cdk/cdk/releases/tag/cdk-2.8.
 CDK_SHA256 = "5dff6e365ecc21020e44aa31861b36a9cce34c51ed0b8713b8d25275552239b4"
 CDK_BYTES = 47_174_875
 
@@ -166,7 +167,8 @@ class Accepted:
 
 
 # SMILES that RDKit's parser rejects and CDK 2.8 reads and lays out (the parser "is much more
-# tolerant", legacy's words). Counted by hand from the SMILES; a valence rule is what RDKit refuses.
+# tolerant", in the words of the earlier version). Counted by hand from the SMILES; a valence rule
+# is what RDKit refuses.
 ACCEPTED = [
     Accepted(
         "CC(C)(C)(C)c1ccccc1",  # tert-butyl with one methyl too many: a carbon with five neighbours
@@ -221,9 +223,9 @@ async def test_cdk_accepts_and_lays_out_a_smiles_rdkit_rejects(
     check_layout(mol)
 
 
-# SMILES that both RDKit and CDK refuse: the decline of the fallback, as in D4's controls.
+# SMILES that both RDKit and CDK refuse: the decline of the fallback.
 REFUSED = [
-    "C1CC",  # an open ring (D4's control)
+    "C1CC",  # an open ring (a control)
     "c",  # an aromatic atom outside a ring
     "c1cccc1",  # an aromatic ring that cannot be kekulised
     "n1cccc1",  # pyrrole without its hydrogen
