@@ -30,7 +30,7 @@ function sameOriginBase(baseUrl: string): string {
  *
  * - `http`: the job API (`HttpApiClient`) on the page's origin. `VITE_API_URL` may add a path or the page's own
  *   origin in front of `/api`; an API on another origin is refused at start-up (see `sameOriginBase`).
- * - `mock` (and nothing at all, until the HTTP client is the default, TODO): the mock.
+ * - `mock` (and nothing at all): the mock.
  *
  * Each is a dynamic import behind the flag, so a build for one carries none of the other's code (the mock
  * brings its fixtures with it). Any other value fails at start-up instead of quietly using the mock.

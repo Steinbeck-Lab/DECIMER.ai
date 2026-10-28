@@ -9,7 +9,7 @@ const KetcherEditor = lazy(() => import('./KetcherEditor'));
 /**
  * Starts fetching the editor's JS before it is needed: the first time the
  * pointer moves over the results or keyboard focus lands on a structure
- * (decision D13). The WASM still loads only when the editor mounts.
+ * The WASM still loads only when the editor mounts.
  * Safe to call any number of times.
  */
 export function preloadEditor(): void {

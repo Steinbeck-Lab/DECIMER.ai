@@ -95,7 +95,7 @@ describe('no placeholder, no STOUT, no Google Analytics', () => {
     }
   });
 
-  test('no page shows a draft note or a P4-10 placeholder', () => {
+  test('no page shows a draft note or a placeholder', () => {
     for (const { page } of PAGES) {
       render(page);
       const text = document.body.textContent ?? '';
@@ -134,11 +134,11 @@ describe('[CONFIRM: ...] markers', () => {
       shown += document.querySelectorAll('mark.dc-confirm').length;
       cleanup();
     }
-    // None is left (owner, 2026-10-26); any new marker must still be well formed and shown highlighted.
+    // None is left; any new marker must still be well formed and shown highlighted.
     expect(shown).toBe(inCopy);
   });
 
-  test('no question is left open: the owner confirmed all four statements on 2026-10-26 (draft notice, university proxy, GlitchTip, Impressum review)', () => {
+  test('no question is left open: every statement has been confirmed (draft notice, university proxy, GlitchTip, Impressum review)', () => {
     expect(markersOn(<About />)).toEqual([]);
     expect(markersOn(<Privacy />)).toEqual([]);
     expect(markersOn(<Impressum />)).toEqual([]);
@@ -148,9 +148,9 @@ describe('[CONFIRM: ...] markers', () => {
 });
 
 describe('About', () => {
-  test('cites the five DECIMER papers as the legacy site does, in its order and style', () => {
-    // Written from the legacy view (resources/views/about.blade.php), not from the copy under test. The one change is
-    // the comma after "Agea, I.A." that the legacy text lacks; the second title keeps its full stop, as there.
+  test('cites the five DECIMER papers as the earlier version does, in its order and style', () => {
+    // Written from the earlier Laravel version of decimer.ai (resources/views/about.blade.php), not from the copy under test. The one change is
+    // the comma after "Agea, I.A." that its text lacks; the second title keeps its full stop, as there.
     const legacy = [
       ['https://doi.org/10.1038/s41467-023-40782-0', 'DECIMER.ai: an open platform for automated optical chemical structure identification, segmentation and recognition in scientific publications', 'Rajan, K., Brinkhaus, H.O., Agea, I.A., Zielesny, A., Steinbeck, C.', 'Nat Commun', '14', ', 5045 (2023).'],
       ['https://doi.org/10.1186/s13321-024-00872-7', 'Advancements in hand-drawn chemical structure recognition through an enhanced DECIMER architecture.', 'Rajan, K., Brinkhaus, H.O., Zielesny, A., Steinbeck, C.', 'J Cheminform', '16', ', 78 (2024).'],
@@ -164,7 +164,7 @@ describe('About', () => {
     legacy.forEach(([doi, title, authors, journal, volume, rest], i) => {
       const item = items[i]!;
       // A card: the title as its heading, the authors, the journal in italics with the volume in bold, and the DOI as
-      // the link to the paper (the title was the link in the legacy list; the destination is the same).
+      // the link to the paper (the title was the link in the earlier list; the destination is the same).
       expect(item.querySelector('h3')?.textContent).toBe(title);
       const link = item.querySelector('a')!;
       expect(link.getAttribute('href')).toBe(doi);
@@ -267,7 +267,7 @@ describe('About', () => {
     expect(document.querySelector('mark.dc-confirm')).toBeNull();
   });
 
-  test('carries over the legacy sections and links, and points to the privacy and Impressum pages', () => {
+  test('carries over the sections and links of the earlier version, and points to the privacy and Impressum pages', () => {
     render(<About />);
     const shown = headings(document.body).map((h) => h.text);
     for (const title of ['How to use the DECIMER web app', 'Project components', 'Cite us', 'About DECIMER']) {
@@ -289,7 +289,7 @@ describe('About', () => {
 });
 
 describe('Privacy', () => {
-  test('keeps the legacy parts (controller, rights, server data) and describes this stack', () => {
+  test('keeps the parts of the earlier version (controller, rights, server data) and describes this stack', () => {
     render(<Privacy />);
     const shown = headings(document.body).map((h) => h.text);
     for (const title of [
@@ -321,7 +321,7 @@ describe('Privacy', () => {
     expect(document.querySelector('a[href="mailto:christoph.steinbeck@uni-jena.de"]')).toBeTruthy();
   });
 
-  test('says what the legacy Matomo code does: it sets _pk_ cookies and may track the links you click', () => {
+  test('says what the Matomo code of the earlier version does: it sets _pk_ cookies and may track the links you click', () => {
     render(<Privacy />);
     const text = (document.body.textContent ?? '').replace(CONFIRM_MARKER, ''); // what the page claims, not its open questions
     expect(text).toContain(new URL(MATOMO_URL).host); // the server the code in analytics/matomo.ts talks to
@@ -400,7 +400,7 @@ describe('Privacy', () => {
     expect(text).toContain('The basis for counting visits is Art. 6 Para. 1 lit. f) GDPR. Our legitimate interest lies in seeing how the site is used.');
     expect(text).toContain(`block cookies or block scripts from ${host}, or use a tracker blocker`);
     expect(text).toContain('The site works without Matomo.');
-    // The legacy text said nothing about retention or IP shortening, and nobody has confirmed either for NFDI4Chem's server.
+    // The earlier text said nothing about retention or IP shortening, and nobody has confirmed either for NFDI4Chem's server.
     expect(text).not.toMatch(/shorten|anonymi[sz]|truncat|retention|(deleted|kept|stored) (for|after)/i);
   });
 
@@ -412,14 +412,14 @@ describe('Privacy', () => {
     expect(open).toEqual([]);
   });
 
-  test('shows no draft notice (removed when the owner confirmed the text, 2026-10-26)', () => {
+  test('shows no draft notice', () => {
     render(<Privacy />);
     expect(document.querySelector('.dc-callout')).toBeNull();
   });
 });
 
 describe('Impressum', () => {
-  test('is the legacy German text, marked as German, with the provider and contact data', () => {
+  test('is the earlier version\'s German text, marked as German, with the provider and contact data', () => {
     render(<Impressum />);
     const title = document.querySelector('h1')!;
     expect(title.textContent).toBe('Impressum');
@@ -444,7 +444,7 @@ describe('Impressum', () => {
       'Verantwortlichkeit für Inhalte',
       'Verantwortlichkeit für Links',
       'Paragraph 106 strafbar',
-      // The typos of the legacy text, corrected one by one.
+      // The typos of the earlier text, corrected one by one.
       'dass wir nicht verantwortlich sind',
       'die versandt werden',
       'verfolgen wir mögliche illegale Aktivitäten in diesen',

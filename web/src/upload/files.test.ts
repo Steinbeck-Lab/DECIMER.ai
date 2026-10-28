@@ -18,7 +18,7 @@ test('accepts several images of different formats, by extension when the type is
   expect(r).toMatchObject({ ok: true, kind: 'image' });
 });
 
-test('rejects a PDF mixed with images (the legacy mixed-input error)', () => {
+test('rejects a PDF mixed with images (the mixed-input error of the earlier version)', () => {
   const r = checkSelection([file('paper.pdf', 'application/pdf'), file('a.png', 'image/png')]);
   expect(r).toEqual({ ok: false, error: { code: 'mixed' } });
 });

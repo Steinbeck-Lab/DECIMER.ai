@@ -4,7 +4,7 @@
  *
  * Provenance of the rasters and drawings in ./fixtures:
  * - cropN.png: crops of Figure 2 of the paper (CC BY 4.0), cut by DECIMER
- *   Segmentation for the design mock-ups, 2026-10-22.
+ *   Segmentation.
  * - page.png: page 3 of the paper (the one with Figure 2), rendered at 72 DPI and reduced to 64 colours; every
  *   page of a mock job is this one image (`pageUrls`, the "Display uploaded document" strip).
  * - molN.svg: RDKit depictions of the label SMILES.
@@ -14,8 +14,8 @@
  *   compounds of the figure have crops here, numbered as in the paper.
  *
  * The statuses are examples: 6 has a low confidence ("review") and 12 is
- * flagged by the classifier ("not sure it is a structure"), as in the approved
- * mock-up.
+ * flagged by the classifier ("not sure it is a structure"), as in the
+ * design.
  */
 import type { Result } from '../api/contract';
 import compounds from './fixtures/compounds.json';
@@ -60,7 +60,7 @@ export const FIXTURE_COMPOUNDS: FixtureCompound[] = compounds.map((c) => ({
 const CONFIDENCE: Record<number, number> = { 6: 0.62 };
 
 /**
- * How Orthonym named each compound (decision D14): the tier and the way the name was checked. Mixed on purpose,
+ * How Orthonym named each compound: the tier and the way the name was checked. Mixed on purpose,
  * so the hover text shows each kind. Compounds 1 and 2 have no verified name.
  */
 const NAME_CHECK: Record<number, { tier: string; verified: string }> = {
@@ -77,7 +77,7 @@ const NOT_A_STRUCTURE = new Set([12]);
 const FIGURE_PAGE = 2;
 
 /**
- * The result as the API leaves one that RDKit refused and only CDK accepted (decision D4): `valid` is false (RDKit's
+ * The result as the API leaves one that RDKit refused and only CDK accepted: `valid` is false (RDKit's
  * word), `validBy` is `cdk`, there is no InChIKey and no name. The SMILES is DECIMER's own text; the molfile and the
  * drawing stay the fixture's (the real ones are CDK's molblock and RDKit's drawing of it, which a mock cannot make).
  */
@@ -86,8 +86,8 @@ export function asCdkOnly(result: Result): Result {
 }
 
 /**
- * The result as the API leaves one the model cut off at its token limit (decision D25): `incomplete` is true, the SMILES
- * is the cut-off text kept as legacy kept it, and no name is looked up for it. RDKit's reading (`valid`, `validBy`,
+ * The result as the API leaves one the model cut off at its token limit: `incomplete` is true, the SMILES
+ * is the cut-off text kept as the earlier Laravel version of decimer.ai kept it, and no name is looked up for it. RDKit's reading (`valid`, `validBy`,
  * `inchikey`, the drawing and the molfile) stays the fixture's: a mock cannot cut a structure off and read it again, so
  * this is a structure RDKit still reads (`valid` true, `validBy` rdkit), which is what a cut-off chain gives.
  */

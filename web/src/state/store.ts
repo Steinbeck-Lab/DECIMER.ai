@@ -8,7 +8,7 @@ export interface Store<S, A> {
  * A reducer behind a synchronous store. `getState()` is current the moment
  * `dispatch()` returns, which React's own useReducer cannot promise. The export
  * relies on that: it flushes the editor, then reads the edits, with nothing in
- * between (the legacy ZIP race).
+ * between (the ZIP race of the earlier version).
  */
 export function createStore<S, A>(reducer: (state: S, action: A) => S, initial: S): Store<S, A> {
   let state = initial;

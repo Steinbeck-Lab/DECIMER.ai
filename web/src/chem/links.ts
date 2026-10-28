@@ -10,9 +10,9 @@ export function isInchiKey(key: string): boolean {
 /**
  * Does the key carry anything beyond the connectivity block (stereochemistry,
  * isotopes)? Then PubChem can be searched with the full key or with the first
- * 14-character block only (ROADMAP §6 item 10).
+ * 14-character block only.
  *
- * The legacy page tested `substr($key, 14, 1) !== 'A'`. Offset 14 is the hyphen
+ * The earlier Laravel version of decimer.ai tested `substr($key, 14, 1) !== 'A'`. Offset 14 is the hyphen
  * between the blocks, so that test was always true and offered the toggle for
  * every structure. This one looks at the second block itself.
  */

@@ -120,7 +120,7 @@ describe('getJob', () => {
     expect(wireJob().results).toBeUndefined(); // (the wire job really did omit them)
   });
 
-  // Who accepted the SMILES (decision D4): the server's word when it gives one, RDKit's for a valid result when it
+  // Who accepted the SMILES: the server's word when it gives one, RDKit's for a valid result when it
   // does not (an older API), nobody for an invalid one.
   test.each([
     [{ valid: true, validBy: 'rdkit' }, 'rdkit'],
@@ -136,7 +136,7 @@ describe('getJob', () => {
     expect(result?.valid).toBe(over.valid);
   });
 
-  // Cut off at the model's token limit (decision D25): the server's word, false when an older API says nothing.
+  // Cut off at the model's token limit: the server's word, false when an older API says nothing.
   test.each([
     [{ incomplete: true }, true],
     [{ incomplete: false }, false],
@@ -353,7 +353,7 @@ describe('parseRetryAfter', () => {
   });
 });
 
-// ---- validate, export, report, delete -----------------------------------
+// ---- validate, export, report, delete ---------------------------------------------------------------------
 
 describe('delete', () => {
   test('sends DELETE to the job\'s path and resolves on 204', async () => {

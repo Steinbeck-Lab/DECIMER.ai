@@ -109,7 +109,7 @@ export function ResultsView() {
           </div>
           <JobNotices job={job} calm incomplete={cutOff} />
         </div>
-        {/* Legacy shows the document for a PDF only; an image is its own picture, and the tile shows its crop. */}
+        {/* The earlier version shows the document for a PDF only; an image is its own picture, and the tile shows its crop. */}
         <DocumentTile
           names={state.sources.map((s) => s.name)}
           pages={job.pagesProcessed}

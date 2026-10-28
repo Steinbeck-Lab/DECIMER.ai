@@ -426,8 +426,8 @@ test('New upload asks before it drops edits; keeping on works, confirming clears
   await expect(page.locator('.Ketcher-root')).toHaveCount(1);
 });
 
-// P4-13: Lighthouse flags three controls of Ketcher 3.18.0 that have no name (button-name x2, label x1). The
-// page names them (src/editor/labels.ts, text for EPAM in docs/ketcher-a11y-upstream.md). Ketcher mounts after the
+// Lighthouse flags three controls of Ketcher 3.18.0 that have no name (button-name x2, label x1). The
+// page names them (src/editor/labels.ts, text for EPAM in web/docs/ketcher-a11y-upstream.md). Ketcher mounts after the
 // panel does, so this fails if the labels are only applied once, at panel mount. Whether they survive Ketcher
 // replacing the nodes is shown by labels.test.ts: no interaction in the browser makes Ketcher replace them.
 test('Ketcher\'s controls without a name are named once it has loaded, and stay named when another structure is opened', async ({ page }) => {

@@ -12,7 +12,7 @@ test('inline SVG becomes a data URL, so it is shown as an image and never parsed
   expect(out).not.toContain('<');
 });
 
-// ---- the name hover text (P4-15, decision D14) --------------------------------------------------
+// ---- the name hover text ------------------------------------------------------------------------
 
 test.each([
   ['pin_verified', 'Preferred IUPAC name'],
@@ -86,7 +86,7 @@ test('anything that does not start with < is a URL, including ones that merely c
   expect(imageSrc('https://example.org/a.svg')).toBe('https://example.org/a.svg');
 });
 
-// ---- who accepted the structure (decision D4) ---------------------------------------------------------------------
+// ---- who accepted the structure -----------------------------------------------------------------------------------
 
 test('only a structure that CDK alone accepted has a validity line, and it is this sentence', () => {
   expect(validityHover('cdk')).toEqual(['Accepted by CDK only (RDKit could not read it)']);

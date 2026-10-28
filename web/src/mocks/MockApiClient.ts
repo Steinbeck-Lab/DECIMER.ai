@@ -44,7 +44,7 @@ const isPdfName = (file: Pick<File, 'name'>) => file.name.toLowerCase().endsWith
  * - `corrupt`    refused with 400 corrupt_file; likewise `encrypted` (encrypted_pdf), `pixels` (too_many_pixels)
  * - `badmolfile` the first structure has a molfile the editor cannot load
  * - `cdkonly`    the third structure was refused by RDKit and accepted by CDK alone (`valid` false, `validBy` cdk)
- * - `incomplete` the third structure was cut off at the model's token limit (`incomplete` true, no name; D25)
+ * - `incomplete` the third structure was cut off at the model's token limit (`incomplete` true, no name)
  * - `nocls`      the classifier was unavailable: `isStructure` is null everywhere and a warning says so
  * - anything else: the 8 structures of Figure 2 of the golden paper
  */
@@ -175,7 +175,7 @@ function csvCell(value: string): string {
 
 /**
  * A fake backend that replays a job through the stages over a few seconds. It
- * stands in for the real API until Phase 3; the interface is
+ * stands in for the real API (`VITE_API=mock`); the interface is
  * `ApiClient`, so swapping it is one line in `createApiClient`.
  */
 export class MockApiClient implements ApiClient {

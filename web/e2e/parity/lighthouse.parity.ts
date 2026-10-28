@@ -7,12 +7,12 @@ import puppeteer from 'puppeteer-core';
 import { waitForEditor, watchProblems } from '../helpers';
 import { CROP, Facts, shot } from './shared';
 
-// TODO: Lighthouse accessibility of 90 or more, measured on the RUNNING stack (the production build under the
+// Lighthouse accessibility of 90 or more, measured on the RUNNING stack (the production build under the
 // edge's CSP, the real API and workers), where e2e/lighthouse.spec.ts measures `vite preview` with the mock API.
 // Same method as that spec (Lighthouse's snapshot mode on Playwright's own Chromium, reached through its debugging
 // port; the failing audits of a state are attributed to Ketcher's root or to us), against PARITY_NEW_URL, with one
 // real job of the small image for the results states. The job is deleted at the end. With PARITY_LEGACY_URL set, the
-// legacy home page is measured too (one page load, analytics blocked), for comparison.
+// home page of the earlier Laravel version of decimer.ai is measured too (one page load, analytics blocked), for comparison.
 // Run: PARITY_NEW_URL=http://127.0.0.1:8090 npx playwright test --config e2e/parity/parity.config.ts --project lighthouse
 
 const facts = new Facts('lighthouse');
@@ -158,7 +158,7 @@ test('Lighthouse accessibility on the running stack: empty, results, results wit
     facts.set('console.errors during the lighthouse run', problems);
 
     if (legacyUrl) {
-      // The legacy home page, one load, analytics blocked: for comparison only.
+      // The earlier version's home page, one load, analytics blocked: for comparison only.
       await context.route(/googletagmanager\.com|google-analytics\.com|matomo\.nfdi4chem\.de/, (route) => route.abort());
       const old = await context.newPage();
       await old.goto(`${legacyUrl.origin}/`);
@@ -168,7 +168,7 @@ test('Lighthouse accessibility on the running stack: empty, results, results wit
       console.log('LIGHTHOUSE_LEGACY', line('legacy home', legacy));
     }
 
-    // P4-13: 90 or more, with Ketcher loaded too; nothing failing outside Ketcher's own root.
+    // 90 or more, with Ketcher loaded too; nothing failing outside Ketcher's own root.
     expect(whose).toEqual({ ours: [], unattributed: [] });
     expect(Math.min(empty.score, results.score, withKetcher.score, about.score, privacy.score, impressum.score)).toBeGreaterThanOrEqual(0.9);
     expect(problems).toEqual([]);

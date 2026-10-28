@@ -5,7 +5,7 @@ import { CopyButton } from './CopyButton';
 
 /**
  * What the panel shows of the SMILES. While the server has not answered an edit nothing is known about the new
- * structure. A structure that RDKit refused and only CDK read (decision D4) has no valid SMILES in RDKit's sense, but
+ * structure. A structure that RDKit refused and only CDK read has no valid SMILES in RDKit's sense, but
  * DECIMER's own text is what the user may want to copy, so it is shown with a note on who accepted it. A structure
  * nobody accepts has none.
  */

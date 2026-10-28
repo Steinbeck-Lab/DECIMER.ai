@@ -1,5 +1,5 @@
 /**
- * Crash reports from the browser: the Sentry SDK, pointed at our own GlitchTip, and nothing else.
+ * Crash reports from the browser: the Sentry SDK, pointed at a self-hosted GlitchTip, and nothing else.
  *
  * Off unless the build has a DSN (`VITE_SENTRY_DSN`, env.d.ts). The DSN names THIS site: the edge proxies
  * `/glitchtip/api/<project>/envelope/` to GlitchTip, so the page's CSP (`connect-src 'self'`) needs no entry and no report

@@ -37,7 +37,7 @@ export default tseslint.config(
       'e2e/returning.ts', // extends the plain test
       'e2e/intro.spec.ts', // the animation itself: every test starts in a fresh tab
       'e2e/lighthouse.spec.ts', // makes its own persistent context
-      'e2e/parity/**/*.ts', // makes its own contexts (new, lighthouse) or runs against legacy
+      'e2e/parity/**/*.ts', // makes its own contexts (new, lighthouse) or runs against the earlier version
       'e2e/live/**/*.ts', // makes its own context
     ],
     rules: { 'no-restricted-imports': 'off' },

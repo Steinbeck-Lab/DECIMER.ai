@@ -20,7 +20,7 @@ export const CONTENT_SECURITY_POLICY = [
 ].join('; ');
 
 export default defineConfig({
-  // Relative base: the same build serves /beta/ and / (ROADMAP §3).
+  // Relative base: the same build can be served from / or from a sub-path.
   base: './',
   plugins: [react()],
   // Ketcher's bundle still references Node's `global`, and its `util` polyfill reads `process.env.NODE_DEBUG`

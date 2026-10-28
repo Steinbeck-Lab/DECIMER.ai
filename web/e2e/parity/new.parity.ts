@@ -6,11 +6,11 @@ import { parseCsv, readZip } from '../live/zip';
 import { markReturningTab } from '../returning';
 import { blankImage, blankPdf, CROP, dir, dragEvents, duplicateIds, Facts, fileFrom, NEGATIVES, overflowX, pasteFile, shot, textImage, type FileSpec } from './shared';
 
-// The new stack's half of the parity sign-off (TODO, ROADMAP §6): each item exercised against the running stack
+// The new stack's half of the parity check: each item exercised against the running stack
 // (the production build under the edge's CSP, the real API, workers and models) with a screenshot and a recorded
-// observation, set beside what legacy.parity.ts recorded for the same item. Opt-in: `*.parity.ts`, never in the
+// observation, set beside what legacy.parity.ts recorded of the earlier Laravel version of decimer.ai for the same item. Opt-in: `*.parity.ts`, never in the
 // default run or in CI. The stack is shared: ONE job at a time, and every job this run creates is deleted (afterAll
-// deletes the ones a failed step left). Run (from web/, in the Playwright image; see REPORT.md):
+// deletes the ones a failed step left). Run (from web/, in the Playwright image, as in parity.config.ts):
 //   PARITY_NEW_URL=http://127.0.0.1:8090 npx playwright test --config e2e/parity/parity.config.ts --project new
 
 const GOLDEN_PDF = process.env.PARITY_PDF ?? resolve(import.meta.dirname, '../../../golden/zou2024_penicillium_shentong.pdf');
@@ -311,7 +311,7 @@ test('a pasted image (job A): 3 paste, 5 stages, 9 result, 10-12 links and repor
   await shot(page, 'new', 'n12-name-hover');
   await page.mouse.move(0, 0);
 
-  // 8: does the page offer the uploaded document (legacy: a "Display uploaded document" checkbox, which for a single image shows that image)?
+  // 8: does the page offer the uploaded document (earlier version: a "Display uploaded document" checkbox, which for a single image shows that image)?
   const pageFile = await page.request.get(`/api/jobs/${jobId}/media/page-0.png`);
   facts.set('8.display the uploaded document, image job (A)', {
     controlsOnThePageMatching: await page.getByText(/uploaded document|page images|show pages|original page/i).allInnerTexts(),
@@ -378,7 +378,7 @@ test('a pasted image (job A): 3 paste, 5 stages, 9 result, 10-12 links and repor
   facts.set('13.after Reset', { tile: (await tile(1).innerText()).replace(/\s+/g, ' ').trim(), change: 'Same as recognised', resetEnabled: await panel().getByRole('button', { name: 'Reset' }).isEnabled() });
   await shot(page, 'new', 'n17-reset');
 
-  // 14: the exports, started at once after an edit (the race of legacy's submit_with_updated_molfiles).
+  // 14: the exports, started at once after an edit (the race of the earlier version's submit_with_updated_molfiles).
   await layoutOnCanvas(page);
   const exported = page.waitForResponse((r) => isApi(r, 'POST', `/api/jobs/${jobId}/export`), { timeout: 120_000 });
   await downloadButton(page).click();
@@ -506,7 +506,7 @@ test('a dropped image with no structure (job B): 2 a drop starts at once, 6 the 
   expect(problems).toEqual([]);
 });
 
-test('two images picked together (job C): 1 multi-file, and what each is read as (legacy reads each image whole)', async () => {
+test('two images picked together (job C): 1 multi-file, and what each is read as (the earlier version reads each image whole)', async () => {
   test.setTimeout(900_000);
   await page.goto('./');
   const two = resolve(NEGATIVES, 'n09_two_5_6.png');
@@ -524,7 +524,7 @@ test('two images picked together (job C): 1 multi-file, and what each is read as
     results: job.results.length,
     pages: job.pages,
     perResult: job.results.map((r) => ({ number: r.number, page: r.pageIndex, bbox: r.bbox, smiles: r.smiles })),
-    note: 'tight-crop.png is 379 x 342 px, two-structures.png is 877 x 375 px; legacy sends each uploaded image whole to OCSR when more than one is uploaded',
+    note: 'tight-crop.png is 379 x 342 px, two-structures.png is 877 x 375 px; the earlier version sends each uploaded image whole to OCSR when more than one is uploaded',
   });
   const id = jobId;
   await startOver(id);
@@ -551,8 +551,8 @@ test('a figure with two structures pasted (job D): the defect "comes back as one
   expect(problems).toEqual([]);
 });
 
-// D23 (2026-10-23): like legacy, a multi-image upload is not segmented; each image is read whole in its own
-// slot, so two blank images give two results (legacy shows whatever DECIMER read), not "No structures".
+// Like the earlier version, a multi-image upload is not segmented; each image is read whole in its own
+// slot, so two blank images give two results (the earlier version shows whatever DECIMER read), not "No structures".
 test('two blank images (job E): 7 a multi-image upload reads each image whole', async () => {
   test.setTimeout(900_000);
   await page.goto('./');
@@ -565,7 +565,7 @@ test('two blank images (job E): 7 a multi-image upload reads each image whole', 
   await shot(page, 'new', 'n26-two-blank-images');
   expect(job.status).toBe('done');
   expect(job.results.length).toBe(2); // one slot per image, in upload order
-  facts.set('7.two blank images (D23: each read whole)', { results: job.results.length, status: job.status, smiles: job.results.map((r) => r.smiles), warnings: job.warnings.map((w) => w.code), jobName: 'two blank images' });
+  facts.set('7.two blank images (each read whole)', { results: job.results.length, status: job.status, smiles: job.results.map((r) => r.smiles), warnings: job.warnings.map((w) => w.code), jobName: 'two blank images' });
   const id = jobId;
   await startOver(id);
   expect(problems).toEqual([]);

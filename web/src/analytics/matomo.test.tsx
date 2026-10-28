@@ -27,7 +27,10 @@ afterEach(() => {
 describe('where the counter runs', () => {
   test('on a real host of a production build, and nowhere else', () => {
     expect(trackingEnabled('decimer.ai', true)).toBe(true);
-    expect(trackingEnabled('beta.decimer.ai', true)).toBe(true);
+    expect(trackingEnabled('www.decimer.ai', true)).toBe(true);
+    for (const host of ['beta.decimer.ai', 'decimer.example.org', 'decimer.ai.example.org']) {
+      expect(trackingEnabled(host, true), host).toBe(false); // a self-hosted copy counts nothing
+    }
     expect(trackingEnabled('decimer.ai', false)).toBe(false); // the dev server
     for (const host of ['localhost', '127.0.0.1', '::1', '[::1]', 'app.localhost']) {
       expect(trackingEnabled(host, true), host).toBe(false); // a trial run on this machine, a test, Lighthouse
@@ -46,9 +49,9 @@ describe('where the counter runs', () => {
   });
 });
 
-describe('the legacy code', () => {
-  test('is the same: tracker address, site id and calls in the legacy order, and no disableCookies', () => {
-    // resources/views/layouts/default.blade.php of the legacy site: u = "//matomo.nfdi4chem.de/", setSiteId 2,
+describe('the earlier version\'s code', () => {
+  test('is the same: tracker address, site id and calls in the earlier order, and no disableCookies', () => {
+    // resources/views/layouts/default.blade.php of the earlier version: u = "//matomo.nfdi4chem.de/", setSiteId 2,
     // trackPageView, enableLinkTracking, setTrackerUrl (u + 'matomo.php'), setSiteId, then matomo.js (async).
     expect(startMatomo(window, document, true)).toBe(true);
     expect(paq()).toEqual([

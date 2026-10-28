@@ -4,7 +4,7 @@ import { HTTP_API_PORT } from '../playwright.config';
 import { fakeApi, JOB_ID, wireJob, wireResult } from './fakeApi';
 import { atomCount, editorPanel, fixtureImage, layoutOnCanvas, tile, waitForCanvas, waitForEditor, watchProblems } from './helpers';
 
-// Structures that RDKit refused and only CDK read (decision D4): the panel shows DECIMER's SMILES with a note, and the
+// Structures that RDKit refused and only CDK read (CDK is the fallback reader): the panel shows DECIMER's SMILES with a note, and the
 // editor loads CDK's molblock, hypervalent atoms included, without the load-failure overlay.
 
 const CDK_NOTE = 'Accepted by CDK only (RDKit could not read it)';

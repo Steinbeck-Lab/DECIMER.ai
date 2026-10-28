@@ -15,7 +15,7 @@ interface WordmarkProps {
 
 /**
  * The DECIMER wordmark (DEC|MER). It is black on transparent, cut from the
- * legacy `DECIMER_Clean.png` (word only: the tagline is real text).
+ * `DECIMER_Clean.png` of the earlier Laravel version of decimer.ai (word only: the tagline is real text).
  */
 export function Wordmark({ height = 32, hero = false, fill = false }: WordmarkProps) {
   if (fill) return <span className="dc-wordmark dc-wordmark--fill" aria-hidden="true" />;

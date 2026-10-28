@@ -317,7 +317,7 @@ export class AppController {
   /**
    * Exports the edited state. The editor is flushed first and the edits are read
    * from the store only afterwards, in one synchronous step, so an edit made a
-   * moment ago is in the file. (The legacy page collected molfiles from 20
+   * moment ago is in the file. (The earlier Laravel version of decimer.ai collected molfiles from 20
    * iframes while the ZIP request was already on its way.)
    */
   async download(format: ExportFormat): Promise<void> {

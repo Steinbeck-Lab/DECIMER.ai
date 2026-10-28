@@ -50,7 +50,7 @@ test('the mock ignores VITE_API_URL: there is no API to be on another origin', a
   await expect(createApiClient()).resolves.toBeDefined();
 });
 
-test('without VITE_API the mock is used (until the HTTP client is the default, P3-12)', async () => {
+test('without VITE_API the mock is used', async () => {
   vi.stubEnv('VITE_API', '');
   const api = await createApiClient();
   expect(api).not.toBeInstanceOf(HttpApiClient);
