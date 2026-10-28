@@ -85,7 +85,7 @@ test.describe('on decimer.ai', () => {
 
 test('on this machine nothing is counted and nothing is requested', async ({ page }) => {
   const requests: string[] = [];
-  page.on('request', (request) => request.url().startsWith(MATOMO) && requests.push(request.url()));
+  page.on('request', (request) => new URL(request.url()).origin === MATOMO && requests.push(request.url()));
   await page.goto('./#/about');
   await page.locator('main h1').waitFor();
   await page.waitForTimeout(500);

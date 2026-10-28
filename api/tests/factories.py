@@ -136,13 +136,17 @@ def make_encrypted_pdf(
 ) -> bytes:
     """A one-page PDF with the standard security handler (RC4 40-bit, revision 2). Opening it
     without the user password fails; with an empty user password it opens (owner-only)."""
-    owner_key = hashlib.md5((owner_password.encode() + _PAD)[:32]).digest()[:5]  # noqa: S324
+    # MD5 and RC4 are what the PDF standard prescribes here; nothing in this test protects data.
+    owner_key = hashlib.md5((owner_password.encode() + _PAD)[:32], usedforsecurity=False).digest()[
+        :5
+    ]
     padded_user = (user_password.encode() + _PAD)[:32]
     owner_entry = _rc4(owner_key, padded_user)
     permissions = -4
     file_id = bytes(range(16))
-    key = hashlib.md5(  # noqa: S324
-        padded_user + owner_entry + struct.pack("<i", permissions) + file_id
+    key = hashlib.md5(
+        padded_user + owner_entry + struct.pack("<i", permissions) + file_id,
+        usedforsecurity=False,
     ).digest()[:5]
     user_entry = _rc4(key, _PAD)
     encrypt = (
