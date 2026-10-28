@@ -1,8 +1,8 @@
 # Live spec
 
-`live.spec.ts` runs the thin slice against a stack that is already up (the VM's edge, the production build under the
+`live.spec.ts` runs the thin slice against a stack that is already up (its edge proxy, the production build under the
 real CSP, the real API, workers and models): paste, results, editor, validate, export (ZIP, SDF, CSV), report, golden
-PDF, delete. TODO and the VM half of P4-08.
+PDF, delete.
 
 Opt-in. The default `npx playwright test` ignores this folder (`testIgnore` in `playwright.config.ts`) and CI never
 runs it. The config refuses to load without `LIVE_BASE_URL`.

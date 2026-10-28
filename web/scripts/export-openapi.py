@@ -6,7 +6,7 @@ Run it with the API's own environment:
 
 `create_app` takes everything it uses, so the schema is read from an app built with
 stand-ins: nothing connects anywhere, and no request is ever served. Python is the
-source of truth for the API (ROADMAP §3); `npm run gen:api` turns this into TypeScript.
+source of truth for the API; `npm run gen:api` turns this into TypeScript.
 """
 
 from __future__ import annotations

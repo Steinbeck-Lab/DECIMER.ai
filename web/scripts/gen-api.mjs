@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// P3-10: TypeScript types from the job API's OpenAPI schema. Python is the source of truth.
+// TypeScript types from the job API's OpenAPI schema. Python is the source of truth.
 //
 //   npm run gen:api     rewrites src/api/openapi.json and src/api/generated.ts
 //   npm run check:api   fails when either is stale (CI): it regenerates both and compares

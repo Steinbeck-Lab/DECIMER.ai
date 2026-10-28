@@ -23,7 +23,7 @@ export const QUEUE_STEPS = 2;
 
 /**
  * What the four pipeline stages (render, segment, recognise, check) report at each step of a run. Like
- * the worker the stages overlap: a stage is active from its first piece of work and done
+ * the real worker, the stages overlap: a stage is active from its first piece of work and done
  * when its last piece ends and every stage before it is done. The upload stage is done from the start.
  */
 export const RUN: readonly (readonly StageState[])[] = [

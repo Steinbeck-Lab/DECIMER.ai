@@ -15,7 +15,7 @@ export function imageSrc(svg: string): string {
 }
 
 /**
- * The lines of the hover text for a name (P4-15, decision D14): what kind of name it is (Orthonym's `tier`) and
+ * The lines of the hover text for a name: what kind of name it is (Orthonym's `tier`) and
  * how it was checked (`verified`). Both come from the server as ids and are put into words here, from a fixed
  * list. A verification this list does not know is left out (nothing is made up); a tier it does not know is shown
  * as Orthonym's own id. With no name, the one line states that fact and no cause.

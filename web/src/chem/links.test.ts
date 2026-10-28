@@ -19,7 +19,7 @@ test('an empty or malformed key never offers links', () => {
   expect(hasStereo('not-a-key')).toBe(false);
 });
 
-test('legacy bug pinned: the character at offset 14 is the hyphen, so "not A" held for every key', () => {
+test('earlier-version bug pinned: the character at offset 14 is the hyphen, so "not A" held for every key', () => {
   expect(WITHOUT_STEREO.charAt(14)).toBe('-');
   expect(WITH_STEREO.charAt(14)).toBe('-');
 });

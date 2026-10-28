@@ -120,7 +120,7 @@ describe('scrubText: what goes', () => {
     expect(wrapped.startsWith('bad ') && wrapped.includes(SMILES) && !wrapped.includes(smiles), wrapped).toBe(true);
   });
 
-  // The probes of the privacy review (2026-10-23), as api/tests/test_scrub.py has them: a SMILES glued to punctuation,
+  // The probes of the privacy review, as api/tests/test_scrub.py has them: a SMILES glued to punctuation,
   // a quote of another kind, a key of one letter, a query string, ... The text around it must survive.
   const GLUED_SMILES = [
     'id=CCO',

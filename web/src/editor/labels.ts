@@ -3,7 +3,7 @@ import { strings } from '../strings';
 /**
  * Two small corrections to the markup of Ketcher 3.18.0, made from outside because the markup is Ketcher's. Neither
  * touches anything else in Ketcher, and each leaves alone a control that Ketcher has already dealt with itself, so a
- * Ketcher that fixes one of them wins. Upstream text: docs/ketcher-a11y-upstream.md.
+ * Ketcher that fixes one of them wins. Upstream text: web/docs/ketcher-a11y-upstream.md.
  *
  * 1. Names for the controls that Lighthouse flags and that have none (button-name, label): the two dropdown triangles
  *    of the top toolbar (Ketcher gives both the test id `copy-button-dropdown-triangle`, each sits beside the button

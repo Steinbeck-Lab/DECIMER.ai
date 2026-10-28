@@ -3,7 +3,7 @@
  *
  * Everything the API serves (jobs, results, stages, warnings, the validate answer, the export
  * request, the error codes) is DERIVED from the types generated from its OpenAPI schema
- * (`generated.ts`, by `npm run gen:api`, TODO), so a change in the API shows up as a type
+ * (`generated.ts`, by `npm run gen:api`), so a change in the API shows up as a type
  * error here and in the code that uses it. `contract.check.ts` pins what the UI assumes about
  * those types.
  */
@@ -11,7 +11,7 @@ import type { components } from './generated';
 
 type Schemas = components['schemas'];
 
-/** Limits shown to the user (ROADMAP §3). The server enforces them. */
+/** Limits shown to the user. The server enforces them. */
 export const LIMITS = {
   maxPages: 10,
   maxStructures: 20,
@@ -34,17 +34,18 @@ export const STAGE_ORDER = ['upload', 'render', 'segment', 'recognise', 'check']
  * A result. `Required<>`: the API always sends every field (a default is sent, not left out), and `parseJob`
  * fills the ones a server version might leave out.
  *
- * `nameTier` and `nameVerified` are Orthonym's own ids for what kind of name `name` is and how it was checked
- * (decision D14). `nameVerified` is `opsin`, `opsin_split`, `opsin_constitution`, `opsin_twin`, `opsin_acids` or
+ * `nameTier` and `nameVerified` are Orthonym's own ids for what kind of name `name` is and how it was checked.
+ * `nameVerified` is `opsin`, `opsin_split`, `opsin_constitution`, `opsin_twin`, `opsin_acids` or
  * `identity`; null when there is no name. The UI words the ids it knows and shows an unknown tier as it is.
  *
  * `valid` is RDKit's word. `validBy` says who accepted the SMILES: `rdkit` (then `valid` is true), `cdk` (RDKit refused
- * it, CDK 2.8 read it, decision D4: `valid` is false, `molfile` is CDK's and `svg` RDKit's drawing of it, `inchikey`
+ * it, CDK 2.8 read it: `valid` is false, `molfile` is CDK's and `svg` RDKit's drawing of it, `inchikey`
  * and `name` are empty) or null (neither).
  *
- * `incomplete` is true when the model stopped at its token limit without finishing (decision D25): `smiles` is then the
- * cut-off text, kept as legacy kept it, so it is probably not the structure in the image. It still went through RDKit
- * and CDK, so `valid` and `validBy` mean what they always mean, but it has no name. The UI does not show it yet.
+ * `incomplete` is true when the model stopped at its token limit without finishing: `smiles` is then the
+ * cut-off text, kept as the earlier Laravel version of decimer.ai kept it, so it is probably not the structure in the
+ * image. It still went through RDKit and CDK, so `valid` and `validBy` mean what they always mean, but it has no name.
+ * The UI flags it on the tile and in the editor.
  */
 export type Result = Required<Schemas['ResultView']>;
 

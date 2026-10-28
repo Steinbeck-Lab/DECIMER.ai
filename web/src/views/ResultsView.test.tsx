@@ -97,7 +97,7 @@ test('a PDF job offers the uploaded document, shut at first, with a page for eve
   );
 });
 
-test('an image job has no uploaded-document toggle (legacy shows it for PDFs only), although the job lists its page', async () => {
+test('an image job has no uploaded-document toggle (the earlier version shows it for PDFs only), although the job lists its page', async () => {
   const c = await mountResults();
   expect(c.store.getState().job?.pageUrls).toHaveLength(1);
   expect(screen.queryByRole('button', { name: 'Display uploaded document' })).toBeNull();

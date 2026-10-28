@@ -323,7 +323,7 @@ test('About, Privacy and Impressum are pages of the same site, and the footer li
   await expect(author).toHaveAttribute('rel', /noreferrer/);
   await expect(footer.getByRole('link', { name: /^Steinbeck Lab/ })).toHaveAttribute('href', 'https://cheminf.uni-jena.de/');
   await expect(footer.getByRole('link', { name: /^Friedrich Schiller University Jena/ })).toHaveAttribute('href', 'https://www.uni-jena.de/');
-  // Legacy's line, with the current year.
+  // The footer line of the earlier Laravel version of decimer.ai, with the current year.
   await expect(footer.getByText(`© ${new Date().getFullYear()} DECIMER Project. All rights reserved.`)).toBeVisible();
   // The footer's links are Contact (the email) and the two legal pages: GitHub and About are in the header.
   await expect(footer.getByRole('navigation', { name: 'Footer' }).getByRole('link')).toHaveText(['Contact', 'Privacy', 'Impressum']);
@@ -347,8 +347,8 @@ test('About, Privacy and Impressum are pages of the same site, and the footer li
   await expect(page.getByRole('heading', { level: 1, name: 'Impressum' })).toHaveAttribute('lang', 'de');
   await expect(page.getByRole('heading', { level: 2, name: 'Haftungsausschluss' })).toBeVisible();
 
-  // No page keeps its placeholder, and none speaks of the removed tools. (A `[CONFIRM: ...]` marker is a decision
-  // still open, listed in the hand-off; it is not a placeholder.)
+  // No page keeps its placeholder, and none speaks of the removed tools. (A `[CONFIRM: ...]` marker is a statement
+  // still to be confirmed; it is not a placeholder.)
   for (const route of ['about', 'privacy', 'impressum']) {
     await page.goto(`./#/${route}`);
     await page.locator('main h1').waitFor();
@@ -405,7 +405,7 @@ test('the editor panel traps focus while open and hands it back to the tile on c
   await waitForEditor(page, 800);
   await expect(panel.getByRole('heading', { name: 'Editing 5' })).toBeFocused();
 
-  // Tab cycles inside the panel and never reaches the page behind it, and no press ends on the body (P4-14: Ketcher's
+  // Tab cycles inside the panel and never reaches the page behind it, and no press ends on the body (Ketcher's
   // toolbar scroll arrows, which used to take focus and vanish, are out of the tab order; toolbar-focus.spec.ts).
   const state = () =>
     panel.evaluate((el) => ({

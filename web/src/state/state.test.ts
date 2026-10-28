@@ -120,7 +120,7 @@ test('an invalid SMILES goes to review with its reason; an R group is named as s
   expect(viewOf({ ...base, smiles: '*CC(=O)O' }).reasons).toEqual(['rgroup']);
 });
 
-// ---- a structure only CDK accepted (decision D4) ------------------------------------------------------------------
+// ---- a structure only CDK accepted --------------------------------------------------------------------------------
 
 const cdkOnly = (over: Partial<Result> = {}): Result => {
   const base = results[0];
@@ -152,7 +152,7 @@ test('CDK-only does not make an RDKit-valid result review', () => {
   });
 });
 
-// ---- a structure the model cut off at its token limit (decision D25) ----------------------------------------------
+// ---- a structure the model cut off at its token limit -------------------------------------------------------------
 
 const incomplete = (over: Partial<Result> = {}): Result => {
   const base = results[0];

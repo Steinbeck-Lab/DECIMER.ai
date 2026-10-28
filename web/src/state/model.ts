@@ -63,7 +63,7 @@ export interface State {
   selected: number | null;
   /**
    * The editor has been opened once. It then stays mounted for the life of the
-   * page, because Ketcher's workers cannot be destroyed.
+   * page, because Ketcher's workers cannot be destroyed (Ketcher #4657), and two editors would share one Indigo worker (Ketcher #12200).
    */
   editorMounted: boolean;
   filter: Filter;

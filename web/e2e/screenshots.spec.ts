@@ -2,8 +2,8 @@ import { expect, type Page } from '@playwright/test';
 import { test } from './returning';
 import { clearCanvas, editorPanel, fixtureImage, fixturePdf, downloadButton, layoutOnCanvas, tile, waitForEditor } from './helpers';
 
-// Review screenshots (impeccable finish review). They land in test-results/screens/ and the
-// orchestrator copies them to .impeccable/review/. They double as a check that every state renders.
+// Screenshots of every state, for design review. They land in test-results/screens/. They double as a check that
+// every state renders.
 const OUT = 'test-results/screens';
 const PDF = fixturePdf('zou2024_penicillium_shentong.pdf');
 

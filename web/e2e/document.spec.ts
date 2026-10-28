@@ -5,7 +5,7 @@ import { HTTP_API_PORT } from '../playwright.config';
 import { apiError, fakeApi, JOB_ID, wireJob } from './fakeApi';
 import { fixtureImage, fixturePdf, horizontalOverflow, watchProblems } from './helpers';
 
-// "Display uploaded document" (ROADMAP §6, item 8): legacy's toggle that shows the pages of the upload.
+// "Display uploaded document": the toggle of the earlier Laravel version of decimer.ai that shows the pages of the upload.
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 const SIZES = [
   { label: 'desktop', width: 1440, height: 900 },
@@ -39,7 +39,7 @@ for (const size of SIZES) {
     await page.getByRole('list', { name: 'Recognised structures' }).waitFor({ timeout: 40_000 });
     await page.locator('.dc-grid[data-arriving="false"]').waitFor({ timeout: 15_000 });
 
-    // Shut: a button named like legacy's label, and not a single page fetched.
+    // Shut: a button named like the earlier version's label, and not a single page fetched.
     const toggle = page.getByRole('button', { name: 'Display uploaded document' });
     await expect(toggle).toBeVisible();
     await expect(page.getByText('8 of 20 structures · 10 of 10 pages')).toBeVisible(); // a PDF is counted against its page limit
@@ -106,7 +106,7 @@ test('a PDF with no structures still offers the uploaded document, so one can se
   await audit(page, 'no structures, document open');
 });
 
-// Legacy shows the document for a PDF only (its image list is empty for images): an image is its own picture.
+// The earlier version shows the document for a PDF only (its image list is empty for images): an image is its own picture.
 test('an image upload has no uploaded-document toggle, with structures or without', async ({ page }) => {
   await page.goto('./?mockStepMs=150');
   await page.locator('input[type=file]').setInputFiles(fixtureImage('figure2.png'));

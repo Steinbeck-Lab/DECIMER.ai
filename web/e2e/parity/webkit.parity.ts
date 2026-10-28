@@ -6,8 +6,8 @@ import { readZip } from '../live/zip';
 import { test } from '../returning';
 import { CROP, dir, Facts, fileFrom, pasteFile, shot } from './shared';
 
-// ROADMAP §6 item 17, the Safari warning: "re-test with Ketcher 3.18 and drop it if it is no longer needed".
-// Legacy shows "We have some problems with Safari! ... the loading icons do not move while your data is processed"
+// The Safari warning: re-test with Ketcher 3.18 and drop it if it is no longer needed.
+// The earlier Laravel version of decimer.ai shows "We have some problems with Safari! ... the loading icons do not move while your data is processed"
 // to every Safari user agent: its progress icons are animated GIFs, and Safari stops them while the page navigates
 // (every stage of a job is a full page load). The new app is one page: its progress is CSS, and nothing navigates.
 // Playwright's WebKit is the Safari engine, so this run answers three questions in it: is any Safari warning shown,

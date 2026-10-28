@@ -2,8 +2,9 @@ import { expect } from '@playwright/test';
 import { test } from './returning';
 import { watchProblems } from './helpers';
 
-// The visit counter (src/analytics/matomo.ts) starts only on a real host, never on this machine. The first describe
-// opens the built app under a made-up host name that resolves to the local preview server, with the real CSP, and
+// The visit counter (src/analytics/matomo.ts) starts only on decimer.ai, never on this machine or a self-hosted copy.
+// The first describe opens the built app as decimer.ai, which this browser resolves to the local preview server (plain
+// http works: decimer.ai is not on the HSTS preload list and the test profile is fresh), with the real CSP, and
 // answers matomo.nfdi4chem.de itself, so that nothing reaches the live statistics.
 
 const MATOMO = 'https://matomo.nfdi4chem.de';
@@ -14,11 +15,11 @@ type Paq = (string | number)[][];
 const queue = (page: import('@playwright/test').Page) => page.evaluate(() => (window as unknown as { _paq?: Paq })._paq ?? null);
 
 // Top level, because a browser option cannot be set for one group: it only adds a name for the whole file.
-test.use({ launchOptions: { args: ['--host-resolver-rules=MAP decimer.test 127.0.0.1'] } });
+test.use({ launchOptions: { args: ['--host-resolver-rules=MAP decimer.ai 127.0.0.1'] } });
 
-test.describe('on a real host', () => {
+test.describe('on decimer.ai', () => {
   // The returning-tab fixture (./returning) keeps the 1.9 MB animation from playing on this host too.
-  test.use({ baseURL: 'http://decimer.test:4173/' });
+  test.use({ baseURL: 'http://decimer.ai:4173/' });
 
   test('the counter is loaded once, counts each page, and the CSP lets its script, beacon and image through', async ({ page }) => {
     const problems = watchProblems(page); // console errors, including every CSP violation
@@ -46,7 +47,7 @@ test.describe('on a real host', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Privacy' })).toBeVisible();
     const after = (await queue(page)) ?? [];
     expect(after.filter((call) => call[0] === 'trackPageView')).toHaveLength(2);
-    expect(after.at(-3)).toEqual(['setCustomUrl', 'http://decimer.test:4173/#/privacy']);
+    expect(after.at(-3)).toEqual(['setCustomUrl', 'http://decimer.ai:4173/#/privacy']);
     expect(after.at(-2)).toEqual(['setDocumentTitle', 'Privacy · DECIMER.ai']);
     expect(requests.filter((url) => url.endsWith('/matomo.js'))).toHaveLength(1); // not loaded again
 

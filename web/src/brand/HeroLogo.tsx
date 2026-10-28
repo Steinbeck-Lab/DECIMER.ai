@@ -10,8 +10,8 @@ function prefersReducedMotion(): boolean {
 }
 
 /**
- * The logo animation of a browser tab's first load of the site (PRODUCT.md, Brand Commitments; `DECIMER.gif` of the
- * legacy site, 1.9 MB, plays once for about 8 s). The visit is remembered in the tab's session storage
+ * The logo animation of a browser tab's first load of the site (`DECIMER.gif` of the earlier Laravel version of
+ * decimer.ai, 1.9 MB, plays once for about 8 s). The visit is remembered in the tab's session storage
  * (firstVisit.ts): a new tab plays it again, a return to the home page or a reload in the same tab does not.
  *
  * - The file is only requested when it is shown: a tab that has shown it, a visitor who prefers reduced motion and
@@ -53,7 +53,7 @@ function Intro() {
 
 /**
  * Is this load of the site, in this tab, to start with the animation? Reads the flag without using it up, and forgets
- * the flags that older versions (and the legacy site) kept in local storage.
+ * the flags that older versions (and the earlier version) kept in local storage.
  */
 export function shouldPlayIntro(): boolean {
   forgetOldFlags();

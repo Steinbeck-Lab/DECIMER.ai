@@ -6,7 +6,7 @@ const ROUTES: readonly Route[] = ['/', '/about', '/privacy', '/impressum'];
 
 /**
  * A hash router: `#/about`. The build uses a relative base so the same files
- * serve `/beta/` and `/` (ROADMAP §3), and with hash routes a deep link needs no
+ * serve `/` and a sub-path, and with hash routes a deep link needs no
  * server rule and no knowledge of the base path. It is all this app needs for
  * four routes, so there is no router dependency.
  */

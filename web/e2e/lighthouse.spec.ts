@@ -6,11 +6,11 @@ import { startFlow } from 'lighthouse';
 import puppeteer from 'puppeteer-core';
 import { fixtureImage, waitForEditor } from './helpers';
 
-// P4-14 / P4-13: Lighthouse's accessibility category on the live page (snapshot mode: the DOM as it is now, so
+// Lighthouse's accessibility category on the live page (snapshot mode: the DOM as it is now, so
 // the page can be in the state that matters: results, with Ketcher loaded). Lighthouse runs on Playwright's own
 // Chromium, reached through its remote-debugging port. The score is printed so it can be recorded.
 //
-// The target of P4-13 is 90 or more, also with Ketcher loaded. Ketcher's own markup has unlabelled buttons and a
+// The target is 90 or more, also with Ketcher loaded. Ketcher's own markup has unlabelled buttons and a
 // textarea (src/editor/labels.ts gives them names and is kept in place); whatever else it gets wrong must be inside
 // `.Ketcher-root`: nothing of ours may fail. A failing audit that does not say which nodes, or a node that is no
 // longer on the page, cannot be attributed to anyone, so it fails the test too.

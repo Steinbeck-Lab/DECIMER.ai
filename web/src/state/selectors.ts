@@ -52,7 +52,7 @@ export function reasonsFor(r: {
   validBy?: ValidBy | null;
   confidence: number;
   smiles: string;
-  /** The model stopped at its token limit: the SMILES is cut off (decision D25). */
+  /** The model stopped at its token limit: the SMILES is cut off. */
   incomplete?: boolean;
 }): Reason[] {
   const reasons: Reason[] = [];

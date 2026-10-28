@@ -13,7 +13,7 @@ interface Props {
 }
 
 /**
- * "Display uploaded document" (legacy's toggle): the pages of the upload, side by side in a strip that scrolls
+ * "Display uploaded document" (the earlier version's toggle): the pages of the upload, side by side in a strip that scrolls
  * inside its own box. Shut, it renders no image at all, so no page is fetched until someone asks for it; open, the
  * images load lazily as the strip is scrolled. The strip is focusable, so the arrow keys scroll it.
  */
