@@ -47,3 +47,12 @@ test-results/
 
 # Local caches
 .cache/
+
+# Kept local, never published
+/CLAUDE.md
+/DESIGN.md
+/PRODUCT.md
+/docs/
+/.claude/
+/.impeccable/
+/.playwright-mcp/

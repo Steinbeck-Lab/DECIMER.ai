@@ -1,6 +1,6 @@
 <div align="center">
 
-<a href="https://decimer.ai"><img src="docs/readme/banner.svg" width="100%" alt="DECIMER: extract chemical structures from PDFs and images"></a>
+<a href="https://decimer.ai"><img src=".github/readme/banner.svg" width="100%" alt="DECIMER: extract chemical structures from PDFs and images"></a>
 
 <br>
 
@@ -19,15 +19,15 @@
 
 </div>
 
-<img src="docs/readme/ruler.svg" width="100%" alt="">
+<img src=".github/readme/ruler.svg" width="100%" alt="">
 
 **DECIMER** (Deep lEarning for Chemical IMagE Recognition) finds chemical structures in scientific papers and images and turns them into machine-readable SMILES. Drop in a PDF or an image. DECIMER cuts out every structure, reads it, checks it, and puts each one beside the original crop so you can correct it before you download.
 
 > [!NOTE]
-> This is the next-generation decimer.ai: a FastAPI job API, three model services and a React app. It replaces the Laravel 8 site ([`DECIMER.ai_old`](https://github.com/Steinbeck-Lab/DECIMER.ai_old)). The models and their predictions are the same as before.
+> This is the next-generation decimer.ai: a FastAPI job API, three model services and a React app. It replaces the Laravel 8 site ([`DECIMER.ai-legacy`](https://github.com/Steinbeck-Lab/DECIMER.ai-legacy)). The models and their predictions are the same as before.
 
 <div align="center">
-<img src="docs/readme/home.png" width="88%" alt="The DECIMER upload page">
+<img src=".github/readme/home.png" width="88%" alt="The DECIMER upload page">
 </div>
 
 ## What it does
@@ -64,12 +64,12 @@ Every result has a status: unchecked, review, not sure, edited, checked. Correct
 </table>
 
 <div align="center">
-<img src="docs/readme/editor.png" width="88%" alt="A result open in the editor, with the original crop beside Ketcher">
+<img src=".github/readme/editor.png" width="88%" alt="A result open in the editor, with the original crop beside Ketcher">
 </div>
 
 ## How it works
 
-<img src="docs/readme/pipeline.svg" width="100%" alt="Upload, segment, recognise, check and name, review and export">
+<img src=".github/readme/pipeline.svg" width="100%" alt="Upload, segment, recognise, check and name, review and export">
 
 One job runs through three model services and a chemistry service, behind a small API. The stages overlap: a page goes to segmentation as soon as it is rendered, and a crop goes to recognition as soon as its place in the job is known.
 
@@ -138,11 +138,11 @@ scripts/check.sh --no-e2e   # without the Docker-based tests
 
 No change to a model, TensorFlow, RDKit, CDK or the PDF renderer ships without the golden-set check ([`golden/README.md`](golden/README.md)).
 
-More: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) · [`docs/RUNBOOK.md`](docs/RUNBOOK.md) · [`docs/DECISIONS.md`](docs/DECISIONS.md) · [`deploy/README.md`](deploy/README.md) · [`DESIGN.md`](DESIGN.md)
+More: [`deploy/README.md`](deploy/README.md) (images, settings, operations) · [`golden/README.md`](golden/README.md) (the golden-set check)
 
 </details>
 
-<img src="docs/readme/ruler.svg" width="100%" alt="">
+<img src=".github/readme/ruler.svg" width="100%" alt="">
 
 ## Cite
 
@@ -182,7 +182,7 @@ If DECIMER helps your research, please cite:
 
 Found a wrong structure or a bug? [Open an issue](https://github.com/Steinbeck-Lab/DECIMER.ai/issues), or use **Report a problem** on a result. Pull requests are welcome. Run `scripts/check.sh` before you open one.
 
-<img src="docs/readme/ruler.svg" width="100%" alt="">
+<img src=".github/readme/ruler.svg" width="100%" alt="">
 
 <div align="center">
 
