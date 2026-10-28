@@ -1,6 +1,6 @@
 """The client's slot is taken before the upload is read, and ingest capacity is bounded.
 
-These tests answer the review's blocker: parallel uploads from one address used to be read and
+These tests cover a real problem: parallel uploads from one address used to be read and
 decoded in full, and only the last step (admit) refused them."""
 
 from __future__ import annotations

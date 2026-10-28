@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 describe('where the counter runs', () => {
-  test('on a real host of a production build, and nowhere else', () => {
+  test('only on decimer.ai and www.decimer.ai in a production build', () => {
     expect(trackingEnabled('decimer.ai', true)).toBe(true);
     expect(trackingEnabled('www.decimer.ai', true)).toBe(true);
     for (const host of ['beta.decimer.ai', 'decimer.example.org', 'decimer.ai.example.org']) {
@@ -43,7 +43,7 @@ describe('where the counter runs', () => {
     expect(paq()).toBeUndefined();
   });
 
-  test('the test environment itself is not a real host: starting with the defaults does nothing', () => {
+  test('the test environment is not decimer.ai: starting with the defaults does nothing', () => {
     expect(startMatomo()).toBe(false);
     expect(matomoScripts()).toHaveLength(0);
   });

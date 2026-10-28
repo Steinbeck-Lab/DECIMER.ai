@@ -77,7 +77,7 @@ def test_pin_unverified_is_shipped_only_with_an_allowed_check() -> None:
     assert (withheld.name, withheld.reason) == (None, "not_round_tripped")
 
 
-# The three carve-out rows the review found at Orthonym's default tier: shipped as pin_unverified,
+# The three carve-out rows found at Orthonym's default tier: shipped as pin_unverified,
 # "unverified", with no round trip. (Copied from real `name_tiered` output.)
 REAL_CARVE_OUT_ROWS = [
     {"name": "scyllo-inositol", "tier": "pin_unverified", "verified": "unverified"},

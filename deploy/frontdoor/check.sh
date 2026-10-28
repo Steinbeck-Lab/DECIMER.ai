@@ -46,7 +46,11 @@ for variant in plain proxy; do
     if [ -n "$legacy_conf" ] && [ -f "$legacy_conf" ]; then
         run "existing nginx + its nginx.conf ($variant)" "$legacy_image" "$legacy_conf" "$tmp/$variant.conf"
     else
-        echo "skip  existing nginx ($variant): no nginx.conf given (--legacy-nginx-conf FILE)"
+        if [ -n "$legacy_conf" ]; then
+            echo "skip  existing nginx ($variant): $legacy_conf not found"
+        else
+            echo "skip  existing nginx ($variant): no nginx.conf given (--legacy-nginx-conf FILE)"
+        fi
     fi
 done
 # TRUSTED_PROXY_CIDR: networks are refused (a proxy is an address), also when several add up to everyone; addresses and small groups pass.

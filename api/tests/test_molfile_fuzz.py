@@ -78,7 +78,7 @@ def test_wherever_the_gate_admits_a_molfile_rdkit_reads_what_the_gate_counted() 
     tally, found = disagreements(gate.clean_molfile, gate.structure_counts)
     assert found == [], f"gate and RDKit disagree: {found[:5]}"
     # ... and not only as many atoms and bonds: the same bonds, between the same atoms. (Two
-    # readers that count alike can still join different atoms: the third review's whitespace.)
+    # readers that count alike can still join different atoms: non-ASCII whitespace.)
     _, found = disagreements(gate.clean_molfile, gate.structure_counts, graph=True)
     assert found == [], f"gate and RDKit build different graphs: {found[:3]}"
     # The fuzz is not vacuous: it produces files the gate admits and RDKit reads, and refusals.
@@ -88,7 +88,7 @@ def test_wherever_the_gate_admits_a_molfile_rdkit_reads_what_the_gate_counted() 
 
 
 def test_the_fuzz_finds_the_bypass_in_the_gate_it_replaced() -> None:
-    """The generator is able to find what the re-review found: the previous gate takes a V2000
+    """The generator is able to find the known bypass: the previous gate takes a V2000
     molfile that says `V2000 V3000` for V3000 and counts the one-atom block RDKit never reads."""
     _, found = disagreements(old_gate.clean_molfile, old_gate.structure_counts)
     assert found, "no disagreement with the old gate: the fuzz has lost its teeth"

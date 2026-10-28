@@ -279,7 +279,7 @@ async def test_a_job_deleted_just_as_a_worker_takes_it_is_not_started(
     assert await store.mark_running(job_id) is None
 
 
-# --- a save cannot bring back a deleted record (review finding 5) ----------------------------
+# --- a save cannot bring back a deleted record ---------------------------------------------
 
 
 @pytest.mark.parametrize("delete_lands", ["before the first command", "after the first command"])

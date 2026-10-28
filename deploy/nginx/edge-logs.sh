@@ -34,7 +34,7 @@
 #     none is deleted before it is about six days old: the file of a day goes when it is a week behind.
 #   * A stopped container prunes nothing: the first thing a start does is `rotate`, before nginx opens
 #     the file, so what is past its week goes before anything is served. For a long stop, prune from the
-#     host (deploy/README.md, "Error log").
+#     host (deploy/README.md, "Logs and retention").
 #   * A clock that goes back: a rotated file dated after today (the marker's day, once the file has been
 #     renamed, or one from before the step) is dated today, so it is gone a week from today and not a
 #     week from a date that has not come.

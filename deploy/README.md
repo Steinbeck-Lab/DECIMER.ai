@@ -291,10 +291,10 @@ curl -s -o /dev/null -w '%{http_code}\n' https://your.site/readyz               
 If B also gets 429, the proxy is not sending the client address, or is not listed. After changing `TRUSTED_PROXY_CIDR`, recreate
 the edge (`$DC up -d edge`) and re-render the front door.
 
-**The visit counter.** The web app loads Matomo, `matomo.nfdi4chem.de` with site id 2, when it is served from a real host
-(never from `localhost` or `127.0.0.1`), and the CSP in `nginx/security-headers.conf` allows exactly that host
-(`web/src/analytics/matomo.ts`, `web/vite.config.ts`). If you run your own site and do not want its visits counted there,
-change the module and the CSP in step (`python3 -I deploy/nginx/check-csp.py` compares the two) before you build.
+**The visit counter.** The web app loads Matomo (`matomo.nfdi4chem.de`, site id 2) only when it is served as decimer.ai or
+www.decimer.ai (`web/src/analytics/matomo.ts`); a copy you host yourself never loads it. The CSP in
+`nginx/security-headers.conf` still names that host. You may remove it, together with the entry in `web/vite.config.ts`
+(`python3 -I deploy/nginx/check-csp.py` checks that the two agree).
 
 ## Error reports: GlitchTip
 
@@ -366,7 +366,7 @@ digest in `compose.yaml`, `$DC pull glitchtip glitchtip-db` and `$DC up -d glitc
   image's `HEALTHCHECK` every 15 s (`edge-logs.sh enforce`: rotate, then check), so the edge is `unhealthy` only for what rotating
   cannot mend. **Keep the edge's healthcheck.** Read it with `docker exec decimer-next-edge-1 tail -n 50 /var/log/nginx/error.log`; do
   not copy it anywhere that keeps it longer than seven days and do not add an `error_log stderr` (that puts the addresses into
-  docker's log). If you change the retention, change `EDGE_LOG_KEEP_DAYS` (default 7) and your privacy text together.
+  docker's log). If you change the retention, change the default of `EDGE_LOG_KEEP_DAYS` (7) in `deploy/nginx/edge-logs.sh` and your privacy text together.
 * **A stopped edge prunes nothing.** After `$DC down` or `stop` the `edge-logs` volume ages: its lines are deleted at the next start,
   not at seven days. For a stop of more than a few days, prune from the host (it runs the same script as the volume's owner):
 

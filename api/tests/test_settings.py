@@ -9,7 +9,7 @@ import pytest
 from decimer_api.settings import Settings
 
 
-def test_defaults_match_the_roadmap_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_defaults_match_the_documented_limits(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in (
         "REDIS_URL",
         "JOB_TTL_SECONDS",

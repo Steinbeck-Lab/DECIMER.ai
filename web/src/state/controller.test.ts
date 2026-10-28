@@ -281,7 +281,7 @@ test('reset cancels a pending validation', async () => {
   expect(controller.store.getState().edits[2]).toBeUndefined();
 });
 
-// ---- the service says "busy": try once more after Retry-After (review 3) -----------------------
+// ---- the service says "busy": try once more after Retry-After ------------------------------
 
 const busy = (retryAfterMs: number | null) => new ApiError(503, 'busy', 'The service is busy.', retryAfterMs);
 

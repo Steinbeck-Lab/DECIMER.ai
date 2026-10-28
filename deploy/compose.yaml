@@ -556,7 +556,7 @@ services:
   # The fast lane: a second worker on its own arq queue for small jobs (one pasted image
   # or a single small upload, at most one page: SMALL_JOB_MAX_PAGES), so that a small job never waits for a
   # worker place (WORKER_MAX_JOBS) behind 10-page PDFs in the default queue. It is part of the default start
-  # (1 GB limit, deploy/README.md "Memory"); to run without it: `$DC up -d --scale worker-fast=0` or
+  # (1 GB limit, deploy/README.md "Replicas, threads and memory"); to run without it: `$DC up -d --scale worker-fast=0` or
   # `$DC stop worker-fast`. Either is safe: the api sends a job to the fast queue only while this worker is
   # alive (its health-check key is in Redis), so without it small jobs take the default queue and the
   # default worker; a job still WAITING on its queue when it dies is moved to the default queue by the default

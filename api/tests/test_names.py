@@ -263,7 +263,7 @@ def test_an_empty_chem_url_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
     assert Settings().chem_url is None
 
 
-# --- the api stays out of the worker's way (review finding 3) ------------------------------------
+# --- the api stays out of the worker's way -----------------------------------------------------
 
 
 async def _held(

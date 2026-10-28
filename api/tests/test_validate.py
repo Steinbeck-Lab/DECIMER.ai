@@ -578,7 +578,7 @@ async def test_a_slow_chem_makes_validate_answer_without_a_name_not_with_an_erro
         assert exported.text.splitlines()[1].split(",")[4] == ""  # the name column
 
 
-# --- a molfile that is cheap to write and ruinous to read (review finding 1) ----------------------
+# --- a molfile that is cheap to write and ruinous to read ---------------------------------------
 
 
 @pytest.mark.parametrize("count", [44, 60])

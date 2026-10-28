@@ -101,7 +101,7 @@ def make_pdf(
 
 
 def make_self_referencing_pdf() -> bytes:
-    """A page tree whose only kid is itself, with /Count 2147483647 (found in review: the
+    """A page tree whose only kid is itself, with /Count 2147483647 (a known hostile input: the
     previous PDF library raised RuntimeError on it, which became a 500)."""
     return build_pdf(
         [

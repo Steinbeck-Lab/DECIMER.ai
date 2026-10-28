@@ -352,7 +352,7 @@ def test_a_crop_that_became_a_symlink_after_it_was_looked_at_is_still_not_copied
     assert list(reports.iterdir()) == []  # and no half-written folder
 
 
-# --- the cap (review finding 6) ------------------------------------------------------------------
+# --- the cap -----------------------------------------------------------------------------------
 
 
 async def test_work_in_progress_does_not_count_against_the_cap(
@@ -884,7 +884,7 @@ def test_requests_at_the_same_time_cannot_all_find_room_for_one_more(
     assert not any(p.name.startswith(".tmp-") for p in reports.iterdir())  # no leftovers
 
 
-# --- the byte budget, and a crop that is gone (review 3) --------------------------------------
+# --- the byte budget, and a crop that is gone ---------------------------------------------
 
 
 def test_a_crop_that_is_gone_when_the_report_is_saved_is_recorded_as_missing(

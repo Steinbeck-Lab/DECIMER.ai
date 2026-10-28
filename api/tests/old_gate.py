@@ -1,4 +1,4 @@
-"""The gate as it was before the re-review found its bypass, kept only so that a test can prove the
+"""The gate as it was before its bypass was found, kept only so that a test can prove the
 fuzz in `molfile_fuzz` is able to find that bypass. It took a molfile for V3000 when `V3000` was
 anywhere on the counts line (RDKit reads columns 35-39 only), accepted any text `int()` accepts, and
 ignored `M  V30` lines in a V2000 file. Do not use it for anything else."""

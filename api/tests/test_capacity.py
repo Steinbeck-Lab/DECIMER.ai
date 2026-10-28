@@ -1,4 +1,4 @@
-"""`Capacity`, and what it protects: RDKit reads and ZIP downloads (review findings 1 and 4)."""
+"""`Capacity`, and what it protects: RDKit reads and ZIP downloads."""
 
 from __future__ import annotations
 
@@ -348,7 +348,7 @@ async def test_the_limit_is_a_setting(
     assert (small.state.deps.streams.places, small.state.deps.analysis.capacity.places) == (1, 1)
 
 
-# --- downloads: a share per client, and a time limit (review 3) --------------------------------
+# --- downloads: a share per client, and a time limit ---------------------------------------
 
 
 class Download:
